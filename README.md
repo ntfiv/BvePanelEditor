@@ -1,5 +1,8 @@
 ﻿# パネルくん
 
+<img width="1748" height="1078" alt="AnimationN2" src="https://github.com/user-attachments/assets/66cf963d-0a86-4bc4-96be-6e7e73711db5" />
+
+
 BVE Trainsim 5 / 6 の運転台パネルファイル（`BveTs Instrument Panel 2.00 / 2.01`）を、画面で見ながら編集するツールです。
 
 - 版: **0.1α**（試験版です。大事なパネルは、コピーをとってから使ってください）
