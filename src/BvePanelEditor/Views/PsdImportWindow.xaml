@@ -1,0 +1,133 @@
+<Window x:Class="BvePanelEditor.Views.PsdImportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:BvePanelEditor.Views"
+        Title="PSD から読み込み" Width="1400" Height="900" FontFamily="Yu Gothic UI" FontSize="12"
+        WindowStartupLocation="CenterOwner" Background="{x:Static SystemColors.WindowBrush}">
+    <Window.Resources>
+        <Style x:Key="RowText" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="4,0,0,0" />
+        </Style>
+    </Window.Resources>
+    <DockPanel Background="{x:Static SystemColors.WindowBrush}">
+        <!-- 上: ファイル -->
+        <Grid DockPanel.Dock="Top" Margin="8,8,8,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="昼の PSD" VerticalAlignment="Center" />
+            <TextBox x:Name="DayBox" Grid.Column="1" Margin="0,2" IsReadOnly="True" />
+            <Button Grid.Column="2" Content="参照…" Padding="8,2" Margin="4,2,0,2" Click="OnBrowseDay" />
+
+            <TextBlock Grid.Row="1" Text="夜の PSD" VerticalAlignment="Center" />
+            <TextBox x:Name="NightBox" Grid.Row="1" Grid.Column="1" Margin="0,2" IsReadOnly="True"
+                     ToolTip="昼の PSD と同じ名前のレイヤーを夜の画像（NighttimeImage）にします" />
+            <Button Grid.Row="1" Grid.Column="2" Content="参照…" Padding="8,2" Margin="4,2,0,2" Click="OnBrowseNight" />
+            <Button Grid.Row="1" Grid.Column="3" Content="使わない" Padding="8,2" Margin="4,2,0,2" Click="OnClearNight" />
+
+            <TextBlock Grid.Row="2" Text="出力フォルダ" VerticalAlignment="Center" />
+            <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,2">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
+                    <TextBlock Text="ベースの名前" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBox x:Name="BaseNameBox" Width="140" Text="base" ToolTip="ベース画像のファイル名（夜は末尾に _N）" />
+                    <TextBlock Text=".png" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBox x:Name="OutBox" ToolTip="PNG を書き出すフォルダ" />
+            </DockPanel>
+            <Button Grid.Row="2" Grid.Column="2" Content="参照…" Padding="8,2" Margin="4,2,0,2" Click="OnBrowseOut" />
+        </Grid>
+
+        <!-- 下: まとめとボタン -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="8,4,8,8">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="キャンセル" Width="100" Margin="0,0,8,0" IsCancel="True" />
+                <Button x:Name="OkButton" Content="読み込む" Width="120" IsDefault="True" Click="OnOk" />
+            </StackPanel>
+            <Button DockPanel.Dock="Left" Content="役割を最初の状態に戻す" Padding="8,2" Margin="0,0,12,0" Click="OnDefaultRoles"
+                    ToolTip="表示中の画像レイヤーをベース、非表示の画像レイヤーを表示灯にします" />
+            <TextBlock x:Name="SummaryText" VerticalAlignment="Center" TextWrapping="Wrap" />
+        </DockPanel>
+
+        <Grid Margin="8,0,8,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="560" MinWidth="320" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左: レイヤー -->
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="5" />
+                    <RowDefinition Height="200" />
+                </Grid.RowDefinitions>
+                <TextBlock TextWrapping="Wrap" Foreground="DimGray" Margin="0,0,0,4"
+                           Text="レイヤーごとに役割を選んでください（上が手前）。フォルダの役割を変えると中身も同じになります。PSD のフォルダはパネルのグループになります。" />
+                <TreeView x:Name="LayerTree" Grid.Row="1" SelectedItemChanged="OnTreeSelection">
+                    <TreeView.ItemContainerStyle>
+                        <Style TargetType="TreeViewItem">
+                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                        </Style>
+                    </TreeView.ItemContainerStyle>
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate DataType="{x:Type v:PsdLayerNode}" ItemsSource="{Binding Children}">
+                            <StackPanel Orientation="Horizontal" Margin="0,1">
+                                <ComboBox Width="104" ItemsSource="{Binding RoleOptions}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                          SelectedValue="{Binding RoleValue, Mode=TwoWay}" IsEnabled="{Binding Usable}" />
+                                <TextBox Width="80" Margin="4,0,0,0" Text="{Binding NumberSet, UpdateSourceTrigger=LostFocus}"
+                                         Visibility="{Binding NumberVisibility}" ToolTip="同じ名前のレイヤーが 1 つのデジタル数字のコマになります" />
+                                <TextBlock Text="{Binding Eye}" Style="{StaticResource RowText}" Foreground="Gray" ToolTip="PSD での表示／非表示" />
+                                <TextBlock Text="{Binding Name}" Style="{StaticResource RowText}" FontWeight="{Binding NameWeight}" />
+                                <TextBlock Text="{Binding NightMark}" Style="{StaticResource RowText}" Foreground="#5A7FB8" FontSize="11" />
+                                <TextBlock Text="{Binding Notes}" Style="{StaticResource RowText}" Foreground="#C06000" FontSize="11" />
+                            </StackPanel>
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+                <GridSplitter Grid.Row="2" HorizontalAlignment="Stretch" />
+                <DockPanel Grid.Row="3">
+                    <TextBlock DockPanel.Dock="Top" FontWeight="Bold" Margin="0,4,0,2" Text="デジタル数字（コマの順番。上が 0 番）" />
+                    <StackPanel DockPanel.Dock="Right" Margin="4,0,0,0">
+                        <Button Content="↑" Width="28" Margin="0,0,0,4" Click="OnFrameUp" />
+                        <Button Content="↓" Width="28" Click="OnFrameDown" />
+                    </StackPanel>
+                    <ListBox x:Name="NumberList" />
+                </DockPanel>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
+
+            <!-- 右: 見本 -->
+            <DockPanel Grid.Column="2">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <TextBlock Text="見本（ベースを重ねた絵。橙の枠＝表示灯、緑の点線＝数字、黄＝選んだレイヤー）" VerticalAlignment="Center" Foreground="DimGray" />
+                    <Slider x:Name="ZoomSlider" DockPanel.Dock="Right" Width="160" Minimum="0.05" Maximum="2" Value="0.2" HorizontalAlignment="Right"
+                            ValueChanged="OnZoom" ToolTip="拡大・縮小" />
+                </DockPanel>
+                <TextBlock x:Name="PreviewStatus" DockPanel.Dock="Bottom" Foreground="Gray" Margin="0,2" />
+                <Border Background="#2B2B2E">
+                    <ScrollViewer x:Name="PreviewScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                        <Grid x:Name="PreviewHost" HorizontalAlignment="Left" VerticalAlignment="Top">
+                            <Grid.LayoutTransform>
+                                <ScaleTransform x:Name="PreviewScale" ScaleX="0.2" ScaleY="0.2" />
+                            </Grid.LayoutTransform>
+                            <Image x:Name="PreviewImage" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality" />
+                            <Canvas x:Name="Overlay" />
+                        </Grid>
+                    </ScrollViewer>
+                </Border>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

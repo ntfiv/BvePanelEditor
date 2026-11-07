@@ -1,0 +1,277 @@
+﻿<Window x:Class="BvePanelEditor.Views.ImagePanelWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:r="clr-namespace:BvePanelEditor.Rendering"
+        Title="画像からパネルを作る" Width="1500" Height="950" FontFamily="Yu Gothic UI" FontSize="12"
+        WindowStartupLocation="CenterOwner" Background="{x:Static SystemColors.WindowBrush}" PreviewKeyDown="OnWindowKeyDown">
+    <DockPanel Background="{x:Static SystemColors.WindowBrush}">
+        <TextBlock DockPanel.Dock="Top" Margin="8,8,8,0" TextWrapping="Wrap" FontSize="13"
+                   Text="この画面では昼パネルの計器消灯・点灯と夜パネルの計器消灯・点灯の４枚の画像を元に、車両パネルのベースを制作できます。" />
+        <!-- 上: 画像 -->
+        <Grid DockPanel.Dock="Top" Margin="8,8,8,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="昼・無発光" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="パネル本体の昼の画像（DaytimeImage）になります" />
+            <TextBox x:Name="DayUnlitBox" Grid.Column="1" Margin="0,2" IsReadOnly="True" />
+            <Button Grid.Column="2" Content="参照…" Padding="8,2" Margin="4,2,0,2" Tag="0" Click="OnBrowseImage" />
+            <TextBlock Grid.Column="4" Text="昼・発光" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="表示灯の昼の画像を切り抜く元" />
+            <TextBox x:Name="DayLitBox" Grid.Column="5" Margin="0,2" IsReadOnly="True" />
+            <Button Grid.Column="6" Content="参照…" Padding="8,2" Margin="4,2,0,2" Tag="1" Click="OnBrowseImage" />
+
+            <TextBlock Grid.Row="1" Text="夜・無発光" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="パネル本体の夜の画像（NighttimeImage）になります" />
+            <TextBox x:Name="NightUnlitBox" Grid.Row="1" Grid.Column="1" Margin="0,2" IsReadOnly="True" />
+            <Button Grid.Row="1" Grid.Column="2" Content="参照…" Padding="8,2" Margin="4,2,0,2" Tag="2" Click="OnBrowseImage" />
+            <TextBlock Grid.Row="1" Grid.Column="4" Text="夜・発光" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="表示灯の夜の画像を切り抜く元" />
+            <TextBox x:Name="NightLitBox" Grid.Row="1" Grid.Column="5" Margin="0,2" IsReadOnly="True" />
+            <Button Grid.Row="1" Grid.Column="6" Content="参照…" Padding="8,2" Margin="4,2,0,2" Tag="3" Click="OnBrowseImage" />
+
+            <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal">
+                <Button Content="PSD のレイヤーを振り分け…" Padding="8,2" Margin="0,2,8,2" Click="OnAssignLayers"
+                        ToolTip="PSD のレイヤーを選んで重ね、4 点の画像にします（欄ごとに別の PSD も使えます）" />
+                <TextBlock VerticalAlignment="Center" Foreground="Gray" Text="PSD を選ぶと、レイヤーを 4 点に振り分ける画面が開きます" />
+            </StackPanel>
+
+        </Grid>
+
+        <!-- 下 -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="8,4,8,8">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="キャンセル" Width="100" Margin="0,0,8,0" IsCancel="True" VerticalAlignment="Center" Padding="0,3" />
+                <Button x:Name="OkButton" Content="パネルを作る" MinWidth="160" FontSize="15" FontWeight="SemiBold" Padding="16,6" IsDefault="True" Click="OnOk" />
+            </StackPanel>
+            <TextBlock DockPanel.Dock="Left" Text="出力フォルダ" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <Button DockPanel.Dock="Left" Content="参照…" Padding="8,2" Margin="4,0,12,0" Click="OnBrowseOut" />
+            <TextBlock x:Name="SummaryText" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0" Foreground="DimGray" />
+            <TextBox x:Name="OutBox" VerticalContentAlignment="Center" ToolTip="切り抜いた表示灯の PNG を書き出すフォルダ" />
+        </DockPanel>
+
+        <Grid Margin="8,0,8,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" MinWidth="220" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="320" MinWidth="240" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左: PilotLamp部品の編集と重ねる画像のタブ -->
+            <TabControl x:Name="LeftTabs" SelectionChanged="OnLeftTabChanged">
+            <TabItem Header="PilotLamp部品の編集">
+            <DockPanel Margin="0,4,0,0">
+                <GroupBox DockPanel.Dock="Top" Header="自動で探す（2 枚の画像の差）" Padding="4">
+                    <StackPanel>
+                        <DockPanel Margin="0,2">
+                            <TextBlock Text="基準" Width="80" VerticalAlignment="Center" />
+                            <ComboBox x:Name="BasisCombo" SelectionChanged="OnBasisChanged"
+                                      ToolTip="どの 2 枚の差から探すか。夜の差のほうが表示灯だけが変わっていて、きれいに見つかることが多い。「重ねる画像」のタブの「部品用」に足した画像（扉違いなど）も選べます" />
+                        </DockPanel>
+                        <CheckBox x:Name="SimpleDiffCheck" Margin="80,2,0,2" IsEnabled="False"
+                                  ToolTip="基準が部品用の画像のとき。部品用の画像を、無発光・発光のうち近い方（その画像の元にした方）と比べ、変わった所をそのまま囲みます。表示灯の差を拾わず、感度の自動調整や、大きな囲みを外すこともしません。自動でうまく見つからないときに">
+                            <TextBlock Text="単純な変化の差で探す（部品用: 無発光・発光の近い方と比べる）" TextWrapping="Wrap" />
+                        </CheckBox>
+                        <DockPanel Margin="0,2" ToolTip="この値より色が変わった所を「光る所」とみなします。小さいほど細かい変化も拾います">
+                            <TextBlock Text="感度" Width="80" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding Value, ElementName=ThresholdSlider, StringFormat=0}" Width="28" TextAlignment="Right" />
+                            <Slider x:Name="ThresholdSlider" Minimum="4" Maximum="100" Value="5" IsSnapToTickEnabled="True" TickFrequency="1" />
+                        </DockPanel>
+                        <DockPanel Margin="0,2" ToolTip="これより近い光る所は 1 つの囲みにまとめます（px）。並んだ灯を分けたいときは小さく">
+                            <TextBlock Text="まとめる距離" Width="80" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding Value, ElementName=GapSlider, StringFormat=0}" Width="28" TextAlignment="Right" />
+                            <Slider x:Name="GapSlider" Minimum="0" Maximum="30" Value="2" IsSnapToTickEnabled="True" TickFrequency="1" />
+                        </DockPanel>
+                        <DockPanel Margin="0,6,0,0">
+                            <Button DockPanel.Dock="Right" Content="追加で探す" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center" Click="OnDetectAdd"
+                                    ToolTip="今の囲みはそのままで、重ならないものだけ足します" />
+                            <Button Content="部品を探す" FontSize="15" FontWeight="SemiBold" Padding="12,6" Click="OnDetectReplace"
+                                    ToolTip="発光と無発光の差から、表示灯などの部品を探して囲みます（今の囲みは置き換えます。Ctrl+Z で戻せます）" />
+                        </DockPanel>
+                    </StackPanel>
+                </GroupBox>
+                <TextBlock DockPanel.Dock="Top" Margin="0,6,0,2" TextWrapping="Wrap" Foreground="DimGray"
+                           Text="囲み（表示灯 1 つになります）。画像の何もない所をドラッグすると新しい囲みを描けます。Shift＋クリックで複数選べます。間違えたら Ctrl+Z で元に戻せます（Ctrl+Y でやり直し）。" />
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <Button Content="分ける" Padding="6,2" Margin="0,0,4,0" Click="OnSplit" ToolTip="選んだ囲みの中を、つなげずに探し直して分けます（横並びの灯など）" />
+                    <Button Content="まとめる" Padding="6,2" Margin="0,0,4,0" Click="OnMerge" ToolTip="選んだ囲みを 1 つの外枠にまとめます" />
+                    <Button Content="消す" Padding="6,2" Margin="0,0,4,0" Click="OnDeleteRegions" ToolTip="選んだ囲みを消します（Delete）" />
+                    <Button Content="すべて消す" Padding="6,2" Click="OnDeleteAllRegions" ToolTip="囲みを全部消します（確認を出します。Ctrl+Z で戻せます）" />
+                </WrapPanel>
+                <ListBox x:Name="RegionList" SelectionMode="Extended" SelectionChanged="OnListSelection" DisplayMemberPath="Text" KeyDown="OnRegionListKey" />
+            </DockPanel>
+            </TabItem>
+            <TabItem x:Name="OverlayTab" Header="重ねる画像">
+                <Grid Margin="0,4,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="2*" MinHeight="80" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="60" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <!-- 上: 重ねる画像（常点灯の表示灯として、下に敷く・上に重ねる） -->
+                    <TextBlock TextWrapping="Wrap" Foreground="DimGray" Margin="0,0,0,4"
+                               Text="窓ガラスや窓枠など、常点灯の表示灯として重ねる画像を指定できます。重ね順を変更でき、中央の見本でドラッグ・矢印キーによる位置調整も出来ます。" />
+                    <WrapPanel Grid.Row="1" Margin="0,0,0,4">
+                        <Button Content="画像を足す…" Padding="6,2" Margin="0,0,4,0" Click="OnAddOverlayButton"
+                                ToolTip="画像・PSD を選んで足します（この一覧にドロップしても足せます。メインパネルの行より上に落とすと上に重ねる、下なら下に敷く）。選んでいる画像と同じ側（そのすぐ手前）に入れます。何も選んでいないか、表示灯・メインパネルの行を選んでいるときは下に敷きます" />
+                        <Button Content="↑" Padding="8,2" Margin="0,0,2,0" Click="OnOverlayUp" ToolTip="手前へ（メインパネル・表示灯の行をまたぐと、下に敷く⇔上に重ねるが入れ替わります）" />
+                        <Button Content="↓" Padding="8,2" Margin="0,0,4,0" Click="OnOverlayDown" ToolTip="奥へ" />
+                        <Button Content="消す" Padding="6,2" Click="OnRemoveOverlay" ToolTip="選んだ画像を一覧から外します（Delete）" />
+                    </WrapPanel>
+                    <ListBox x:Name="OverlayList" Grid.Row="2" AllowDrop="True" Drop="OnOverlayDrop" DragOver="OnOverlayDragOver"
+                             SelectionChanged="OnOverlayListSelection" HorizontalContentAlignment="Stretch" KeyDown="OnOverlayListKey"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ToolTip="上ほど手前です。下に敷く画像はメインパネルより奥、上に重ねる画像は表示灯より手前になります">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Text}" FontWeight="{Binding Weight}" Foreground="{Binding Brush}" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Text}" Margin="0,1" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <!-- 下: 部品用（切り抜いて利用） -->
+                    <TextBlock Grid.Row="3" Text="部品用（切り抜いて利用）" FontWeight="SemiBold" Foreground="SeaGreen" Margin="0,10,0,2" />
+                    <TextBlock Grid.Row="4" TextWrapping="Wrap" Foreground="DimGray" Margin="0,0,0,4"
+                               Text="スイッチやカバーの変化など、発光とは別に PilotLamp で重ねる部品を切り抜くパネル画像を指定します。編集は「PilotLamp部品の編集」に戻って行います。" />
+                    <WrapPanel Grid.Row="5" Margin="0,0,0,4">
+                        <Button Content="画像を足す…" Padding="6,2" Margin="0,0,4,0" Click="OnAddPartsButton"
+                                ToolTip="部品を切り抜く画像（扉違い・スイッチの別の状態など）を選んで足します（この一覧にドロップしても足せます）。位置は 4 点の画像と同じ（0, 0）です" />
+                        <Button Content="消す" Padding="6,2" Click="OnRemoveOverlay" ToolTip="選んだ画像を一覧から外します（Delete）。この画像から切り抜いていた PilotLamp 部品は「発光」から切り抜くように戻ります" />
+                    </WrapPanel>
+                    <ListBox x:Name="PartsList" Grid.Row="6" AllowDrop="True" Drop="OnPartsDrop" DragOver="OnOverlayDragOver"
+                             SelectionChanged="OnPartsListSelection" HorizontalContentAlignment="Stretch" KeyDown="OnOverlayListKey"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Text}" Foreground="{Binding Brush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text}" Margin="0,1" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <!-- 選んだ画像の設定（上・下どちらの一覧で選んだものでも） -->
+                    <GroupBox x:Name="OverlayProps" Grid.Row="7" Header="選んだ画像" Padding="4" IsEnabled="False" Margin="0,6,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="64" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="画像" VerticalAlignment="Center" />
+                            <TextBlock x:Name="OvFile" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,2" />
+                            <CheckBox x:Name="OvLayerOnly" Grid.Row="1" Grid.Column="1" Margin="0,2,0,2"
+                                      Checked="OnLayerOnlyChanged" Unchecked="OnLayerOnlyChanged"
+                                      ToolTip="部品用の画像のとき。外すと、画像の透明な所にメインパネル（無発光の画像）を重ねてから切り抜きます。付けると、この画像だけを切り抜き、透明な所は透明のまま表示灯にします（部品を探すときは、どちらでもメインパネルに重ねた絵で差を見ます）">
+                                <TextBlock Text="そのレイヤーのみを切り抜く（透明なところは透明のまま）" TextWrapping="Wrap" />
+                            </CheckBox>
+                            <TextBlock Grid.Row="2" Text="名前" VerticalAlignment="Center" />
+                            <TextBox x:Name="OvName" Grid.Row="2" Grid.Column="1" Margin="0,2" LostKeyboardFocus="OnOverlayPropCommit" KeyDown="OnOverlayPropKey"
+                                     ToolTip="計器の名前（パネルファイルでは見出しのすぐ上のコメント）。部品用の画像では、PilotLamp 部品の「切り抜き元」の名前になります" />
+                            <TextBlock Grid.Row="3" Text="位置" VerticalAlignment="Center" ToolTip="画像の左上を置く位置（メインパネルの画像の座標、px）。見本でドラッグ・矢印キーでも動かせます" />
+                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="X" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                <TextBox x:Name="OvX" Width="60" LostKeyboardFocus="OnOverlayPropCommit" KeyDown="OnOverlayPropKey" />
+                                <TextBlock Text="Y" VerticalAlignment="Center" Margin="10,0,4,0" />
+                                <TextBox x:Name="OvY" Width="60" LostKeyboardFocus="OnOverlayPropCommit" KeyDown="OnOverlayPropKey" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="4" Text="レイヤー" VerticalAlignment="Center" />
+                            <TextBox x:Name="OvLayer" Grid.Row="4" Grid.Column="1" Margin="0,2" LostKeyboardFocus="OnOverlayPropCommit" KeyDown="OnOverlayPropKey"
+                                     ToolTip="空なら自動（一覧の順のとおり、下に敷くものは 1 から、上に重ねるものは表示灯より上）。数が大きいほど手前" />
+                            <TextBlock Grid.Row="5" Text="状態量" VerticalAlignment="Center" />
+                            <ComboBox x:Name="OvSubject" Grid.Row="5" Grid.Column="1" Margin="0,2" IsEditable="True"
+                                      LostKeyboardFocus="OnOverlayPropCommit" DropDownClosed="OnOverlayPropCommitAny" KeyDown="OnOverlayPropKey"
+                                      ToolTip="常表示にするなら true。扉などで切り替えるなら、その状態量" />
+                            <TextBlock Grid.Row="6" Text="夜の画像" VerticalAlignment="Center" />
+                            <DockPanel Grid.Row="6" Grid.Column="1" Margin="0,2">
+                                <Button x:Name="OvNightClear" DockPanel.Dock="Right" Content="外す" Padding="6,1" Margin="4,0,0,0" Click="OnOverlayNightClear" />
+                                <Button x:Name="OvNightPick" DockPanel.Dock="Right" Content="選ぶ…" Padding="6,1" Margin="4,0,0,0" Click="OnOverlayNightPick" />
+                                <TextBlock x:Name="OvNight" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+                        </Grid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+            </TabControl>
+
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
+
+            <!-- 中央: 画像 -->
+            <DockPanel Grid.Column="2">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <TextBlock Text="表示" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <ComboBox x:Name="ViewCombo" Width="220" SelectionChanged="OnViewChanged" />
+                    <Button Content="全体を表示" Padding="6,2" Margin="8,0,0,0" Click="OnFit" />
+                    <TextBlock x:Name="CoordText" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="Gray"
+                               Text="ホイールで拡大・縮小、右ドラッグで移動、つまみで大きさ、矢印キーで 1px（Shift で 10px）" />
+                </DockPanel>
+                <r:CropCanvas x:Name="Canvas" />
+            </DockPanel>
+
+            <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" />
+
+            <!-- 右: 選んだ囲みの設定 -->
+            <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="4,0,0,0">
+                    <TextBlock x:Name="PropTitle" FontWeight="Bold" FontSize="14" Margin="0,0,0,6" Text="囲みを選んでください" />
+                    <Grid x:Name="PropGrid" IsEnabled="False">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="名前" VerticalAlignment="Center" />
+                        <TextBox x:Name="NameBox" Grid.Column="1" Margin="0,2" LostKeyboardFocus="OnPropCommit" KeyDown="OnPropKey"
+                                 ToolTip="計器の名前（パネルファイルでは見出しのすぐ上のコメント）。PNG のファイル名にも使います" />
+                        <TextBlock Grid.Row="1" Text="状態量" VerticalAlignment="Center" />
+                        <ComboBox x:Name="SubjectBox" Grid.Row="1" Grid.Column="1" Margin="0,2" IsEditable="True"
+                                  LostKeyboardFocus="OnPropCommit" DropDownClosed="OnPropCommitAny" KeyDown="OnPropKey" ToolTip="Subject。0 以外のとき点灯" />
+                        <TextBlock Grid.Row="2" Text="レイヤー" VerticalAlignment="Center" />
+                        <TextBox x:Name="LayerBox" Grid.Row="2" Grid.Column="1" Margin="0,2" LostKeyboardFocus="OnPropCommit" KeyDown="OnPropKey" />
+                        <TextBlock Grid.Row="3" Text="切り抜き元" VerticalAlignment="Center" />
+                        <ComboBox x:Name="SetBox" Grid.Row="3" Grid.Column="1" Margin="0,2" SelectionChanged="OnSetChanged" />
+                        <TextBlock Grid.Row="4" Text="範囲" VerticalAlignment="Center" ToolTip="左, 上, 幅, 高さ（px）" />
+                        <TextBox x:Name="RectBox" Grid.Row="4" Grid.Column="1" Margin="0,2" LostKeyboardFocus="OnPropCommit" KeyDown="OnPropKey"
+                                 ToolTip="左, 上, 幅, 高さ（px）" />
+                    </Grid>
+                    <TextBlock Text="切り抜き結果（昼）" Margin="0,12,0,2" Foreground="DimGray" />
+                    <Border Background="#2B2B2E" Height="150">
+                        <Image x:Name="DayPreview" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" Margin="4" />
+                    </Border>
+                    <TextBlock Text="切り抜き結果（夜）" Margin="0,8,0,2" Foreground="DimGray" />
+                    <Border Background="#2B2B2E" Height="150">
+                        <Image x:Name="NightPreview" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" Margin="4" />
+                    </Border>
+                    <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Foreground="Gray"
+                               Text="パネル本体（メインパネル）は、昼・無発光と夜・無発光の画像そのものを指す、常表示の表示灯にします（[This] には画像を書きません）。PSD のレイヤーを重ねた欄は、重ねた絵を出力フォルダに PNG で書き出して指します。表示灯は、切り抜き元の昼・夜の画像を四角のまま切り出して PNG にします。背景やカバー・部品用の画像は、左の「重ねる画像」のタブで足します。" />
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>

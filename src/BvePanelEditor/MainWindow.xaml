@@ -1,0 +1,374 @@
+<Window x:Class="BvePanelEditor.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ae="http://icsharpcode.net/sharpdevelop/avalonedit"
+        xmlns:r="clr-namespace:BvePanelEditor.Rendering"
+        Title="パネルくん" Width="1500" Height="920"
+        FontFamily="Yu Gothic UI" FontSize="12"
+        AllowDrop="True" WindowStartupLocation="CenterScreen">
+
+    <Window.CommandBindings>
+        <CommandBinding Command="ApplicationCommands.New" Executed="OnNew" />
+        <CommandBinding Command="ApplicationCommands.Open" Executed="OnOpen" />
+        <CommandBinding Command="ApplicationCommands.Save" Executed="OnSave" CanExecute="HasDoc" />
+        <CommandBinding Command="ApplicationCommands.SaveAs" Executed="OnSaveAs" CanExecute="HasDoc" />
+        <CommandBinding Command="ApplicationCommands.Undo" Executed="OnUndo" CanExecute="CanUndo" />
+        <CommandBinding Command="ApplicationCommands.Redo" Executed="OnRedo" CanExecute="CanRedo" />
+    </Window.CommandBindings>
+    <Window.InputBindings>
+        <KeyBinding Key="S" Modifiers="Ctrl+Shift" Command="ApplicationCommands.SaveAs" />
+    </Window.InputBindings>
+
+    <DockPanel>
+        <Menu DockPanel.Dock="Top" Padding="2">
+            <MenuItem Header="ファイル(_F)">
+                <MenuItem Header="新規パネル(_N)…" Command="ApplicationCommands.New" InputGestureText="Ctrl+N" />
+                <MenuItem Header="開く(_O)…" Command="ApplicationCommands.Open" InputGestureText="Ctrl+O"
+                          ToolTip="パネルファイル・車両ファイル・シナリオファイルを開けます" />
+                <MenuItem x:Name="RecentMenu" Header="最近使ったファイル(_R)" />
+                <Separator />
+                <MenuItem Header="上書き保存(_S)" Command="ApplicationCommands.Save" InputGestureText="Ctrl+S" />
+                <MenuItem Header="名前を付けて保存(_A)…" Command="ApplicationCommands.SaveAs" InputGestureText="Ctrl+Shift+S" />
+                <Separator />
+                <MenuItem Header="画像からパネルを作る(_I)…" Click="OnCropPanel"
+                          ToolTip="昼・夜 × 無発光・発光の 4 点の画像から、表示灯を切り抜いてパネルを作ります" />
+                <MenuItem x:Name="CropUpdateMenu" Header="切り抜き元から更新" Click="OnCropUpdate" IsEnabled="False"
+                          ToolTip="画像から作った表示灯を、今の位置と大きさで切り抜き元から切り出し直します" />
+                <Separator />
+                <MenuItem Header="画像を読み込み直す" Click="OnReloadImages" InputGestureText="F5" />
+                <Separator />
+                <MenuItem Header="終了(_X)" Click="OnExit" />
+            </MenuItem>
+            <MenuItem Header="編集(_E)">
+                <MenuItem Header="元に戻す(_U)" Command="ApplicationCommands.Undo" InputGestureText="Ctrl+Z" />
+                <MenuItem Header="やり直し(_R)" Command="ApplicationCommands.Redo" InputGestureText="Ctrl+Y" />
+                <Separator />
+                <MenuItem Header="計器を追加">
+                    <MenuItem Header="表示灯 [PilotLamp]" Tag="PilotLamp" Click="OnAddElement" />
+                    <MenuItem Header="指針 [Needle]" Tag="Needle" Click="OnAddElement" />
+                    <MenuItem Header="指針（標準の針・角度を選んで）[Needle]…" Click="OnAddStandardNeedle" />
+                    <MenuItem Header="指針の蓋（選んだ指針の上に）…" Click="OnMakeCover"
+                              ToolTip="パネル本体の画像（か PSD のレイヤー）から針の軸の蓋を切り抜いて、選んだ指針の上に置きます" />
+                    <MenuItem Header="デジタル数字 [DigitalNumber]" Tag="DigitalNumber" Click="OnAddElement" />
+                    <MenuItem Header="円形ゲージ [DigitalGauge]" Tag="DigitalGauge" Click="OnAddElement" />
+                </MenuItem>
+                <MenuItem Header="すべて選択" Click="SelectAllElements" InputGestureText="Ctrl+A" />
+                <MenuItem Header="整列" ToolTip="選んだ計器の見た目の枠で揃えます（グループを丸ごと選んでいれば、そのグループは 1 つのかたまりとして動きます）">
+                    <MenuItem Header="左揃え" Tag="Left" Click="OnAlignMenu" />
+                    <MenuItem Header="左右中央揃え" Tag="CenterX" Click="OnAlignMenu" />
+                    <MenuItem Header="右揃え" Tag="Right" Click="OnAlignMenu" />
+                    <Separator />
+                    <MenuItem Header="上揃え" Tag="Top" Click="OnAlignMenu" />
+                    <MenuItem Header="上下中央揃え" Tag="CenterY" Click="OnAlignMenu" />
+                    <MenuItem Header="下揃え" Tag="Bottom" Click="OnAlignMenu" />
+                    <Separator />
+                    <MenuItem Header="横に等間隔" Tag="DistributeX" Click="OnAlignMenu" />
+                    <MenuItem Header="縦に等間隔" Tag="DistributeY" Click="OnAlignMenu" />
+                </MenuItem>
+                <MenuItem x:Name="LockMenu" Header="位置をロック" IsCheckable="True" IsChecked="True" Click="OnLockMenu" InputGestureText="Ctrl+L" />
+                <Separator />
+                <MenuItem Header="複製" Click="OnDuplicate" InputGestureText="Ctrl+D" />
+                <MenuItem Header="削除" Click="OnDelete" InputGestureText="Delete" />
+                <Separator />
+                <MenuItem Header="レイヤーを 1 つ上げる" Click="OnLayerUp" InputGestureText="Ctrl+]" />
+                <MenuItem Header="レイヤーを 1 つ下げる" Click="OnLayerDown" InputGestureText="Ctrl+[" />
+                <MenuItem Header="最前面へ" Click="OnLayerFront" InputGestureText="Ctrl+Shift+]" />
+                <MenuItem Header="最背面へ" Click="OnLayerBack" InputGestureText="Ctrl+Shift+[" />
+                <Separator />
+                <MenuItem Header="グループ化する" Click="OnMakeGroup" InputGestureText="Ctrl+G" />
+                <MenuItem Header="グループを解除" Click="OnUngroup" InputGestureText="Ctrl+Shift+G" />
+                <MenuItem Header="グループから外す" Click="OnRemoveFromGroup" />
+                <MenuItem Header="グループ名を変更" Click="OnRenameGroupMenu" />
+            </MenuItem>
+            <MenuItem Header="表示(_V)">
+                <MenuItem Header="全体を表示" Click="OnFit" InputGestureText="Ctrl+0" />
+                <MenuItem Header="等倍" Click="OnZoom100" InputGestureText="Ctrl+1" />
+                <MenuItem x:Name="ShowFrameMenu" Header="表示範囲・画面枠を表示" IsCheckable="True" IsChecked="True" Click="OnToggleFrame"
+                          ToolTip="表示範囲（[This] の Left・Top・Right・Bottom。外側を少し暗くします）と画面枠を描きます" />
+                <MenuItem x:Name="AspectMenu" Header="画面枠の比率（同時に表示）"
+                          ToolTip="ズーム 1 倍のとき画面に入る範囲（横幅は Resolution）。チェックした比率を同時に描きます（16:9 は水色、16:10 は緑、4:3 は橙）" />
+                <MenuItem x:Name="BleedMenu" Header="揺れの余白（点線）"
+                          ToolTip="画面枠の外側に、揺れたときに見えるかもしれない範囲を点線で描きます（印刷の塗り足しと同じ考え方）。画面の横幅に対する % で指定します" />
+                <MenuItem x:Name="ShowTextMenu" Header="パネルファイルの内容を表示" IsCheckable="True" IsChecked="True" Click="OnToggleText" />
+            </MenuItem>
+            <MenuItem Header="ヘルプ(_H)">
+                <MenuItem Header="バージョン情報(_A)…" Click="OnAbout" />
+            </MenuItem>
+        </Menu>
+
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock x:Name="CoordText" MinWidth="130" Text="-" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock x:Name="ZoomText" MinWidth="60" Text="100%" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock x:Name="FormatText" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock x:Name="MessageText" />
+            </StatusBarItem>
+        </StatusBar>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="270" MinWidth="160" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="340" MinWidth="220" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左: 計器の一覧と問題 -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="5" />
+                    <RowDefinition Height="160" />
+                </Grid.RowDefinitions>
+                <DockPanel Grid.Row="0" Margin="4,4,4,2">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <ToggleButton x:Name="OrderFileButton" Content="ファイル順" FontSize="11" Padding="6,1" IsChecked="True" Click="OnListOrderButton"
+                                      ToolTip="一覧をパネルファイルに書いてある順に並べます" />
+                        <ToggleButton x:Name="OrderLayerButton" Content="レイヤー順" FontSize="11" Padding="6,1" Margin="-1,0,0,0" Click="OnListOrderButton"
+                                      ToolTip="一覧を手前（レイヤーが大きい）ものほど上に並べます（同じレイヤーならファイルの後ろのものが手前。グループはひとかたまりのまま）" />
+                    </StackPanel>
+                    <TextBlock Text="計器" FontWeight="Bold" VerticalAlignment="Center" />
+                </DockPanel>
+                <ListBox x:Name="ElementList" Grid.Row="1" Margin="4,0,4,0" SelectionChanged="OnListSelection"
+                         HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectionMode="Extended"
+                         KeyDown="OnListKeyDown" MouseDoubleClick="OnListDoubleClick"
+                         PreviewMouseRightButtonDown="OnListRightDown" ContextMenuOpening="OnListContextMenuOpening">
+                    <ListBox.ContextMenu>
+                        <ContextMenu x:Name="ListMenu">
+                            <MenuItem x:Name="ListMenuRename" Header="名前を変更" InputGestureText="F2" Click="OnRenameMenu" />
+                            <MenuItem x:Name="ListMenuDuplicate" Header="複製" InputGestureText="Ctrl+D" Click="OnDuplicate" />
+                            <MenuItem x:Name="ListMenuDelete" Header="削除" InputGestureText="Delete" Click="OnDelete" />
+                            <MenuItem x:Name="ListMenuToggleHidden" Header="非表示にする" Click="OnToggleHiddenMenu" InputGestureText="Ctrl+H"
+                                      ToolTip="選んだ計器をパネルくんの画面で隠す・戻す（ファイルには書きません）" />
+                            <MenuItem x:Name="ListMenuShowAll" Header="すべて表示する" Click="OnShowAllMenu" />
+                            <MenuItem x:Name="ListMenuToggleDisabled" Header="BVE でも非表示にする（コメントアウト）" Click="OnToggleDisabledMenu" InputGestureText="Ctrl+Shift+H"
+                                      ToolTip="選んだ計器の行の頭に「;」を付けて無効にします（BVE でも表示されません）。もう一度でコメントを外して戻します" />
+                            <MenuItem x:Name="ListMenuMakeMain" Header="メインパネルにする" Click="OnMakeMainPanel"
+                                      ToolTip="この表示灯をパネルの土台（メインパネル）にします。[This] の画像は透明にして、表示には使いません" />
+                            <MenuItem x:Name="ListMenuThisToMain" Header="[This] の画像をメインパネルにする" Click="OnThisToMainPanel"
+                                      ToolTip="[This] の画像を、常表示の表示灯（メインパネル・レイヤー 1）に移し、[This] は透明な画像にします" />
+                            <MenuItem x:Name="ListMenuUnsetMain" Header="メインパネルをやめる" Click="OnUnsetMainPanel"
+                                      ToolTip="メインパネルの印を外します（表示灯はそのまま残ります）" />
+                            <MenuItem x:Name="ListMenuCover" Header="蓋を作る…" Click="OnMakeCover"
+                                      ToolTip="選んだ指針の軸の蓋を、パネル本体の画像（か PSD のレイヤー）から切り抜いて針の上に置きます" />
+                            <Separator />
+                            <MenuItem x:Name="ListMenuLayerUp" Header="レイヤーを 1 つ上げる" InputGestureText="Ctrl+]" Click="OnLayerUp" />
+                            <MenuItem x:Name="ListMenuLayerDown" Header="レイヤーを 1 つ下げる" InputGestureText="Ctrl+[" Click="OnLayerDown" />
+                            <MenuItem x:Name="ListMenuLayerFront" Header="最前面へ" InputGestureText="Ctrl+Shift+]" Click="OnLayerFront" />
+                            <MenuItem x:Name="ListMenuLayerBack" Header="最背面へ" InputGestureText="Ctrl+Shift+[" Click="OnLayerBack" />
+                            <Separator />
+                            <MenuItem x:Name="ListMenuGroup" Header="グループ化する" Click="OnMakeGroup" InputGestureText="Ctrl+G" />
+                            <MenuItem x:Name="ListMenuUngroup" Header="グループを解除" Click="OnUngroup" InputGestureText="Ctrl+Shift+G" />
+                            <MenuItem x:Name="ListMenuRemoveFromGroup" Header="グループから外す" Click="OnRemoveFromGroup" />
+                            <MenuItem x:Name="ListMenuRenameGroup" Header="グループ名を変更" Click="OnRenameGroupMenu" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                            <!-- グループの見出し行 -->
+                            <DockPanel Visibility="{Binding HeaderVisibility}" Margin="0,2,0,1">
+                                <TextBlock Text="{Binding Eye}" FontFamily="Segoe MDL2 Assets" FontSize="12" Width="18" Foreground="{Binding EyeBrush}"
+                                           VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="OnEyeClick" ToolTip="グループの計器をまとめて表示／非表示（パネルくんの画面だけ。ファイルには書きません）" />
+                                <TextBlock Text="{Binding Fold}" Width="16" FontSize="11" Foreground="#C06000" Cursor="Hand"
+                                           VerticalAlignment="Center" MouseLeftButtonDown="OnGroupFold" ToolTip="折りたたむ／開く" />
+                                <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                                    <Run Text="{Binding GroupName, Mode=OneWay}" FontWeight="Bold" Foreground="#B05000" />
+                                    <Run Text="{Binding GroupCount, Mode=OneWay}" Foreground="Gray" FontSize="11" />
+                                </TextBlock>
+                            </DockPanel>
+                            <!-- 計器の行 -->
+                            <Grid Visibility="{Binding ItemVisibility}" Margin="{Binding Indent}" Background="{Binding RowBackground}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Eye}" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{Binding EyeBrush}"
+                                           VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="OnEyeClick"
+                                           ToolTip="表示／非表示（パネルくんの画面だけ。ファイルには書かず、BVE では表示されます）" />
+                                <Border Grid.Column="1" Background="{Binding KindBrush}" Margin="0,1,4,1" Opacity="{Binding RowOpacity}" />
+                                <StackPanel Grid.Column="2" Opacity="{Binding RowOpacity}">
+                                    <TextBlock TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}">
+                                        <Run Text="{Binding Primary, Mode=OneWay}" FontWeight="SemiBold" />
+                                        <Run Text="{Binding PrimarySubject, Mode=OneWay}" Foreground="#1B5FC1" />
+                                    </TextBlock>
+                                    <TextBlock Visibility="{Binding SecondaryVisibility}" FontSize="11" TextTrimming="CharacterEllipsis">
+                                        <Run Text="{Binding Kind, Mode=OneWay}" Foreground="Gray" />
+                                        <Run Text="{Binding Subject, Mode=OneWay}" Foreground="#5A7FB8" />
+                                    </TextBlock>
+                                </StackPanel>
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Opacity="{Binding RowOpacity}">
+                                    <TextBlock Text="BVE 非表示" Foreground="DimGray" FontSize="10" Visibility="{Binding DisabledVisibility}" Margin="0,0,4,0" VerticalAlignment="Center"
+                                               ToolTip="コメントアウトして無効にした計器です（BVE でも表示されません）。右クリック→「BVE で表示する」で戻せます" />
+                                    <Border Background="#2A6FC9" CornerRadius="2" Padding="2,0" Margin="0,0,4,0" VerticalAlignment="Center" Visibility="{Binding BveExVisibility}"
+                                            ToolTip="BveEX の状態量（ats256 以上）を使っています。BveEX 対応車両で動きます">
+                                        <TextBlock Text="EX" Foreground="White" FontSize="9" FontWeight="Bold" />
+                                    </Border>
+                                    <TextBlock Text="⚠" Foreground="#D08000" Visibility="{Binding ProblemVisibility}" Margin="0,0,4,0" />
+                                    <TextBlock Text="{Binding Layer}" Foreground="Gray" FontSize="11" ToolTip="Layer" />
+                                </StackPanel>
+                            </Grid>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <WrapPanel Grid.Row="2" Margin="4">
+                    <Button x:Name="AddButton" Content="＋ 追加 ▾" Padding="6,2" Margin="0,0,4,0" Click="OnAddButton" />
+                    <Button Content="複製" Padding="6,2" Margin="0,0,4,0" Click="OnDuplicate" />
+                    <Button Content="削除" Padding="6,2" Margin="0,0,4,0" Click="OnDelete" />
+                    <Button x:Name="MoveUpButton" Content="↑" Padding="6,2" Margin="0,0,2,0" Click="OnMoveUp" ToolTip="ファイル内で前へ（同じレイヤーなら奥へ）" />
+                    <Button x:Name="MoveDownButton" Content="↓" Padding="6,2" Click="OnMoveDown" ToolTip="ファイル内で後ろへ（同じレイヤーなら手前へ）" />
+                </WrapPanel>
+                <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" />
+                <DockPanel Grid.Row="4" Margin="4,0,4,4">
+                    <TextBlock x:Name="ProblemHeader" DockPanel.Dock="Top" Text="問題" FontWeight="Bold" Margin="0,2" />
+                    <ListBox x:Name="ProblemList" MouseDoubleClick="OnProblemDoubleClick" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel ToolTip="{Binding Tip}">
+                                    <Border DockPanel.Dock="Left" Background="{Binding MarkBackground}" CornerRadius="2" Margin="0,1,5,0" Padding="2,0" VerticalAlignment="Top">
+                                        <TextBlock Text="{Binding Mark}" Foreground="{Binding MarkBrush}" FontSize="10" FontWeight="Bold" />
+                                    </Border>
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="11" />
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
+
+            <!-- 中央: パネル表示とテキスト -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" MinHeight="120" />
+                    <RowDefinition x:Name="TextSplitterRow" Height="5" />
+                    <RowDefinition x:Name="TextRow" Height="260" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <r:PanelCanvas x:Name="Canvas" />
+                    <!-- 位置ロックと表示灯の全点灯の切り替え（パネル画面の左上） -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8">
+                    <ToggleButton x:Name="LockButton"
+                                  IsChecked="True" Click="OnLockButton" Cursor="Hand" Focusable="False"
+                                  ToolTip="ロック中は、計器の位置・半径・中心をマウスや矢印キーで動かしません（選ぶ・拡大・表示の移動はできます）。Ctrl+L でも切り替えられます">
+                        <ToggleButton.Template>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border x:Name="Bd" CornerRadius="4" Padding="8,4" BorderThickness="1"
+                                        Background="#E8202024" BorderBrush="#80FFFFFF">
+                                    <TextBlock x:Name="Txt" Foreground="White" FontSize="12" Text="🔒 位置ロック中" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsChecked" Value="False">
+                                        <Setter TargetName="Bd" Property="Background" Value="#E0C05010" />
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="#FFFFD080" />
+                                        <Setter TargetName="Txt" Property="Text" Value="🔓 位置を編集中" />
+                                    </Trigger>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="White" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </ToggleButton.Template>
+                    </ToggleButton>
+                    <ToggleButton x:Name="AllLampsCheck" Margin="6,0,0,0"
+                                  IsChecked="True" Click="OnPreviewOption" Cursor="Hand" Focusable="False"
+                                  ToolTip="オンのときは、状態量に関係なく表示灯をすべて点灯して表示します（配置用）。オフにすると、動作プレビューの状態量どおりに点灯します">
+                        <ToggleButton.Template>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border x:Name="Bd" CornerRadius="4" Padding="8,4" BorderThickness="1"
+                                        Background="#E8202024" BorderBrush="#80FFE080">
+                                    <TextBlock x:Name="Txt" Foreground="#FFFFE9A0" FontSize="12" Text="💡 表示灯をすべて点灯" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsChecked" Value="False">
+                                        <Setter TargetName="Bd" Property="Background" Value="#C0303034" />
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="#60FFFFFF" />
+                                        <Setter TargetName="Txt" Property="Foreground" Value="#FFB0B0B0" />
+                                        <Setter TargetName="Txt" Property="Text" Value="💡 表示灯は状態どおり" />
+                                    </Trigger>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="White" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </ToggleButton.Template>
+                    </ToggleButton>
+                    <Button x:Name="CoverButton" Margin="6,0,0,0" Visibility="Collapsed" Click="OnMakeCover" Cursor="Hand" Focusable="False"
+                            ToolTip="選んだ指針の軸の蓋を、パネル本体の画像（か PSD のレイヤー）から切り抜いて針の上に置きます。針を文字盤の中心に合わせてから押してください">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" CornerRadius="4" Padding="8,4" BorderThickness="1"
+                                        Background="#E8202024" BorderBrush="#8080E0FF">
+                                    <TextBlock Foreground="#FFA8ECFF" FontSize="12" Text="⭕ この針の蓋を作る…" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="White" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    </StackPanel>
+                </Grid>
+                <GridSplitter x:Name="TextSplitter" Grid.Row="1" HorizontalAlignment="Stretch" />
+                <ae:TextEditor x:Name="Editor" Grid.Row="2" ShowLineNumbers="True" FontFamily="Consolas, BIZ UDGothic, MS Gothic"
+                               FontSize="13" WordWrap="False" HorizontalScrollBarVisibility="Auto" />
+            </Grid>
+
+            <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" />
+
+            <!-- 右: プロパティと状態量 -->
+            <TabControl x:Name="RightTabs" Grid.Column="4" Margin="0,4,4,4">
+                <TabItem Header="プロパティ">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="PropHost" />
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem Header="動作プレビュー">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Margin="4">
+                            <CheckBox x:Name="SweepCheck" Content="全部の値を自動で往復させる" Click="OnPreviewOption" Margin="0,2" />
+                            <Grid Margin="0,4,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="昼 ⇔ 夜  " VerticalAlignment="Center" />
+                                <Slider x:Name="NightSlider" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="OnNightChanged"
+                                        ToolTip="夜画像（NighttimeImage）を重ねる強さ" />
+                            </Grid>
+                            <WrapPanel Margin="0,4,0,0">
+                                <Button Content="値をリセット" Padding="6,2" Margin="0,0,4,0" Click="OnResetState" />
+                                <Button Content="すべて最大" Padding="6,2" Click="OnMaxState" />
+                            </WrapPanel>
+                            <Separator Margin="0,6,0,2" />
+                            <TextBlock x:Name="SelectedStateText" TextWrapping="Wrap" FontSize="11" Foreground="DimGray" Margin="0,0,0,4"
+                                       Text="計器を選ぶと、その値の行に色が付きます。パネル上で Ctrl を押しながら計器を上下にドラッグすると値を動かせます。" />
+                        </StackPanel>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="StateHost" />
+                        </ScrollViewer>
+                    </DockPanel>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </DockPanel>
+</Window>

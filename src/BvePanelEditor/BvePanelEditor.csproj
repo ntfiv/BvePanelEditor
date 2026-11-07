@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>BvePanelEditor</RootNamespace>
+    <AssemblyName>BvePanelEditor</AssemblyName>
+    <!-- 画面に出す版は Views/AboutWindow.cs の DisplayVersion（0.1α） -->
+    <Version>0.1.0-alpha</Version>
+    <Product>パネルくん</Product>
+    <AssemblyTitle>パネルくん</AssemblyTitle>
+    <Description>BVE Trainsim 5/6 運転台パネル編集ツール</Description>
+    <Copyright>Copyright (c) 2026 ntfiv</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
+  </ItemGroup>
+
+  <!-- 確認用の起動オプション（selftest など）の中身は、デバッグ版だけに入れる（リリース版の App は使わない） -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <Compile Remove="MainWindow.*Test.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BvePanelEditor.Core\BvePanelEditor.Core.csproj" />
+  </ItemGroup>
+
+  <!-- ライセンスと、使っているライブラリ・同梱素材の表示（バージョン情報の画面から開く） -->
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\docs\はじめにお読みください.txt" Link="はじめにお読みください.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 同梱する標準の針。free_needle（CC0 の自作素材）は exe と同じ場所の needles フォルダ、
+       E217 の針（内房線製作チーム制作の E217 系同梱のもの）は利用条件が違うので needle_E217 フォルダに分けて、出典の Readme も入れる -->
+  <ItemGroup>
+    <None Include="..\..\free_needle\*.png;..\..\free_needle\Readme*.txt" Link="needles\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\needle_E217\*.png;..\..\needle_E217\Readme*.txt" Link="needle_E217\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
