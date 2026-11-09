@@ -275,7 +275,7 @@ public partial class MainWindow
     private void AddImportedSections(List<PanelSection> sections, string message)
     {
         var added = new List<int>();
-        foreach (var s in sections) { _doc!.Sections.Add(s); added.Add(_doc.Sections.Count - 1); }
+        foreach (var s in sections) { JoinViewVariation(s); _doc!.Sections.Add(s); added.Add(_doc.Sections.Count - 1); }
         CommitModel();
         _cache.Clear();
         RebuildAll();

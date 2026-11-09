@@ -1,4 +1,4 @@
-namespace BvePanelEditor.Core.Psd;
+﻿namespace BvePanelEditor.Core.Psd;
 
 /// <summary>レイヤーの役割。</summary>
 public enum PsdRole { None, Base, Lamp, Number }
@@ -145,7 +145,7 @@ public static class PsdImport
         var groupOrder = items.Where(i => i.Group != null).GroupBy(i => i.Group!).ToDictionary(g => g.Key, g => g.Min(i => i.Order));
         foreach (var it in items.OrderBy(i => i.Group != null ? groupOrder[i.Group] : i.Order).ThenBy(i => i.Group ?? "").ThenBy(i => i.Order))
         {
-            it.Section.Group = it.Group;
+            it.Section.SetGroups(it.Group != null ? [it.Group] : []);
             r.Sections.Add(it.Section);
         }
         return r;

@@ -23,7 +23,9 @@ public sealed class ElementRow
     public string Primary => HasTitle ? Title : Kind;
     /// <summary>1 行目の Subject（名前があるときは 2 行目に回す）。</summary>
     public string PrimarySubject => HasTitle ? "" : Subject;
-    public Visibility SecondaryVisibility => HasTitle ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility SecondaryVisibility => HasTitle && !Compact ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>1 行表示（名前だけ。名前がなければ種類と状態量）。</summary>
+    public bool Compact { get; init; }
     public string Layer { get; init; } = "";
     public Brush KindBrush { get; init; } = Brushes.Gray;
     public Visibility ProblemVisibility { get; init; } = Visibility.Collapsed;
@@ -31,10 +33,23 @@ public sealed class ElementRow
     public Visibility BveExVisibility { get; init; } = Visibility.Collapsed;
     /// <summary>パネルくんの画面で隠している（グループの見出しなら、中の計器が全部）。</summary>
     public bool Hidden { get; init; }
+    /// <summary>バリエーションを表示している（目のマークは「このバリエーションに入れる／外す」）。</summary>
+    public bool VariationMode { get; init; }
+    /// <summary>表示中のバリエーションに入る（グループの見出しなら、中の計器が全部）。</summary>
+    public bool InVariation { get; init; } = true;
+    /// <summary>入るバリエーション（共通なら空）。一覧の行の右に小さく出す。</summary>
+    public string VariationText { get; init; } = "";
+    public Visibility VariationTextVisibility => VariationText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public string VariationTip => IsHeader ? $"グループの中の計器が全部入っているバリエーション: {VariationText}" : $"入るバリエーション: {VariationText}";
+    private bool EyeClosed => VariationMode ? !InVariation : Hidden;
     /// <summary>目の印（Segoe MDL2 Assets: 表示 E890・非表示 ED1A）。</summary>
-    public string Eye => Hidden ? "\uED1A" : "\uE890";
-    public Brush EyeBrush => Hidden ? Brushes.Silver : Brushes.DimGray;
-    public double RowOpacity => Hidden ? 0.45 : 1;
+    public string Eye => EyeClosed ? "\uED1A" : "\uE890";
+    public Brush EyeBrush => VariationMode ? (InVariation ? VariationEyeBrush : Brushes.Silver) : Hidden ? Brushes.Silver : Brushes.DimGray;
+    public string EyeTip => VariationMode
+        ? (IsHeader ? "クリックで、グループの計器をまとめて、表示中のバリエーションに入れる／外す" : "クリックで、表示中のバリエーションに入れる／外す（ファイルの「; @group」に書きます）")
+        : (IsHeader ? "グループの計器をまとめて表示／非表示（パネルくんの画面だけ。ファイルには書きません）" : "表示／非表示（パネルくんの画面だけ。ファイルには書かず、BVE では表示されます）");
+    public double RowOpacity => Hidden || (VariationMode && !InVariation) ? 0.45 : 1;
+    private static readonly Brush VariationEyeBrush = MakeFrozen(Color.FromRgb(0x1B, 0x5F, 0xC1));
     /// <summary>コメントアウトして無効にした計器（BVE でも表示されない）。背景を灰色にする。</summary>
     public bool Disabled { get; init; }
     /// <summary>メインパネル・[This]（パネルの土台）。背景をごく薄い赤にする。</summary>
@@ -52,8 +67,10 @@ public sealed class ElementRow
     public string Fold { get; init; } = "▼";
     public Visibility HeaderVisibility => IsHeader ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ItemVisibility => IsHeader ? Visibility.Collapsed : Visibility.Visible;
-    /// <summary>グループの中の計器は字下げする。</summary>
+    /// <summary>グループの中の計器は字下げする（入れ子の深さだけ）。</summary>
     public Thickness Indent { get; init; }
+    /// <summary>グループの見出しの字下げ（外側のグループの数だけ）。</summary>
+    public Thickness HeaderMargin { get; init; } = new(0, 2, 0, 1);
 }
 
 public sealed class ProblemRow
@@ -122,6 +139,7 @@ public partial class MainWindow : Window
         _props.UngroupRequested += () => OnUngroup(null, null);
         _props.DuplicateGroupRequested += () => OnDuplicate(null, null);
         _props.MakeGroupRequested += () => OnMakeGroup(null, null);
+        BuildVariationTab();
         _props.MultiCommit += OnMultiCommit;
         _props.AlignRequested += Align;
         _props.LayerRequested += ChangeLayers;
@@ -148,6 +166,7 @@ public partial class MainWindow : Window
         Canvas.ViewChanged += () => ZoomText.Text = $"{Canvas.Zoom * 100:0}%";
         Canvas.LockedEditAttempt += () =>
         {
+            if (_variationMode) { Message("バリエーション編集モードでは計器の位置は動かせません。ほかのタブ（プロパティなど）に戻ると動かせます"); return; }
             Message("位置はロック中です。パネル画面左上の「🔒 位置ロック中」をクリック（または Ctrl+L）すると動かせます");
             FlashLockButton();
         };
@@ -545,7 +564,8 @@ public partial class MainWindow : Window
             return;
         }
         var baseDir = _path != null ? Path.GetDirectoryName(_path) : null;
-        _scene = PanelScene.Build(_doc, baseDir, _cache, _scene);
+        if (_viewVariation != null && !_doc.VariationNames.Contains(_viewVariation)) _viewVariation = null;
+        _scene = PanelScene.Build(_doc, baseDir, _cache, _scene, _viewVariation);
         NormalizeSelection();
         Canvas.SetScene(_doc, _scene);
         Canvas.SetSelection(_selected, _selSet, _selGroup, Canvas.EnteredGroup);
@@ -565,8 +585,14 @@ public partial class MainWindow : Window
         {
             int i = order[k];
             var s = _doc.Sections[i];
-            if (s.Group is { } g && (k == 0 || _doc.Sections[order[k - 1]].Group != g))
+            // 前の行と共通でないグループの見出しを、外側から順に出す（折りたたんだグループの中は出さない）
+            var prev = k == 0 ? [] : _doc.Sections[order[k - 1]].Groups;
+            int common = 0;
+            while (common < prev.Count && common < s.Groups.Count && prev[common] == s.Groups[common]) common++;
+            for (int d = common; d < s.Groups.Count; d++)
             {
+                var g = s.Groups[d];
+                if (s.Groups.Take(d).Any(_folded.Contains)) break;
                 bool folded = _folded.Contains(g);
                 var members = _doc.Members(g);
                 rows.Add(new ElementRow
@@ -574,9 +600,13 @@ public partial class MainWindow : Window
                     Index = -1, IsHeader = true, GroupName = g, Fold = folded ? "▶" : "▼",
                     GroupCount = $"（{members.Count}）",
                     Hidden = members.Count > 0 && members.All(m => _doc.Sections[m].ViewHidden),
+                    VariationMode = _viewVariation != null,
+                    InVariation = _viewVariation == null || members.All(m => _doc.Sections[m].InVariation(_viewVariation)),
+                    VariationText = GroupVariationText(members),
+                    HeaderMargin = new Thickness(14 * d, 2, 0, 1),
                 });
             }
-            if (s.Group != null && _folded.Contains(s.Group)) continue;
+            if (s.Groups.Any(_folded.Contains)) continue;
             rows.Add(new ElementRow
             {
                 Index = i,
@@ -590,9 +620,13 @@ public partial class MainWindow : Window
                 ProblemVisibility = problemSections.Contains(i) ? Visibility.Visible : Visibility.Collapsed,
                 BveExVisibility = bveExSections.Contains(i) ? Visibility.Visible : Visibility.Collapsed,
                 Hidden = s.ViewHidden,
+                VariationMode = _viewVariation != null,
+                InVariation = _viewVariation == null || s.InVariation(_viewVariation),
+                Compact = _compactList,
+                VariationText = s.VariationCond?.Replace(", ", "・") ?? "",
                 Disabled = s.Disabled,
                 IsBase = s.Kind == SectionKind.This || (s.IsMainPanel && s.Kind == SectionKind.PilotLamp),
-                Indent = s.Group != null ? new Thickness(14, 0, 0, 0) : new Thickness(0),
+                Indent = new Thickness(14 * s.Groups.Count, 0, 0, 0),
             });
         }
         _suppressList = true;
@@ -638,6 +672,7 @@ public partial class MainWindow : Window
         int warnCount = warnings.Count + (_info.HeaderEncoding != null ? 1 : 0);
         ProblemHeader.Text = (warnCount == 0 ? "問題なし" : $"問題 {warnCount} 件（ダブルクリックで移動）") + (bveExSections.Count > 0 ? "・BveEX 対応計器あり" : "");
         ProblemHeader.Foreground = warnCount == 0 ? Brushes.SeaGreen : Brushes.DarkOrange;
+        ProblemIcon.Visibility = warnCount > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         var encName = _info.HasBom ? $"{_info.Encoding.WebName} (BOM)" : BveText.ResolveSaveEncoding(Editor.Text, _info).WebName + (_info.HeaderEncoding != null ? "（1 行目の指定と違う）" : "");
         FormatText.Text = $"{(_doc.Version.Length > 0 ? "版 " + _doc.Version : _doc.IsLegacyHeader ? "版 1.0（古い書式）" : "版 ?")}  {encName}  {(_info.NewLine == "\n" ? "LF" : "CRLF")}"
@@ -703,6 +738,14 @@ public partial class MainWindow : Window
         Editor.TextArea.TextView.InvalidateLayer(_highlighter.Layer);
     }
 
+    /// <summary>テキストの line 行目がグループの開始行・終了行なら、そのグループの名前。</summary>
+    private string? GroupOfLine(int line)
+    {
+        if (line < 1 || line > Editor.Document.LineCount) return null;
+        var text = Editor.Document.GetText(Editor.Document.GetLineByNumber(line));
+        return PanelDocument.TryGroupBegin(text, out var b) ? b : PanelDocument.TryGroupEnd(text, out var e) ? e : null;
+    }
+
     private void OnCaretMoved(object? sender, EventArgs e)
     {
         if (_suppressCaret || _doc == null || !Editor.TextArea.IsKeyboardFocusWithin || _reparseTimer.IsEnabled) return;
@@ -710,7 +753,7 @@ public partial class MainWindow : Window
         int idx = _doc.SectionAtLine(line);
         // グループの開始行・終了行にカーソルがあればグループごと選ぶ
         var role = _doc.EnumerateTagged().Skip(line - 1).Select(t => t.Role).FirstOrDefault();
-        if (idx >= 0 && role is LineRole.GroupBegin or LineRole.GroupEnd && _doc.Sections[idx].Group is { } g)
+        if (idx >= 0 && role is LineRole.GroupBegin or LineRole.GroupEnd && GroupOfLine(line) is { } g && _doc.Members(g).Count > 0)
         {
             if (_selGroup != g) ApplySelection(_doc.Members(g)[0], _doc.Members(g), g, SelectionSource.Text);
             return;
@@ -975,15 +1018,16 @@ public partial class MainWindow : Window
         if (_selGroup != null && _doc.RunOf(_selGroup) is { } run)
         {
             at = run.Last + 1;          // グループごと選んでいればグループの最後に入れる
-            sec.Group = _selGroup;
+            sec.SetGroups([.. _doc.ParentPath(_selGroup), _selGroup]);
         }
-        else if (_selected >= 0 && _doc.Sections[_selected].Group is { } g) sec.Group = g; // グループの中の計器の後ろなら同じグループに
+        else if (_selected >= 0) sec.SetGroups(_doc.Sections[_selected].Groups); // グループの中の計器の後ろなら同じグループに
+        JoinViewVariation(sec);
         _doc.Sections.Insert(at, sec);
         _selected = at;
         CommitModel();
         SelectSection(at);
         Canvas.AllowFreshEdit([at]);
-        Message($"{PanelSpec.KindLabel(kind)}を追加しました。Subject などを右の欄で直してください。追加した計器は、選んでいる間だけ位置ロック中でも動かせます（ほかを選ぶとロックに戻ります）");
+        Message($"{PanelSpec.KindLabel(kind)}を追加しました{ViewVariationNote}。Subject などを右の欄で直してください。追加した計器は、選んでいる間だけ位置ロック中でも動かせます（ほかを選ぶとロックに戻ります）");
         Dispatcher.BeginInvoke(BeginRename, DispatcherPriority.Loaded);
     }
 
@@ -1004,10 +1048,12 @@ public partial class MainWindow : Window
         if (PanelValues.TryPoint(copy.Get("Location"), out var x, out var y))
             copy.Set("Location", PanelValues.Point(x + 10, y + 10));
         if (copy.Leading.Count == 0 || copy.Leading[0].Kind != PanelLineKind.Blank) copy.Leading.Insert(0, PanelLine.Blank());
+        JoinViewVariation(copy);
         _doc.Sections.Insert(_selected + 1, copy);
         _selected++;
         CommitModel();
         SelectSection(_selected);
+        if (_viewVariation != null) Message($"複製しました{ViewVariationNote}");
     }
 
     private void OnDelete(object? sender, RoutedEventArgs? e)
@@ -1067,19 +1113,23 @@ public partial class MainWindow : Window
     {
         var doc = _doc!;
         double L(int i) => PanelValues.Double(doc.Sections[i].Get("Layer"), 0);
-        List<int> Sort(IEnumerable<int> xs) => xs.OrderByDescending(L).ThenByDescending(i => i).ToList();
         var idx = Enumerable.Range(0, doc.Sections.Count).Where(i => doc.Sections[i].Kind != SectionKind.This).ToList();
         // かたまり: グループごと（同じ名前でもファイルで離れていれば別のかたまり）と、グループに入っていない計器 1 つずつ
-        var units = new List<List<int>>();
-        foreach (var i in idx)
+        // 入れ子のグループは、中も同じように並べる（depth はグループの深さ）
+        List<int> Order(List<int> xs, int depth)
         {
-            var g = doc.Sections[i].Group;
-            if (g != null && units.Count > 0 && units[^1][^1] == i - 1 && doc.Sections[i - 1].Group == g) units[^1].Add(i);
-            else units.Add([i]);
+            string? G(int i) => doc.Sections[i].Groups.Count > depth ? doc.Sections[i].Groups[depth] : null;
+            var units = new List<List<int>>();
+            foreach (var i in xs)
+            {
+                var g = G(i);
+                if (g != null && units.Count > 0 && units[^1][^1] == i - 1 && G(i - 1) == g) units[^1].Add(i);
+                else units.Add([i]);
+            }
+            return units.Select(u => u.Count > 1 || G(u[0]) != null ? Order(u, depth + 1) : u)
+                .OrderByDescending(u => L(u[0])).ThenByDescending(u => u[0]).SelectMany(u => u).ToList();
         }
-        var sorted = units.Select(Sort)
-            .OrderByDescending(u => L(u[0])).ThenByDescending(u => u[0]);
-        return [.. sorted.SelectMany(u => u), .. Enumerable.Range(0, doc.Sections.Count).Where(i => doc.Sections[i].Kind == SectionKind.This)];
+        return [.. Order(idx, 0), .. Enumerable.Range(0, doc.Sections.Count).Where(i => doc.Sections[i].Kind == SectionKind.This)];
     }
 
     private void OnListOrderButton(object sender, RoutedEventArgs e) => SetListOrder(sender == OrderLayerButton, save: true);
@@ -1126,7 +1176,7 @@ public partial class MainWindow : Window
                 case Key.L: SetLocked(!Canvas.PositionLocked); e.Handled = true; return;
                 case Key.D9 or Key.NumPad9: TogglePathNames(); e.Handled = true; return; // テスト用の裏機能
                 case Key.A when !inText: SelectAllElements(null, null); e.Handled = true; return;
-                case Key.H when !inText: ToggleHidden(HiddenTargets()); e.Handled = true; return;
+                case Key.H when !inText: ToggleHiddenOrMembership(); e.Handled = true; return;
                 case Key.G when Keyboard.FocusedElement is not TextBox: OnMakeGroup(null, null); e.Handled = true; return;
                 case Key.OemCloseBrackets when !inText: ChangeLayers(LayerOp.Up); e.Handled = true; return;
                 case Key.OemOpenBrackets when !inText: ChangeLayers(LayerOp.Down); e.Handled = true; return;
@@ -1247,6 +1297,7 @@ public partial class MainWindow : Window
     /// <summary>位置ロックを切り替える。ファイルを開くたびにロックに戻す。</summary>
     private void SetLocked(bool locked)
     {
+        if (BlockUnlockInVariationMode(locked)) return;
         Canvas.PositionLocked = locked;
         LockButton.IsChecked = locked;
         LockMenu.IsChecked = locked;
@@ -1322,7 +1373,7 @@ public partial class MainWindow : Window
     /// <summary>確認用: 番号の計器を選ぶ（グループの計器ならグループごと）。</summary>
     public void SelectForStartup(int index)
     {
-        if (_doc != null && index >= 0 && index < _doc.Sections.Count && _doc.Sections[index].Group is { } g)
+        if (_doc != null && index >= 0 && index < _doc.Sections.Count && _doc.Sections[index].TopGroup is { } g)
             ApplySelection(index, _doc.Members(g), g, SelectionSource.Other);
         else SelectSection(index);
     }

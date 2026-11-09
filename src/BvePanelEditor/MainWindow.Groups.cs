@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -56,12 +56,11 @@ public partial class MainWindow
 
         if (source != SelectionSource.Canvas)
         {
-            // 中に入ったグループの計器を 1 つ選んだときは、中に入ったままにする
-            var entered = _selGroup == null && _selSet.Count == 1 && _selected >= 0 && _doc.Sections[_selected].Group is { } g && g == Canvas.EnteredGroup ? g : null;
-            Canvas.SetSelection(_selected, _selSet, _selGroup, entered);
+            // 中に入ったグループの中を選んだときは（計器 1 つ、または中のグループ）、中に入ったままにする
+            Canvas.SetSelection(_selected, _selSet, _selGroup, EnteredFor(Canvas.EnteredGroup));
         }
-        // 折りたたんだグループの中の計器を 1 つずつ選んだときは、そのグループを開いて一覧に出す
-        var unfold = _selGroup == null ? _selSet.Select(i => _doc.Sections[i].Group).OfType<string>().Where(_folded.Contains).Distinct().ToList() : [];
+        // 折りたたんだグループの中を選んだときは、そのグループ（と外側のグループ）を開いて一覧に出す
+        var unfold = (_selGroup != null ? _doc.ParentPath(_selGroup) : _selSet.SelectMany(i => _doc.Sections[i].Groups)).Where(_folded.Contains).Distinct().ToList();
         if (unfold.Count > 0)
         {
             foreach (var g in unfold) _folded.Remove(g);
@@ -87,6 +86,16 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>
+    /// 今の選択が、中に入ったグループ entered の中か（計器 1 つ、または中のグループを選んでいる）。中なら entered、そうでなければ null。
+    /// </summary>
+    private string? EnteredFor(string? entered)
+    {
+        if (_doc == null || entered == null || _doc.Members(entered).Count == 0) return null;
+        if (_selGroup != null) return _selGroup != entered && _doc.IsAncestorGroup(entered, _selGroup) ? entered : null;
+        return _selSet.Count == 1 && _selected >= 0 && _doc.Sections[_selected].Groups.Contains(entered) ? entered : null;
+    }
+
     /// <summary>プロパティ欄・一覧の選択・テキストの色付け・動作プレビュー欄の色付けを今の選択に合わせる。</summary>
     private void ShowSelectionDetails(bool scroll)
     {
@@ -109,6 +118,7 @@ public partial class MainWindow
         SyncListSelection(scroll);
         UpdateHighlight();
         UpdateStateHighlight();
+        RefreshVariationUi();
     }
 
     /// <summary>計器の Location のいちばん左上（位置のない計器は飛ばす）。</summary>
@@ -133,8 +143,9 @@ public partial class MainWindow
     {
         if (_doc == null) return null;
         if (_selGroup != null) return Rows.FirstOrDefault(r => r.IsHeader && r.GroupName == _selGroup);
+        // 折りたたまれていれば、見えているいちばん内側のグループの見出し
         return Rows.FirstOrDefault(r => !r.IsHeader && r.Index == _selected)
-            ?? (_selected >= 0 && _doc.Sections[_selected].Group is { } g ? Rows.FirstOrDefault(r => r.IsHeader && r.GroupName == g) : null);
+            ?? (_selected >= 0 ? _doc.Sections[_selected].Groups.AsEnumerable().Reverse().Select(g => Rows.FirstOrDefault(r => r.IsHeader && r.GroupName == g)).FirstOrDefault(r => r != null) : null);
     }
 
     private void SyncListSelection(bool scroll)
@@ -153,10 +164,12 @@ public partial class MainWindow
         var rows = ElementList.SelectedItems.Cast<ElementRow>().ToList();
         if (rows.Count == 0) return;
         var headers = rows.Where(r => r.IsHeader).Select(r => r.GroupName).Distinct().ToList();
+        // 外側のグループの見出しも選んでいれば、中のグループの見出しは外側に含める
+        headers = headers.Where(h => !headers.Any(o => o != h && _doc.IsAncestorGroup(o, h))).ToList();
         var set = rows.Where(r => !r.IsHeader).Select(r => r.Index).ToList();
         foreach (var h in headers) set.AddRange(_doc.Members(h));
         set = set.Distinct().Order().ToList();
-        string? group = headers.Count == 1 && set.All(i => _doc.Sections[i].Group == headers[0]) ? headers[0] : null;
+        string? group = headers.Count == 1 && set.All(i => _doc.Sections[i].Groups.Contains(headers[0])) ? headers[0] : null;
 
         int primary = -1;
         if (e.AddedItems.OfType<ElementRow>().LastOrDefault() is { } added)
@@ -191,7 +204,7 @@ public partial class MainWindow
             Message("グループにする計器を選んでください（一覧で Ctrl／Shift＋クリック、パネル画面で Shift＋クリック）");
             return;
         }
-        if (_selGroup != null && cands.All(i => _doc.Sections[i].Group == _selGroup))
+        if (_selGroup != null && cands.Count == _doc.Members(_selGroup).Count)
         {
             Message($"すでにグループ「{_selGroup}」です");
             return;
@@ -216,12 +229,15 @@ public partial class MainWindow
                 + "\n\n続けますか？"))
             return;
 
-        var fromOther = cands.Select(i => _doc.Sections[i].Group).Where(g => g != null).Distinct().ToList();
+        var fromOther = _doc.GroupsSplitBy(cands);
+        var parent = _doc.CommonParent(cands);
         var name = _doc.NextGroupName();
         var idx = _doc.MakeGroup(cands, name);
         CommitModel();
+        // 外側のグループの中に作ったときは、その中に入ったままにする
+        Canvas.SetSelection(idx[0], idx, name, parent.LastOrDefault());
         ApplySelection(idx[0], idx, name, SelectionSource.Other);
-        Message($"「{name}」にしました（{idx.Count} 個）"
+        Message($"「{name}」にしました（{idx.Count} 個{(parent.Count > 0 ? $"。グループ「{parent[^1]}」の中" : "")}）"
             + (reordered.Count > 0 ? $"。間にあった計器 {reordered.Count} 個をグループの後ろへ並べ替えました" : "")
             + (fromOther.Count > 0 ? $"。グループ「{string.Join("」「", fromOther)}」から外れた計器があります" : "")
             + "。名前を入力してください");
@@ -251,13 +267,14 @@ public partial class MainWindow
         FlushReparse();
         if (_selGroup != null || _selSet.Count != 1 || _doc.Sections[_selected].Group is not { } g)
         {
-            Message("グループの中の計器を 1 つ選んでください（パネル画面ではダブルクリック、一覧ではその行をクリック）");
+            Message("グループの中の計器を 1 つ選んでください（パネル画面ではダブルクリックで中に入る、一覧ではその行をクリック）");
             return;
         }
         int ni = _doc.RemoveFromGroup(_selected);
         CommitModel();
         SelectSection(ni);
-        Message($"グループ「{g}」から外しました" + (ni != _selected ? "（グループの後ろへ並べ替えました）" : ""));
+        var outer = _doc.Sections[ni].Group;
+        Message($"グループ「{g}」から外しました" + (outer != null ? $"（グループ「{outer}」の中に残っています）" : "") + (ni != _selected ? "（グループの後ろへ並べ替えました）" : ""));
     }
 
     private void OnRenameGroupMenu(object? sender, RoutedEventArgs? e)
@@ -286,9 +303,8 @@ public partial class MainWindow
     private void DuplicateGroup(string g)
     {
         if (_doc == null) return;
-        var copies = _doc.DuplicateGroup(g, $"{g} のコピー", 10, 10);
+        var (copies, n) = _doc.DuplicateGroup(g, $"{g} のコピー", 10, 10);
         if (copies.Count == 0) return;
-        var n = _doc.Sections[copies[0]].Group!;
         CommitModel();
         ApplySelection(copies[0], copies, n, SelectionSource.Other);
         Message($"グループ「{g}」を「{n}」として複製しました（右下に 10px ずらしています）");

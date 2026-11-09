@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -189,7 +189,10 @@ public sealed class PanelScene
 
     public RenderItem? ItemFor(int section) => Items.FirstOrDefault(i => i.Section == section);
 
-    public static PanelScene Build(PanelDocument doc, string? baseDir, ImageCache cache, PanelScene? previous)
+    /// <summary>
+    /// パネルの見本を作る。variation を指定すると、そのバリエーションに入らない計器は描かない（[This] もそのバリエーションのもの）。
+    /// </summary>
+    public static PanelScene Build(PanelDocument doc, string? baseDir, ImageCache cache, PanelScene? previous, string? variation = null)
     {
         var scene = new PanelScene();
         // 書式 2.01 で足されたキー（Tilt・StopPin・Perspective）は、ヘッダが 2.00 でも BVE（5.8 以降・6）は読む
@@ -198,6 +201,7 @@ public sealed class PanelScene
             scene.Problems.Add(new(-1, $"1 行目が「{PanelDocument.HeaderPrefix} 2.00」の形になっていません"));
 
         int thisCount = 0;
+        var thisSections = new List<PanelSection>();
         for (int i = 0; i < doc.Sections.Count; i++)
         {
             var s = doc.Sections[i];
@@ -205,6 +209,9 @@ public sealed class PanelScene
             void P(string msg) => scene.Problems.Add(new(i, msg));
             // コメントアウトした計器は BVE でも表示されないので、描かず、問題も調べない
             if (s.Disabled) continue;
+            // 表示中のバリエーションに入らない計器（[This] は使わない、ほかは描かない）
+            bool outOfVariation = variation != null && !s.InVariation(variation);
+            if (outOfVariation && kind == SectionKind.This) continue;
 
             if (kind == SectionKind.Unknown)
             {
@@ -241,9 +248,13 @@ public sealed class PanelScene
                 thisCount++;
                 if (thisCount > 1)
                 {
-                    P("[This] が 2 つ以上あります（1 つだけにしてください）");
+                    // バリエーションごとに違う [This]（同じバリエーションに 2 つ入らない）なら問題にしない
+                    bool clash = doc.Variations.Count == 0 || doc.VariationNames.Any(v => s.InVariation(v) && thisSections.Any(t => t.InVariation(v)));
+                    thisSections.Add(s);
+                    if (clash) P("[This] が 2 つ以上あります（1 つだけにしてください）");
                     continue;
                 }
+                thisSections.Add(s);
                 scene.ThisSection = i;
                 scene.ThisHidden = s.ViewHidden;
                 // [This] の画像はなくてもよい（BVE も読める。パネル本体はメインパネルの表示灯にする書き方）
@@ -267,7 +278,7 @@ public sealed class PanelScene
                 continue;
             }
 
-            var item = new RenderItem { Section = i, Kind = kind, IsMainPanel = s.IsMainPanel && kind == SectionKind.PilotLamp, Hidden = s.ViewHidden };
+            var item = new RenderItem { Section = i, Kind = kind, IsMainPanel = s.IsMainPanel && kind == SectionKind.PilotLamp, Hidden = s.ViewHidden || outOfVariation };
             item.Subject = s.Get("Subject") ?? "";
             item.Title = s.Title;
             if (item.Subject.Length == 0) P("Subject がありません");
@@ -340,6 +351,16 @@ public sealed class PanelScene
         Point? camera = scene.HasOrigin ? scene.Origin : scene.HasCenter ? scene.Center : null;
         foreach (var it in scene.Items) { it.TiltResolution = scene.Resolution; it.TiltPerspective = scene.Perspective; it.TiltCamera = camera; }
         foreach (var w in doc.GroupWarnings) scene.Problems.Add(new(w.Section, w.Message));
+        // バリエーション
+        foreach (var n in doc.UnknownVariationNames())
+            scene.Problems.Add(new(doc.Sections.FindIndex(s => VariationCondition.Names(s.VariationCond).Contains(n)), $"バリエーション「{n}」は一覧にありません（「バリエーション」タブで足せます）"));
+        for (int i = 0; i < doc.Sections.Count; i++)
+            if (doc.Sections[i].VariationCond != null && doc.Variations.Count > 0 && !doc.VariationNames.Any(doc.Sections[i].InVariation))
+                scene.Problems.Add(new(i, "どのバリエーションにも入っていません（書き出したパネルには入りません）"));
+        foreach (var v in doc.Variations.Where(v => v.File.Trim().Length == 0))
+            scene.Problems.Add(new(-1, $"バリエーション「{v.Name}」の出力ファイルが決まっていません"));
+        foreach (var g in doc.Variations.Where(v => v.File.Trim().Length > 0).GroupBy(v => v.File.Trim().ToLowerInvariant()).Where(g => g.Count() > 1))
+            scene.Problems.Add(new(-1, $"バリエーション「{string.Join("」「", g.Select(v => v.Name))}」の出力ファイルが同じです（{g.First().File}）"));
         // 描画順: Layer の小さい順、同じならファイルの順
         scene.Items = scene.Items.OrderBy(x => x.Layer).ThenBy(x => x.Section).ToList();
         return scene;

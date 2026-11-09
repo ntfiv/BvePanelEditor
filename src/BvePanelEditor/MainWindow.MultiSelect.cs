@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using BvePanelEditor.Core;
 using BvePanelEditor.Rendering;
@@ -59,15 +59,16 @@ public partial class MainWindow
     private List<List<int>> AlignUnits()
     {
         var set = _selSet.Where(i => IsInstrument(_doc!.Sections[i]) && _scene?.ItemFor(i) != null).ToList();
-        if (_selGroup != null) return set.Select(i => new List<int> { i }).ToList();
+        // グループ 1 つだけなら、そのすぐ中のかたまり（中のグループは丸ごと、直下の計器は 1 つずつ）を揃える
+        if (_selGroup != null) return _doc!.UnitsWithin(set, _selGroup);
         var used = new HashSet<int>();
         var units = new List<List<int>>();
         foreach (var i in set)
         {
             if (used.Contains(i)) continue;
-            var g = _doc!.Sections[i].Group;
-            var members = g != null ? _doc.Members(g) : null;
-            var unit = members != null && members.All(set.Contains) ? members.Where(set.Contains).ToList() : [i];
+            // 丸ごと選んでいるいちばん外側のグループで 1 つ
+            var whole = _doc!.Sections[i].Groups.FirstOrDefault(g => _doc.Members(g).All(set.Contains));
+            var unit = whole != null ? _doc.Members(whole).Where(set.Contains).ToList() : [i];
             foreach (var u in unit) used.Add(u);
             units.Add(unit);
         }

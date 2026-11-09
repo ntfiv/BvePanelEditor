@@ -430,7 +430,7 @@ public sealed class PsdTests : IDisposable
         spec.Day.Dispose(); spec.Night!.Dispose();
         var doc = PanelDocument.CreateNew(r.Base!.DayPath, 100, 60);
         foreach (var s in r.Sections) doc.Sections.Add(s);
-        var copies = doc.DuplicateGroup("表示灯", "表示灯 のコピー", 10, 10);
+        var copies = doc.DuplicateGroup("表示灯", "表示灯 のコピー", 10, 10).Indices;
         Assert.All(copies, i => Assert.Empty(doc.Sections[i].PsdLayers));
     }
 

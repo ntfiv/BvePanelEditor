@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using BvePanelEditor.Core;
@@ -44,7 +44,9 @@ public partial class MainWindow
         ListMenuDelete.IsEnabled = any;
         var targets = HiddenTargets();
         ListMenuToggleHidden.IsEnabled = targets.Count > 0;
-        ListMenuToggleHidden.Header = targets.Count > 0 && targets.All(i => _doc.Sections[i].ViewHidden) ? "表示する" : "非表示にする";
+        ListMenuToggleHidden.Header = _viewVariation != null
+            ? (targets.Count > 0 && targets.All(i => _doc.Sections[i].InVariation(_viewVariation)) ? $"バリエーション「{_viewVariation}」から外す" : $"バリエーション「{_viewVariation}」に入れる")
+            : targets.Count > 0 && targets.All(i => _doc.Sections[i].ViewHidden) ? "表示する" : "非表示にする";
         ListMenuShowAll.IsEnabled = _doc.Sections.Any(s => s.ViewHidden);
         var disTargets = DisableTargets(targets);
         ListMenuToggleDisabled.IsEnabled = disTargets.Count > 0;

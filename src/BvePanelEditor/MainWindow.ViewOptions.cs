@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -31,6 +31,8 @@ public partial class MainWindow
                     if (kv[0] == "Aspects") SetAspects(kv[1], save: false);
                     else if (kv[0] == "Bleed" && PanelValues.TryDouble(kv[1], out var b)) SetBleed(b, save: false);
                     else if (kv[0] == "ListOrder") SetListOrder(kv[1] == "layer", save: false);
+                    else if (kv[0] == "CompactList") SetCompactList(kv[1] == "1", save: false);
+                    else if (kv[0] == "ProblemsFolded") SetProblemsFolded(kv[1] == "1", save: false);
                 }
         }
         catch (IOException) { }
@@ -43,9 +45,42 @@ public partial class MainWindow
         {
             Directory.CreateDirectory(SettingsDir);
             File.WriteAllLines(ViewSettingsFile,
-                [$"Aspects={string.Join(",", Canvas.FrameAspects.Select(f => f.Label))}", $"Bleed={PanelValues.Num(Canvas.ShakeMarginPercent)}", $"ListOrder={(_layerOrder ? "layer" : "file")}"]);
+                [$"Aspects={string.Join(",", Canvas.FrameAspects.Select(f => f.Label))}", $"Bleed={PanelValues.Num(Canvas.ShakeMarginPercent)}", $"ListOrder={(_layerOrder ? "layer" : "file")}",
+                 $"CompactList={(_compactList ? 1 : 0)}", $"ProblemsFolded={(_problemsFolded ? 1 : 0)}"]);
         }
         catch (IOException) { }
+    }
+
+    // ---- 計器の一覧の 1 行表示・問題の欄を畳む ----
+
+    private bool _compactList;
+    private bool _problemsFolded;
+    private GridLength _problemHeight = new(160);
+
+    private void OnCompactList(object sender, RoutedEventArgs e) => SetCompactList(CompactListCheck.IsChecked == true, save: true);
+
+    /// <summary>計器の一覧を 1 行表示にする・戻す（次に起動したときも使う）。</summary>
+    public void SetCompactList(bool compact, bool save)
+    {
+        _compactList = compact;
+        CompactListCheck.IsChecked = compact;
+        if (save) SaveViewSettings();
+        if (_doc != null) RebuildAll();
+    }
+
+    private void OnProblemFold(object sender, System.Windows.Input.MouseButtonEventArgs e) => SetProblemsFolded(!_problemsFolded, save: true);
+
+    /// <summary>問題の欄を畳む・開く（次に起動したときも使う）。畳んでいても、問題があれば見出しの横に印を出す。</summary>
+    public void SetProblemsFolded(bool folded, bool save)
+    {
+        if (folded == _problemsFolded && ProblemList.Visibility == (folded ? Visibility.Collapsed : Visibility.Visible)) return;
+        if (folded && ProblemRowDef.Height.IsAbsolute) _problemHeight = ProblemRowDef.Height;
+        _problemsFolded = folded;
+        ProblemList.Visibility = folded ? Visibility.Collapsed : Visibility.Visible;
+        ProblemFold.Text = folded ? "▶" : "▼";
+        ProblemRowDef.Height = folded ? GridLength.Auto : _problemHeight;
+        ProblemSplitterRow.Height = new GridLength(folded ? 0 : 5);
+        if (save) SaveViewSettings();
     }
 
     private void BuildViewMenus()

@@ -148,11 +148,12 @@ public partial class MainWindow
         }
 
         // 名前が重なるグループは番号を付けて分ける
-        foreach (var g in result.Sections.Select(s => s.Group).OfType<string>().Distinct().ToList())
+        foreach (var g in result.Sections.SelectMany(s => s.Groups).Distinct().ToList())
         {
             if (!doc.GroupNames().Contains(g)) continue;
             var n = doc.UniqueGroupName(g);
-            foreach (var s in result.Sections.Where(s => s.Group == g)) s.Group = n;
+            foreach (var s in result.Sections)
+                for (int k = 0; k < s.Groups.Count; k++) if (s.Groups[k] == g) s.Groups[k] = n;
         }
         // どの PSD から作ったかを覚える。今までと同じ昼の PSD ならその番号、別の PSD なら新しい番号（前の計器のつながりは変えない）
         var source = doc.PsdSources.FirstOrDefault(src => src.Day.Length > 0 && SamePath(Path.Combine(spec.PanelDir, src.Day), spec.Day.FilePath));

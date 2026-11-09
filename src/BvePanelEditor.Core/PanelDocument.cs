@@ -1,4 +1,4 @@
-namespace BvePanelEditor.Core;
+﻿namespace BvePanelEditor.Core;
 
 public enum PanelLineKind { Blank, Comment, KeyValue, Unknown }
 
@@ -105,8 +105,34 @@ public sealed class PanelSection
     public string HeaderRaw { get; set; } = "";
     public List<PanelLine> Lines { get; } = [];
 
-    /// <summary>入っているグループの名前（なければ null）。ファイルでは開始行・終了行のコメントで囲んで表す。</summary>
-    public string? Group { get; set; }
+    /// <summary>
+    /// 入っているグループの名前（外側から順。グループの中のグループに入っていれば 2 つ以上）。
+    /// ファイルでは開始行・終了行のコメントで囲んで表す。
+    /// </summary>
+    public List<string> Groups { get; } = [];
+
+    /// <summary>
+    /// 入るバリエーションの条件（「A, B」「!A」の書き方。null なら共通＝すべてのバリエーション）。
+    /// ファイルでは計器の前に「; @group 条件」、共通に戻るところに「; @end」と書く。
+    /// </summary>
+    public string? VariationCond { get; set; }
+
+    /// <summary>バリエーション name に入るか。</summary>
+    public bool InVariation(string name) => VariationCondition.Match(VariationCond, name);
+
+    /// <summary>いちばん内側のグループ（なければ null）。</summary>
+    public string? Group => Groups.Count > 0 ? Groups[^1] : null;
+
+    /// <summary>いちばん外側のグループ（なければ null）。</summary>
+    public string? TopGroup => Groups.Count > 0 ? Groups[0] : null;
+
+    /// <summary>入っているグループを、ほかの計器と同じにする（外側から順）。</summary>
+    public void SetGroups(IEnumerable<string> groups)
+    {
+        var list = groups.ToList();
+        Groups.Clear();
+        Groups.AddRange(list);
+    }
 
     /// <summary>この計器の画像を作った PSD のレイヤー（「フォルダ/レイヤー」の形）。ファイルでは見出しのすぐ下の「;@PSDレイヤー: 名前」。</summary>
     public List<string> PsdLayers { get; } = [];
@@ -327,7 +353,8 @@ public sealed class PanelSection
 
     public PanelSection Clone()
     {
-        var s = new PanelSection { HeaderRaw = HeaderRaw, Group = Group, PsdSource = PsdSource, CropSet = CropSet, IsMainPanel = IsMainPanel, ViewHidden = ViewHidden, Disabled = Disabled };
+        var s = new PanelSection { HeaderRaw = HeaderRaw, PsdSource = PsdSource, CropSet = CropSet, IsMainPanel = IsMainPanel, ViewHidden = ViewHidden, Disabled = Disabled, VariationCond = VariationCond };
+        s.Groups.AddRange(Groups);
         s.After.AddRange(After.Select(l => l.Clone()));
         s.PsdLayers.AddRange(PsdLayers);
         s.CropShapes.AddRange(CropShapes.Select(c => c.Clone()));
@@ -341,7 +368,7 @@ public sealed class PanelSection
 public readonly record struct SectionLineRange(int FirstLine, int HeaderLine, int LastLine);
 
 /// <summary>本文の 1 行が何の行か。</summary>
-public enum LineRole { FileHeader, Preamble, Leading, SectionHeader, Body, GroupBegin, GroupEnd }
+public enum LineRole { FileHeader, Preamble, Leading, SectionHeader, Body, GroupBegin, GroupEnd, VariationMark }
 
 /// <summary>画像を作った PSD（昼と夜の組）。パスはパネルファイルからの相対パス。</summary>
 public sealed class PsdSource
@@ -470,8 +497,10 @@ public sealed partial class PanelDocument
 
         doc.HeaderLine = lines[0].TrimStart('﻿');
         List<PanelLine> current = doc.Preamble;
-        string? group = null;     // 今読んでいるグループ
-        int groupStart = -1;      // そのグループの最初の計器の番号
+        string? cond = null;               // 今の「; @group」の条件（null なら共通）
+        int condLine = 0;
+        var groups = new List<string>();  // 今読んでいるグループ（外側から順）
+        var groupStarts = new List<int>(); // それぞれのグループの最初の計器の番号
         var cropLayers = new List<(string Name, bool Night, List<string> Layers, int Line)>();
         PanelSection? disabled = null; // 今読んでいる、コメントアウトした計器のかたまり
         for (int i = 1; i < lines.Count; i++)
@@ -487,6 +516,32 @@ public sealed partial class PanelDocument
             if (TryCropLayersLine(raw, out var clName, out var clNight, out var clLayers))
             {
                 cropLayers.Add((clName, clNight, clLayers, i + 1));
+                continue;
+            }
+            if (TryVariationLine(raw, out var variation))
+            {
+                doc.Variations.RemoveAll(v => v.Name == variation.Name);
+                doc.Variations.Add(variation);
+                continue;
+            }
+            // バリエーションの印（「; @group 条件」〜「; @end」）は本文の行として持たず、次の計器の条件にする
+            if (TryVariationMark(raw, out var isEnd, out var markCond))
+            {
+                if (isEnd)
+                {
+                    if (cond == null) doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: 対応する「@group」のない「@end」があります（無視します）"));
+                    cond = null;
+                }
+                else if (VariationCondition.Parse(markCond) == null)
+                {
+                    doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: 「@group」の後ろにバリエーション名がありません（共通として扱います）"));
+                    cond = null;
+                }
+                else
+                {
+                    cond = VariationCondition.Format(VariationCondition.Parse(markCond)!);
+                    condLine = i + 1;
+                }
                 continue;
             }
             if (TryCropSetLine(raw, out var cropSet))
@@ -537,24 +592,32 @@ public sealed partial class PanelDocument
             // グループの開始行・終了行は本文の行として持たず、グループの切り替えだけに使う（書き出すときに作り直す）
             if (TryGroupEnd(raw, out var endName))
             {
-                if (group == null)
+                if (groups.Count == 0)
                     doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: 開始行のない「グループ終わり」があります（無視します）"));
                 else
                 {
-                    if (endName.Length > 0 && endName != group)
-                        doc.GroupWarnings.Add(new(groupStart < doc.Sections.Count ? groupStart : -1, $"{i + 1} 行目: グループ「{group}」の終わりの名前が「{endName}」になっています"));
-                    if (groupStart >= doc.Sections.Count)
-                        doc.GroupWarnings.Add(new(-1, $"グループ「{group}」に計器がありません（無視します）"));
+                    // 名前が外側のグループのものなら、その内側のグループもここで閉じる
+                    int close = endName.Length > 0 && groups[^1] != endName && groups.LastIndexOf(endName) is >= 0 and var at ? at : groups.Count - 1;
+                    for (int k = groups.Count - 1; k >= close; k--)
+                    {
+                        int start = groupStarts[k];
+                        if (k > close)
+                            doc.GroupWarnings.Add(new(start < doc.Sections.Count ? start : -1, $"{i + 1} 行目: グループ「{groups[k]}」の「グループ終わり」の行がありません（外側の「{endName}」の終わりで閉じます）"));
+                        else if (endName.Length > 0 && endName != groups[k])
+                            doc.GroupWarnings.Add(new(start < doc.Sections.Count ? start : -1, $"{i + 1} 行目: グループ「{groups[k]}」の終わりの名前が「{endName}」になっています"));
+                        if (start >= doc.Sections.Count)
+                            doc.GroupWarnings.Add(new(-1, $"グループ「{groups[k]}」に計器がありません（無視します）"));
+                    }
+                    groups.RemoveRange(close, groups.Count - close);
+                    groupStarts.RemoveRange(close, groupStarts.Count - close);
                 }
-                group = null;
                 continue;
             }
             if (TryGroupBegin(raw, out var beginName))
             {
-                if (group != null)
-                    doc.GroupWarnings.Add(new(groupStart < doc.Sections.Count ? groupStart : -1, $"{i + 1} 行目: グループ「{group}」の中に「{beginName}」の開始行があります（グループの中のグループは使えないので、ここで前のグループを閉じます）"));
-                group = beginName;
-                groupStart = doc.Sections.Count;
+                // グループの中のグループ（入れ子）も使える
+                groups.Add(beginName);
+                groupStarts.Add(doc.Sections.Count);
                 continue;
             }
             // コメントアウトした計器の見出し（行頭の「;」のすぐ後ろが [PilotLamp] など）
@@ -573,7 +636,8 @@ public sealed partial class PanelDocument
             }
             if (disabledHeader || IsSectionHeader(raw))
             {
-                var sec = new PanelSection { HeaderRaw = disabledHeader ? raw[1..] : raw, Group = group, Disabled = disabledHeader };
+                var sec = new PanelSection { HeaderRaw = disabledHeader ? raw[1..] : raw, Disabled = disabledHeader, VariationCond = cond };
+                sec.Groups.AddRange(groups);
                 // 直前の空行・コメントのかたまりはこのセクションの説明として持っていく（無効のかたまりの中身は持っていかない）
                 int k = current.Count;
                 if (disabled == null)
@@ -589,8 +653,10 @@ public sealed partial class PanelDocument
                 current.Add(PanelLine.Parse(raw));
             }
         }
-        if (group != null)
-            doc.GroupWarnings.Add(new(groupStart < doc.Sections.Count ? groupStart : -1, $"グループ「{group}」の「グループ終わり」の行がありません（ファイルの最後までをグループとして扱います）"));
+        if (cond != null)
+            doc.GroupWarnings.Add(new(-1, $"{condLine} 行目: 「@group {cond}」が「@end」で閉じられていません（ファイルの最後まで有効）"));
+        for (int k = groups.Count - 1; k >= 0; k--)
+            doc.GroupWarnings.Add(new(groupStarts[k] < doc.Sections.Count ? groupStarts[k] : -1, $"グループ「{groups[k]}」の「グループ終わり」の行がありません（ファイルの最後までをグループとして扱います）"));
         foreach (var (name, night, layers, line) in cropLayers)
         {
             var set = doc.CropSets.FirstOrDefault(c => c.Name == name);
@@ -709,6 +775,33 @@ public sealed partial class PanelDocument
     public const string MainPanelLine = ";@メインパネル";
 
     /// <summary>「;@メインパネル」の行か。</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\s*(?:;|#|//)\s*@(?<k>group|end)\b\s*(?<v>.*?)\s*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex VariationMarkRegex();
+
+    /// <summary>バリエーションの印「; @group 条件」「; @end」。</summary>
+    public static bool TryVariationMark(string raw, out bool isEnd, out string cond)
+    {
+        var m = VariationMarkRegex().Match(raw);
+        isEnd = m.Success && m.Groups["k"].Value.Equals("end", StringComparison.OrdinalIgnoreCase);
+        cond = m.Success ? m.Groups["v"].Value : "";
+        return m.Success;
+    }
+
+    public static string VariationMarkLine(string? cond) => cond == null ? "; @end" : $"; @group {cond}";
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\s*[;#]+\s*@バリエーション\s*[:：]\s*(?<n>[^=]+?)\s*=\s*(?<f>.*?)\s*$")]
+    private static partial System.Text.RegularExpressions.Regex VariationLineRegex();
+
+    /// <summary>バリエーションの一覧の行「;@バリエーション: 名前 = 出力ファイル」。</summary>
+    public static bool TryVariationLine(string raw, out PanelVariation v)
+    {
+        var m = VariationLineRegex().Match(raw);
+        v = new PanelVariation { Name = m.Success ? m.Groups["n"].Value.Trim() : "", File = m.Success ? m.Groups["f"].Value.Trim() : "" };
+        return m.Success;
+    }
+
+    public static string VariationLine(PanelVariation v) => $";@バリエーション: {v.Name} = {v.File}";
+
     public static bool IsMainPanelLine(string raw) => System.Text.RegularExpressions.Regex.IsMatch(raw, @"^\s*[;#]+\s*@メインパネル\s*$");
 
     /// <summary>「;@切り抜き: 発光」の行か。</summary>
@@ -773,17 +866,25 @@ public sealed partial class PanelDocument
             if (src.Day.Length > 0) yield return (PsdFileLine(false, src.Day, src.Id), -1, LineRole.Preamble);
             if (src.Night != null) yield return (PsdFileLine(true, src.Night, src.Id), -1, LineRole.Preamble);
         }
+        foreach (var v in Variations) yield return (VariationLine(v), -1, LineRole.Preamble);
         foreach (var l in Preamble) yield return (l.Raw, -1, LineRole.Preamble);
         for (int i = 0; i < Sections.Count; i++)
         {
             var s = Sections[i];
-            bool begins = s.Group != null && (i == 0 || Sections[i - 1].Group != s.Group);
-            bool ends = s.Group != null && (i == Sections.Count - 1 || Sections[i + 1].Group != s.Group);
+            // バリエーションの条件が前の計器と変われば、ここに「; @group 条件」（共通に戻るなら「; @end」）を書く
+            bool mark = (i == 0 ? null : Sections[i - 1].VariationCond) != s.VariationCond;
+            // 前の計器と共通でないグループはここで始まり、次の計器と共通でないグループはここで終わる（入れ子は外側から始め、内側から終える）
+            static int Common(List<string> a, List<string> b) { int c = 0; while (c < a.Count && c < b.Count && a[c] == b[c]) c++; return c; }
+            int beginFrom = i == 0 ? 0 : Common(Sections[i - 1].Groups, s.Groups);
+            int endFrom = i == Sections.Count - 1 ? 0 : Common(s.Groups, Sections[i + 1].Groups);
+            bool begins = beginFrom < s.Groups.Count;
+            bool ends = endFrom < s.Groups.Count;
 
             int lead = 0;
-            if (begins) while (lead < s.Leading.Count && s.Leading[lead].Kind == PanelLineKind.Blank) lead++;
+            if (begins || mark) while (lead < s.Leading.Count && s.Leading[lead].Kind == PanelLineKind.Blank) lead++;
             for (int k = 0; k < lead; k++) yield return (s.Leading[k].Raw, i, LineRole.Leading);
-            if (begins) yield return (GroupBeginLine(s.Group!), i, LineRole.GroupBegin);
+            if (mark) yield return (VariationMarkLine(s.VariationCond), i, LineRole.VariationMark);
+            for (int g = beginFrom; g < s.Groups.Count; g++) yield return (GroupBeginLine(s.Groups[g]), i, LineRole.GroupBegin);
             for (int k = lead; k < s.Leading.Count; k++) yield return (s.Leading[k].Raw, i, LineRole.Leading);
 
             // 無効にした計器は、見出しと中身の行の頭に「;」を付ける（中の空行は「;」だけ）
@@ -797,9 +898,11 @@ public sealed partial class PanelDocument
             int tail = s.Lines.Count;
             if (ends) while (tail > 0 && s.Lines[tail - 1].Kind == PanelLineKind.Blank) tail--;
             for (int k = 0; k < tail; k++) yield return (Out(s.Lines[k]), i, LineRole.Body);
-            if (ends) yield return (GroupEndLine(s.Group!), i, LineRole.GroupEnd);
+            for (int g = s.Groups.Count - 1; g >= endFrom; g--) yield return (GroupEndLine(s.Groups[g]), i, LineRole.GroupEnd);
             for (int k = tail; k < s.Lines.Count; k++) yield return (Out(s.Lines[k]), i, LineRole.Body);
             foreach (var l in s.After) yield return (l.Raw, i, LineRole.Body);
+            // 最後の計器が条件付きなら、最後に「; @end」で閉じる
+            if (i == Sections.Count - 1 && s.VariationCond != null) yield return (VariationMarkLine(null), i, LineRole.VariationMark);
         }
     }
 

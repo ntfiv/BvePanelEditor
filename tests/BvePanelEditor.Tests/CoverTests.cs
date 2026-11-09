@@ -120,7 +120,7 @@ public sealed class CoverTests : IDisposable
     public void DuplicateDropsShapes()
     {
         var doc = PanelDocument.Parse("BveTs Instrument Panel 2.00\r\n;===== グループ: g =====\r\n[PilotLamp]\r\n;@切り抜き: a\r\n;@切り抜き形: 丸 2,2 r=2\r\nLocation = 0, 0\r\n;===== グループ終わり: g =====\r\n");
-        var copies = doc.DuplicateGroup("g", "g2", 1, 1);
+        var copies = doc.DuplicateGroup("g", "g2", 1, 1).Indices;
         Assert.Empty(doc.Sections[copies[0]].CropShapes);
     }
 

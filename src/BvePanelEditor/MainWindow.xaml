@@ -1,4 +1,4 @@
-<Window x:Class="BvePanelEditor.MainWindow"
+﻿<Window x:Class="BvePanelEditor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ae="http://icsharpcode.net/sharpdevelop/avalonedit"
@@ -116,7 +116,7 @@
 
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="270" MinWidth="160" />
+                <ColumnDefinition Width="340" MinWidth="160" />
                 <ColumnDefinition Width="5" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="5" />
@@ -124,16 +124,18 @@
             </Grid.ColumnDefinitions>
 
             <!-- 左: 計器の一覧と問題 -->
-            <Grid Grid.Column="0">
+            <Grid Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="5" />
-                    <RowDefinition Height="160" />
+                    <RowDefinition x:Name="ProblemSplitterRow" Height="5" />
+                    <RowDefinition x:Name="ProblemRowDef" Height="160" />
                 </Grid.RowDefinitions>
                 <DockPanel Grid.Row="0" Margin="4,4,4,2">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <CheckBox x:Name="CompactListCheck" Content="1 行" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" Click="OnCompactList"
+                                  ToolTip="計器を 1 行で表示します（名前だけ。名前がなければ種類と状態量）。たくさんの計器を一度に見られます" />
                         <ToggleButton x:Name="OrderFileButton" Content="ファイル順" FontSize="11" Padding="6,1" IsChecked="True" Click="OnListOrderButton"
                                       ToolTip="一覧をパネルファイルに書いてある順に並べます" />
                         <ToggleButton x:Name="OrderLayerButton" Content="レイヤー順" FontSize="11" Padding="6,1" Margin="-1,0,0,0" Click="OnListOrderButton"
@@ -180,11 +182,17 @@
                         <DataTemplate>
                             <Grid>
                             <!-- グループの見出し行 -->
-                            <DockPanel Visibility="{Binding HeaderVisibility}" Margin="0,2,0,1">
+                            <DockPanel Visibility="{Binding HeaderVisibility}" Margin="{Binding HeaderMargin}">
                                 <TextBlock Text="{Binding Eye}" FontFamily="Segoe MDL2 Assets" FontSize="12" Width="18" Foreground="{Binding EyeBrush}"
-                                           VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="OnEyeClick" ToolTip="グループの計器をまとめて表示／非表示（パネルくんの画面だけ。ファイルには書きません）" />
+                                           VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="OnEyeClick" ToolTip="{Binding EyeTip}" />
                                 <TextBlock Text="{Binding Fold}" Width="16" FontSize="11" Foreground="#C06000" Cursor="Hand"
                                            VerticalAlignment="Center" MouseLeftButtonDown="OnGroupFold" ToolTip="折りたたむ／開く" />
+                                <!-- 中の計器が全部入っているバリエーション（共通なら出さない） -->
+                                <Border DockPanel.Dock="Right" Background="#E6EEFA" BorderBrush="#9DB8E0" BorderThickness="1" CornerRadius="2" Padding="3,0" Margin="4,0,4,0"
+                                        VerticalAlignment="Center" Visibility="{Binding VariationTextVisibility}" MaxWidth="140"
+                                        ToolTip="{Binding VariationTip}">
+                                    <TextBlock Text="{Binding VariationText}" Foreground="#1B5FC1" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                </Border>
                                 <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
                                     <Run Text="{Binding GroupName, Mode=OneWay}" FontWeight="Bold" Foreground="#B05000" />
                                     <Run Text="{Binding GroupCount, Mode=OneWay}" Foreground="Gray" FontSize="11" />
@@ -200,7 +208,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="{Binding Eye}" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{Binding EyeBrush}"
                                            VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="OnEyeClick"
-                                           ToolTip="表示／非表示（パネルくんの画面だけ。ファイルには書かず、BVE では表示されます）" />
+                                           ToolTip="{Binding EyeTip}" />
                                 <Border Grid.Column="1" Background="{Binding KindBrush}" Margin="0,1,4,1" Opacity="{Binding RowOpacity}" />
                                 <StackPanel Grid.Column="2" Opacity="{Binding RowOpacity}">
                                     <TextBlock TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}">
@@ -213,6 +221,10 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Opacity="{Binding RowOpacity}">
+                                    <Border Background="#E6EEFA" BorderBrush="#9DB8E0" BorderThickness="1" CornerRadius="2" Padding="3,0" Margin="0,0,4,0" VerticalAlignment="Center"
+                                            Visibility="{Binding VariationTextVisibility}" MaxWidth="110" ToolTip="{Binding VariationTip}">
+                                        <TextBlock Text="{Binding VariationText}" Foreground="#1B5FC1" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                    </Border>
                                     <TextBlock Text="BVE 非表示" Foreground="DimGray" FontSize="10" Visibility="{Binding DisabledVisibility}" Margin="0,0,4,0" VerticalAlignment="Center"
                                                ToolTip="コメントアウトして無効にした計器です（BVE でも表示されません）。右クリック→「BVE で表示する」で戻せます" />
                                     <Border Background="#2A6FC9" CornerRadius="2" Padding="2,0" Margin="0,0,4,0" VerticalAlignment="Center" Visibility="{Binding BveExVisibility}"
@@ -236,7 +248,12 @@
                 </WrapPanel>
                 <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" />
                 <DockPanel Grid.Row="4" Margin="4,0,4,4">
-                    <TextBlock x:Name="ProblemHeader" DockPanel.Dock="Top" Text="問題" FontWeight="Bold" Margin="0,2" />
+                    <DockPanel DockPanel.Dock="Top" Margin="0,2" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="OnProblemFold"
+                               ToolTip="クリックで問題の欄を畳む／開く">
+                        <TextBlock x:Name="ProblemFold" Text="▼" Width="14" FontSize="10" Foreground="Gray" VerticalAlignment="Center" />
+                        <TextBlock x:Name="ProblemIcon" Text="⚠" Foreground="#D08000" FontWeight="Bold" Margin="0,0,4,0" VerticalAlignment="Center" Visibility="Collapsed" />
+                        <TextBlock x:Name="ProblemHeader" Text="問題" FontWeight="Bold" VerticalAlignment="Center" />
+                    </DockPanel>
                     <ListBox x:Name="ProblemList" MouseDoubleClick="OnProblemDoubleClick" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
@@ -310,6 +327,16 @@
                             </ControlTemplate>
                         </ToggleButton.Template>
                     </ToggleButton>
+                    <!-- バリエーション編集モード（右の欄のバリエーションのタブを開いている間。位置ロック・表示灯のボタンの代わり） -->
+                    <Border x:Name="VariationModeBadge" Visibility="Collapsed" CornerRadius="4" Padding="8,4" BorderThickness="1"
+                            Background="#E81B5FC1" BorderBrush="#FFB8D4FF" VerticalAlignment="Center"
+                            ToolTip="バリエーションのタブを開いている間は、計器の位置は動かしません（位置ロック）。一覧の目のマーク・右の欄のチェックで、入るバリエーションを決めます">
+                        <TextBlock x:Name="VariationModeText" Foreground="White" FontSize="12" FontWeight="SemiBold" Text="バリエーション編集モード" />
+                    </Border>
+                    <!-- バリエーションの表示の切り替え（バリエーションがあるときだけ出す） -->
+                    <ComboBox x:Name="VariationViewBox" Margin="6,0,0,0" MinWidth="150" VerticalAlignment="Center" Visibility="Collapsed"
+                              SelectionChanged="OnVariationViewBox" Focusable="False"
+                              ToolTip="表示するバリエーション。バリエーションを選ぶと、そのバリエーションに入る計器だけを描きます。その間、一覧の目のマークで、そのバリエーションに入れる・外すを切り替えられます" />
                     <Button x:Name="CoverButton" Margin="6,0,0,0" Visibility="Collapsed" Click="OnMakeCover" Cursor="Hand" Focusable="False"
                             ToolTip="選んだ指針の軸の蓋を、パネル本体の画像（か PSD のレイヤー）から切り抜いて針の上に置きます。針を文字盤の中心に合わせてから押してください">
                         <Button.Template>
@@ -327,6 +354,12 @@
                         </Button.Template>
                     </Button>
                     </StackPanel>
+                    <!-- 画面の操作の案内（パネル画面の右下。マウスは素通り） -->
+                    <Border x:Name="CanvasHelp" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,6,6" Padding="6,2"
+                            CornerRadius="3" Background="#90202024" IsHitTestVisible="False">
+                        <TextBlock Foreground="#C8FFFFFF" FontSize="11" TextWrapping="Wrap" TextAlignment="Right"
+                                   Text="スペースキー or マウス中ボタン＋ドラッグで画面移動、マウスホイールで拡大縮小、Ctrl+0 で全体表示、Ctrl+1 で等倍表示" />
+                    </Border>
                 </Grid>
                 <GridSplitter x:Name="TextSplitter" Grid.Row="1" HorizontalAlignment="Stretch" />
                 <ae:TextEditor x:Name="Editor" Grid.Row="2" ShowLineNumbers="True" FontFamily="Consolas, BIZ UDGothic, MS Gothic"

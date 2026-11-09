@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using BvePanelEditor.Core;
@@ -82,6 +82,7 @@ public partial class MainWindow
                     if (night != null) sec.Set("NighttimeImage", night);
                 }
                 sec.Set("Layer", layer.ToString());
+                JoinViewVariation(sec);
                 _doc.Sections.Add(sec);
                 added.Add(_doc.Sections.Count - 1);
             }

@@ -62,7 +62,11 @@ public sealed class DigitFramesWindow : Window
         AddFiles(files, withSequence: true);
         Drop += (_, e) =>
         {
-            if (e.Data.GetData(DataFormats.FileDrop) is string[] dropped) AddFiles(dropped, withSequence: true);
+            // ドロップの処理中に画像・PSD を読んだりメッセージを出したりすると、ドラッグ元（エクスプローラーなど）が
+            // そのあいだ固まるので、ドロップを終えてから読み込む
+            if (e.Data.GetData(DataFormats.FileDrop) is string[] dropped)
+                Dispatcher.BeginInvoke(() => AddFiles(dropped, withSequence: true), System.Windows.Threading.DispatcherPriority.Background);
+            e.Handled = true;
         };
     }
 

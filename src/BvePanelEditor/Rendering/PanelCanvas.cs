@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -53,7 +53,7 @@ public sealed class PanelCanvas : FrameworkElement
     public IReadOnlyList<int> SelectedSet => _set;
     /// <summary>グループごと選んでいるときのグループ名。</summary>
     public string? SelectedGroup { get; private set; }
-    /// <summary>ダブルクリックで「中に入った」グループ。この中の計器はクリックで 1 つずつ選べる。</summary>
+    /// <summary>ダブルクリックで「中に入った」グループ。この中は、クリックですぐ中のかたまり（中のグループ、または計器 1 つ）を選べる。</summary>
     public string? EnteredGroup { get; private set; }
 
     /// <summary>キャンバスの操作で選択が変わった（引数は主に選んでいる計器）。</summary>
@@ -123,8 +123,12 @@ public sealed class PanelCanvas : FrameworkElement
 
     private static T Freeze<T>(T f) where T : Freezable { f.Freeze(); return f; }
 
+    /// <summary>スペースキーを押しながら左ドラッグで表示を動かす。</summary>
+    public SpacePan Space { get; }
+
     public PanelCanvas()
     {
+        Space = new SpacePan(this);
         Focusable = true;
         ClipToBounds = true;
         RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
@@ -138,8 +142,8 @@ public sealed class PanelCanvas : FrameworkElement
         Scene = scene;
         if (Selected >= doc.Sections.Count) Selected = -1;
         _set.RemoveAll(i => i >= doc.Sections.Count);
-        if (SelectedGroup != null && !doc.Sections.Any(s => s.Group == SelectedGroup)) SelectedGroup = null;
-        if (EnteredGroup != null && !doc.Sections.Any(s => s.Group == EnteredGroup)) EnteredGroup = null;
+        if (SelectedGroup != null && !doc.Sections.Any(s => s.Groups.Contains(SelectedGroup))) SelectedGroup = null;
+        if (EnteredGroup != null && !doc.Sections.Any(s => s.Groups.Contains(EnteredGroup))) EnteredGroup = null;
         InvalidateVisual();
     }
 
@@ -223,13 +227,15 @@ public sealed class PanelCanvas : FrameworkElement
     public event Action? FreshChanged;
 
     /// <summary>今選んでいる計器を、位置ロックのために動かせないか（追加したばかりの計器だけを選んでいるなら動かせる）。</summary>
-    public bool EditLocked => PositionLocked && !(_fresh.Count > 0 && _set.Count > 0 && _set.All(_fresh.Contains));
+    public bool EditLocked => PositionLocked && (ForceLocked || !(_fresh.Count > 0 && _set.Count > 0 && _set.All(_fresh.Contains)));
+
+    /// <summary>位置ロックを固定する（追加したばかりの計器も動かさない。バリエーション編集モード）。</summary>
+    public bool ForceLocked { get; set; }
 
     /// <summary>1 つだけ選ぶ。</summary>
     public void Select(int section, bool raise = false)
     {
-        var g = GroupOf(section);
-        SetSelection(section, section >= 0 ? [section] : [], null, g != null && g == EnteredGroup ? g : null);
+        SetSelection(section, section >= 0 ? [section] : [], null, EnteredFor(section));
         if (raise) SelectionChanged?.Invoke(section);
     }
 
@@ -254,13 +260,54 @@ public sealed class PanelCanvas : FrameworkElement
         InvalidateVisual();
     }
 
+    /// <summary>
+    /// クリックで選ぶかたまりのグループ: 中に入ったグループの中なら、そのすぐ中のグループ（直下の計器なら null）。
+    /// 外なら、いちばん外のグループ（入っていなければ null）。
+    /// </summary>
     private string? GroupOf(int section) =>
-        Document != null && section >= 0 && section < Document.Sections.Count ? Document.Sections[section].Group : null;
+        Document != null && section >= 0 && section < Document.Sections.Count ? Document.UnitGroup(section, EnteredFor(section)) : null;
+
+    /// <summary>
+    /// 計器から見た「中に入ったグループ」: 中に入ったグループの中ならそのグループ、外なら、計器を含むそのグループの外側のグループ
+    /// （入れ子の中で隣のかたまりをクリックしても、外側のグループの中に入ったままにする）。どれにも入っていなければ null。
+    /// </summary>
+    private string? EnteredFor(int section)
+    {
+        if (EnteredGroup == null || Document == null || section < 0 || section >= Document.Sections.Count) return null;
+        var path = Document.Sections[section].Groups;
+        if (path.Contains(EnteredGroup)) return EnteredGroup;
+        var outer = Document.ParentPath(EnteredGroup);
+        for (int k = outer.Count - 1; k >= 0; k--) if (path.Contains(outer[k])) return outer[k];
+        return null;
+    }
+
+    /// <summary>計器が中に入ったグループ（かその外側のグループ）の中か。</summary>
+    private bool InEntered(int section) => EnteredFor(section) != null;
+
+    /// <summary>set のどれもが同じ「中に入ったグループ」の中なら、そのグループ（ただし set がちょうどそのグループ全部なら null）。</summary>
+    private string? CommonEntered(IReadOnlyList<int> set, string? exact)
+    {
+        if (set.Count == 0 || EnteredFor(set[0]) is not { } e || !set.All(i => EnteredFor(i) == e)) return null;
+        return exact == e ? Document!.ParentGroup(e) is { } p && set.All(i => Document.Sections[i].Groups.Contains(p)) ? p : null : e;
+    }
+
+    /// <summary>set がちょうどあるグループの計器全部なら、そのグループ（いちばん外側のもの）。</summary>
+    private string? ExactGroup(IReadOnlyCollection<int> set)
+    {
+        if (Document == null || set.Count == 0) return null;
+        foreach (var g in Document.Sections[set.First()].Groups)
+        {
+            var m = MembersOf(g);
+            if (m.Count == set.Count && m.All(set.Contains)) return g;
+        }
+        return null;
+    }
 
     private List<int> MembersOf(string group) => Document?.Members(group) ?? [];
 
     /// <summary>
-    /// パネル上のクリックで選ぶ。グループの計器なら最初はグループ全体、ダブルクリックでその 1 つ（グループの中に入る）。
+    /// パネル上のクリックで選ぶ。グループの計器なら最初はいちばん外のグループ全体、ダブルクリックでそのグループの中に入り、
+    /// すぐ中のかたまり（中のグループ、または計器 1 つ）を選ぶ（入れ子なら、ダブルクリックのたびに 1 つ内側へ）。
     /// Shift で選択に足す・外す。戻り値は当たった計器（なければ -1）。
     /// </summary>
     public int SelectAt(Point panel, bool doubleClick, bool shift)
@@ -273,25 +320,35 @@ public sealed class PanelCanvas : FrameworkElement
             return -1;
         }
         var g = GroupOf(hit);
+        bool inside = InEntered(hit);
         if (shift)
         {
-            var unit = g != null && g != EnteredGroup ? MembersOf(g) : [hit];
+            var unit = g != null ? MembersOf(g) : [hit];
             var set = _set.ToList();
             if (unit.All(set.Contains)) set.RemoveAll(unit.Contains); else set.AddRange(unit.Where(i => !set.Contains(i)));
             set.Sort();
             int primary = set.Contains(hit) ? hit : set.Count > 0 ? set[0] : -1;
-            string? grp = set.Count > 0 && set.Select(GroupOf).Distinct().Count() == 1 && GroupOf(set[0]) is { } only
-                && MembersOf(only).Count == set.Count ? only : null;
-            SetSelection(primary, set, grp, null);
+            var grp = ExactGroup(set);
+            SetSelection(primary, set, grp, CommonEntered(set, grp));
         }
         else if (doubleClick && g != null)
-            SetSelection(hit, [hit], null, g);                 // グループの中に入って 1 つだけ
-        else if (g != null && g == EnteredGroup)
-            SetSelection(hit, [hit], null, g);                 // 中に入ったまま別の計器
+        {
+            // そのグループの中に入り、すぐ中のかたまりを選ぶ
+            var inner = Document.UnitGroup(hit, g);
+            if (inner != null) SetSelection(hit, MembersOf(inner), inner, g);
+            else SetSelection(hit, [hit], null, g);
+        }
+        else if (inside)
+        {
+            // 中に入ったまま、別のかたまり（入れ子の中で隣のかたまりなら、それを含む外側のグループの中に入ったまま）
+            var e = EnteredFor(hit);
+            if (g != null) SetSelection(hit, MembersOf(g), g, e);
+            else SetSelection(hit, [hit], null, e);
+        }
         else if (_set.Count > 1 && _set.Contains(hit))
             SetSelection(hit, _set.ToList(), SelectedGroup, EnteredGroup); // 選んでいる全部をそのまま動かす
         else if (g != null)
-            SetSelection(hit, MembersOf(g), g, null);         // グループ全体
+            SetSelection(hit, MembersOf(g), g, null);         // いちばん外のグループ全体
         else
             SetSelection(hit, [hit], null, null);
         SelectionChanged?.Invoke(Selected);
@@ -314,16 +371,28 @@ public sealed class PanelCanvas : FrameworkElement
     public Point ToPanel(Point screen) => new((screen.X - _offset.X) / _zoom, (screen.Y - _offset.Y) / _zoom);
     public Point ToScreen(Point panel) => new(panel.X * _zoom + _offset.X, panel.Y * _zoom + _offset.Y);
 
+    /// <summary>
+    /// 全体を表示: [This] の表示範囲（Left・Top・Right・Bottom）が画面に収まるように拡大・移動する。
+    /// 表示範囲がなければ、使っている画像のいちばん大きな範囲（左上 0, 0 から）で。
+    /// </summary>
     public void FitAll()
     {
         if (Scene == null || ActualWidth < 10 || ActualHeight < 10) return;
-        var size = Scene.ContentSize;
-        double z = Math.Min(ActualWidth / size.Width, ActualHeight / size.Height) * 0.95;
+        var area = FitArea;
+        // まわりに余白を残す（右下の操作の案内・左上のボタンに重ならないよう、上下左右に 28px 以上）
+        const double margin = 28;
+        double z = Math.Min(Math.Max(10, ActualWidth - margin * 2) / area.Width, Math.Max(10, ActualHeight - margin * 2) / area.Height);
+        z = Math.Min(z, Math.Min(ActualWidth / area.Width, ActualHeight / area.Height) * 0.95);
         SetZoom(z);
-        _offset = new Vector((ActualWidth - size.Width * _zoom) / 2, (ActualHeight - size.Height * _zoom) / 2);
+        _offset = new Vector((ActualWidth - area.Width * _zoom) / 2 - area.X * _zoom, (ActualHeight - area.Height * _zoom) / 2 - area.Y * _zoom);
         InvalidateVisual();
         ViewChanged?.Invoke();
     }
+
+    /// <summary>「全体を表示」で収める範囲（パネルの座標）。</summary>
+    public Rect FitArea => Scene == null ? Rect.Empty
+        : Scene.ViewLimit is { IsEmpty: false, Width: > 0, Height: > 0 } v ? v
+        : new Rect(new Point(0, 0), Scene.ContentSize);
 
     public void ZoomAt(double zoom, Point screenAnchor)
     {
@@ -633,7 +702,7 @@ public sealed class PanelCanvas : FrameworkElement
         if (_hover >= 0 && !_set.Contains(_hover) && scene.ItemFor(_hover) is { } hv)
         {
             var hg = GroupOf(_hover);
-            if (hg != null && hg != EnteredGroup) GroupBox(dc, hg, HoverPen, Brushes.White, $"グループ: {hg}");
+            if (hg != null) GroupBox(dc, hg, HoverPen, Brushes.White, $"グループ: {hg}");
             else
             {
                 Poly(dc, hv.Outline(), HoverPen);
@@ -642,8 +711,8 @@ public sealed class PanelCanvas : FrameworkElement
         }
 
         // グループごとの選択・中に入ったグループの枠
+        if (EnteredGroup != null && EnteredGroup != SelectedGroup) GroupBox(dc, EnteredGroup, GroupInsidePen, GroupPen.Brush, $"グループ: {EnteredGroup} の中");
         if (SelectedGroup != null) GroupBox(dc, SelectedGroup, GroupPen, GroupPen.Brush, $"グループ: {SelectedGroup}（{MembersOf(SelectedGroup).Count}）");
-        else if (EnteredGroup != null) GroupBox(dc, EnteredGroup, GroupInsidePen, GroupPen.Brush, $"グループ: {EnteredGroup} の中");
 
         foreach (var idx in _set)
             if (idx != Selected && scene.ItemFor(idx) is { } other) Poly(dc, other.Outline(), SelPen);
@@ -845,6 +914,26 @@ public sealed class PanelCanvas : FrameworkElement
     /// <summary>確認用: パネルの点 p をクリックしたときに選ぶ計器（-1 = [This]）。</summary>
     public int HitForTest(Point p) => HitItem(p);
 
+    /// <summary>確認用: 画面の座標 from から to へドラッグする（押す・動かす・離す）。</summary>
+    public void DragForTest(Point from, Point to, MouseButton button)
+    {
+        PointerDown(from, button, 1);
+        PointerMove(new Point((from.X + to.X) / 2, (from.Y + to.Y) / 2));
+        PointerMove(to);
+        if (_drag != DragMode.None) FinishDrag(release: true);
+    }
+
+    /// <summary>確認用: ボタンを押して少し動かしたところ（離さない）。終えるときは EndDragForTest。</summary>
+    public void PressForTest(Point from, MouseButton button)
+    {
+        PointerDown(from, button, 1);
+        PointerMove(from + new Vector(10, 10));
+    }
+    public void EndDragForTest() { if (_drag != DragMode.None) FinishDrag(release: true); }
+
+    /// <summary>確認用: 表示のずれ（画面の座標）。</summary>
+    public Vector OffsetForTest => _offset;
+
     /// <summary>表示灯の画像の、パネルの点 p の所が透明でないか（画像がなければ false）。</summary>
     private bool OpaqueAt(RenderItem it, Point p)
     {
@@ -864,21 +953,28 @@ public sealed class PanelCanvas : FrameworkElement
     {
         base.OnMouseDown(e);
         Focus();
+        PointerDown(e.GetPosition(this), e.ChangedButton, e.ClickCount);
+    }
+
+    /// <summary>マウスのボタンを押した（sp は画面の座標）。</summary>
+    private void PointerDown(Point sp, MouseButton button, int clicks)
+    {
         if (Scene == null || Document == null) return;
-        var sp = e.GetPosition(this);
         var pp = ToPanel(sp);
         _dragStartScreen = sp;
         _dragStartPanel = pp;
         _dragStartOffset = _offset;
         _dragMoved = false;
 
-        if (e.ChangedButton is MouseButton.Middle or MouseButton.Right)
+        // 中・右ドラッグ、またはスペースを押しながら左ドラッグで表示を動かす
+        if (Space.IsPanButton(button))
         {
             _drag = DragMode.Pan;
+            Space.BeginPan();
             CaptureMouse();
             return;
         }
-        if (e.ChangedButton != MouseButton.Left) return;
+        if (button != MouseButton.Left) return;
 
         // Ctrl＋ドラッグ: 位置ではなく、その計器の値（状態量）を動かしてプレビューする。ロック中でも使える
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
@@ -933,7 +1029,7 @@ public sealed class PanelCanvas : FrameworkElement
             ActivePoint = PanelPoint.None;
         }
 
-        int hit = SelectAt(pp, e.ClickCount >= 2, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        int hit = SelectAt(pp, clicks >= 2, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         if (hit >= 0)
         {
             if (EditLocked || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
@@ -970,8 +1066,9 @@ public sealed class PanelCanvas : FrameworkElement
         var result = new List<int>();
         foreach (var i in inside.Order())
         {
+            // 中に入ったグループの中ならすぐ中のかたまり、外ならいちばん外のグループを、丸ごと囲んだときだけ選ぶ
             var g = GroupOf(i);
-            if (g == null || g == EnteredGroup) { result.Add(i); continue; }
+            if (g == null) { result.Add(i); continue; }
             var m = MembersOf(g);
             if (m.All(inside.Contains) && !result.Contains(i)) result.AddRange(m.Where(x => !result.Contains(x)));
         }
@@ -983,9 +1080,8 @@ public sealed class PanelCanvas : FrameworkElement
         }
         else
         {
-            var groups = result.Select(GroupOf).Distinct().ToList();
-            string? grp = groups.Count == 1 && groups[0] is { } only && MembersOf(only).Count == result.Count ? only : null;
-            SetSelection(result[0], result, grp, grp == null && EnteredGroup != null && result.All(i => GroupOf(i) == EnteredGroup) ? EnteredGroup : null);
+            var grp = ExactGroup(result);
+            SetSelection(result[0], result, grp, CommonEntered(result, grp));
         }
         SelectionChanged?.Invoke(Selected);
     }
@@ -1015,8 +1111,13 @@ public sealed class PanelCanvas : FrameworkElement
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+        PointerMove(e.GetPosition(this));
+    }
+
+    /// <summary>マウスを動かした（sp は画面の座標）。</summary>
+    private void PointerMove(Point sp)
+    {
         if (Scene == null || Document == null) return;
-        var sp = e.GetPosition(this);
         var pp = ToPanel(sp);
         PanelMouseMove?.Invoke(pp);
 
@@ -1024,7 +1125,8 @@ public sealed class PanelCanvas : FrameworkElement
         {
             int h = HitItem(pp);
             if (h != _hover) { _hover = h; InvalidateVisual(); }
-            Cursor = h >= 0 && Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ? Cursors.SizeNS
+            Cursor = Space.Held || Space.Panning ? SpacePan.Cursor
+                : h >= 0 && Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ? Cursors.SizeNS
                 : EditLocked && !(h >= 0 && _fresh.Contains(h) && _set.Contains(h)) ? (h >= 0 ? Cursors.Hand : Cursors.Arrow)
                 : RadiusGroup().Count > 0 && Scene.ItemFor(Selected) is { } s && Near(sp, RadiusHandle(s))
                 ? Cursors.SizeNS : h >= 0 ? Cursors.SizeAll : Cursors.Arrow;
@@ -1166,7 +1268,7 @@ public sealed class PanelCanvas : FrameworkElement
             return;
         }
         if (_dragMoved && mode is not (DragMode.Pan or DragMode.Blocked) && Selected >= 0) EditCommitted?.Invoke(Selected);
-        if (mode == DragMode.Pan) ViewChanged?.Invoke();
+        if (mode == DragMode.Pan) { Space.EndPan(); ViewChanged?.Invoke(); }
     }
 
     protected override void OnMouseLeave(MouseEventArgs e)

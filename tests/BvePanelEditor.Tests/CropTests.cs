@@ -159,7 +159,7 @@ public sealed class CropTests : IDisposable
         Assert.Same(back.Sections[1], back.MainPanel);
         Assert.True(back.HasCropLink);
         Assert.Empty(back.GroupWarnings);
-        Assert.DoesNotContain(back.DuplicateGroup("灯", "灯 のコピー", 1, 1), i => back.Sections[i].CropSet != null);
+        Assert.DoesNotContain(back.DuplicateGroup("灯", "灯 のコピー", 1, 1).Indices, i => back.Sections[i].CropSet != null);
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
@@ -112,8 +112,12 @@ public sealed class CropCanvas : FrameworkElement
     private static readonly Brush Back = Freeze(new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2E)));
     private static T Freeze<T>(T f) where T : Freezable { f.Freeze(); return f; }
 
+    /// <summary>スペースキーを押しながら左ドラッグで表示を動かす。</summary>
+    public SpacePan Space { get; }
+
     public CropCanvas()
     {
+        Space = new SpacePan(this);
         Focusable = true;
         ClipToBounds = true;
     }
@@ -226,7 +230,7 @@ public sealed class CropCanvas : FrameworkElement
         _startOffset = _offset;
         _moved = false;
         CaptureMouse();
-        if (e.ChangedButton is MouseButton.Right or MouseButton.Middle) { _mode = Mode.Pan; return; }
+        if (Space.IsPanButton(e.ChangedButton)) { _mode = Mode.Pan; Space.BeginPan(); return; }
         if (e.ChangedButton != MouseButton.Left) { _mode = Mode.None; ReleaseMouseCapture(); return; }
 
         if (_overlayMode)
@@ -319,6 +323,7 @@ public sealed class CropCanvas : FrameworkElement
         var mode = _mode;
         _mode = Mode.None;
         ReleaseMouseCapture();
+        Space.EndPan();
         switch (mode)
         {
             case Mode.Draw:
@@ -359,6 +364,7 @@ public sealed class CropCanvas : FrameworkElement
     protected override void OnLostMouseCapture(MouseEventArgs e)
     {
         base.OnLostMouseCapture(e);
+        Space.EndPan();
         if (_mode is Mode.Move or Mode.Resize && _moved) { _mode = Mode.None; RegionsChanged?.Invoke(); }
         if (_mode == Mode.OverlayMove) { _mode = Mode.None; OverlayDragFinished?.Invoke(_moved ? _odx : 0, _moved ? _ody : 0); _odx = _ody = 0; }
         _mode = Mode.None;

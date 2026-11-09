@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -153,7 +153,7 @@ public sealed class CoverWindow : Window
         side.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.DimGray, Margin = new Thickness(0, 4, 0, 8),
-            Text = "丸: 中をドラッグで移動、黄色い四角のドラッグか ＋／－ キーで大きさ。\n楕円: 右の四角で横、下の四角で縦の大きさ（＋／－ キーは両方）。\n多角形: クリックで点を足し、最初の点のクリック・ダブルクリック・Enter で閉じる（Esc でやめる、BackSpace で 1 点戻す）。点はドラッグで動かせます。\n選んだ形は矢印キーで 1px（Shift で 10px）動き、Delete で消えます。右ドラッグで表示の移動、ホイールで拡大。",
+            Text = "丸: 中をドラッグで移動、黄色い四角のドラッグか ＋／－ キーで大きさ。\n楕円: 右の四角で横、下の四角で縦の大きさ（＋／－ キーは両方）。\n多角形: クリックで点を足し、最初の点のクリック・ダブルクリック・Enter で閉じる（Esc でやめる、BackSpace で 1 点戻す）。点はドラッグで動かせます。\n選んだ形は矢印キーで 1px（Shift で 10px）動き、Delete で消えます。スペースを押しながら左ドラッグ（または右・中ドラッグ）で表示の移動、ホイールで拡大。",
         });
 
         side.Children.Add(Header("名前"));
@@ -351,8 +351,14 @@ public sealed class CoverCanvas : FrameworkElement
     private static readonly Brush Back = Freeze(new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2E)));
     private static T Freeze<T>(T f) where T : Freezable { f.Freeze(); return f; }
 
+    /// <summary>スペースキーを押しながら左ドラッグで表示を動かす。</summary>
+    public SpacePan Space { get; }
+
     public CoverCanvas()
     {
+        Space = new SpacePan(this);
+        // 離したら、多角形を描いている途中なら十字に戻す
+        Space.Changed += () => { if (!Space.Held && _poly != null) Cursor = Cursors.Cross; };
         Focusable = true;
         ClipToBounds = true;
     }
@@ -552,7 +558,7 @@ public sealed class CoverCanvas : FrameworkElement
         _startPanel = ToPanel(_startScreen);
         _startOffset = _offset;
         _moved = false;
-        if (e.ChangedButton is MouseButton.Right or MouseButton.Middle) { _mode = Mode.Pan; CaptureMouse(); return; }
+        if (Space.IsPanButton(e.ChangedButton)) { _mode = Mode.Pan; Space.BeginPan(); CaptureMouse(); return; }
         if (e.ChangedButton != MouseButton.Left) return;
 
         if (_poly != null)
@@ -601,7 +607,7 @@ public sealed class CoverCanvas : FrameworkElement
         if (_mode == Mode.None)
         {
             int ha = HandleAt(sp);
-            Cursor = ha == 2 ? Cursors.SizeNS : ha >= 0 ? Cursors.SizeWE : Hit(ToPanel(sp)) != null ? Cursors.SizeAll : null;
+            Cursor = Space.Held || Space.Panning ? SpacePan.Cursor : ha == 2 ? Cursors.SizeNS : ha >= 0 ? Cursors.SizeWE : Hit(ToPanel(sp)) != null ? Cursors.SizeAll : null;
             return;
         }
         if ((sp - _startScreen).Length > 2) _moved = true;
@@ -655,6 +661,7 @@ public sealed class CoverCanvas : FrameworkElement
         var mode = _mode;
         _mode = Mode.None;
         ReleaseMouseCapture();
+        Space.EndPan();
         if (mode != Mode.Pan && _moved) ShapesChanged?.Invoke();
         InvalidateVisual();
     }
@@ -662,6 +669,7 @@ public sealed class CoverCanvas : FrameworkElement
     protected override void OnLostMouseCapture(MouseEventArgs e)
     {
         base.OnLostMouseCapture(e);
+        Space.EndPan();
         if (_mode is Mode.Move or Mode.Radius or Mode.Vertex && _moved) ShapesChanged?.Invoke();
         _mode = Mode.None;
     }

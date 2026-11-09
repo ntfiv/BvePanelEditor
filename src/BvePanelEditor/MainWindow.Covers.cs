@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using BvePanelEditor.Core;
 using BvePanelEditor.Core.Crop;
@@ -17,7 +17,7 @@ public partial class MainWindow
     {
         if (_doc == null) return [];
         // グループごと選んでいるときは、その中身（組で置いた針など）
-        var sel = _selGroup != null ? Enumerable.Range(0, _doc.Sections.Count).Where(i => _doc.Sections[i].Group == _selGroup).ToList()
+        var sel = _selGroup != null ? _doc.Members(_selGroup)
             : _selSet.Count > 0 ? _selSet : _selected >= 0 ? [_selected] : [];
         if (sel.Count == 0 || sel.Any(i => i < 0 || i >= _doc.Sections.Count || _doc.Sections[i].Kind != SectionKind.Needle)) return [];
         if (!PanelValues.TryPoint(_doc.Sections[sel[0]].Get("Location"), out var x, out var y)) return [];
@@ -32,7 +32,7 @@ public partial class MainWindow
     /// <summary>左上の「蓋を作る」ボタンを、指針を選んでいるときだけ出す。</summary>
     private void UpdateCoverButton()
     {
-        CoverButton.Visibility = CoverTargets().Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        CoverButton.Visibility = !_variationMode && CoverTargets().Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnMakeCover(object? sender, RoutedEventArgs? e)
@@ -177,7 +177,8 @@ public partial class MainWindow
         if (sec.CropSet != null) sec.CropShapes.AddRange(r.Shapes.Select(s => s.Offset(-rect.Left, -rect.Top)));
 
         int at = targets.Max() + 1;
-        if (_doc.Sections[targets.Max()].Group is { } g) sec.Group = g; // 針と同じグループに入れる
+        sec.SetGroups(_doc.Sections[targets.Max()].Groups); // 針と同じグループに入れる
+        sec.VariationCond = _doc.Sections[targets.Max()].VariationCond; // 針と同じバリエーションに入れる
         _doc.Sections.Insert(at, sec);
         CommitModel();
         _cache.Clear();

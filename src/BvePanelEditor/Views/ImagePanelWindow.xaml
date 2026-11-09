@@ -223,7 +223,7 @@
                     <ComboBox x:Name="ViewCombo" Width="220" SelectionChanged="OnViewChanged" />
                     <Button Content="全体を表示" Padding="6,2" Margin="8,0,0,0" Click="OnFit" />
                     <TextBlock x:Name="CoordText" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="Gray"
-                               Text="ホイールで拡大・縮小、右ドラッグで移動、つまみで大きさ、矢印キーで 1px（Shift で 10px）" />
+                               Text="ホイールで拡大・縮小、スペース＋ドラッグ（または右ドラッグ）で移動、つまみで大きさ、矢印キーで 1px（Shift で 10px）" />
                 </DockPanel>
                 <r:CropCanvas x:Name="Canvas" />
             </DockPanel>

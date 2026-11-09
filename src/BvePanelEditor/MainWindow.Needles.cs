@@ -56,6 +56,7 @@ public partial class MainWindow
                 if (n.TransparentColor != null) sec.Set("TransparentColor", n.TransparentColor);
                 // StopPin は書式 2.01 で足されたキーだが、ヘッダが 2.00 でも BVE（5.8 以降・6）は読む
                 if (n.StopPin) sec.Set("StopPin", "True");
+                JoinViewVariation(sec);
                 _doc.Sections.Add(sec);
                 added.Add(_doc.Sections.Count - 1);
             }

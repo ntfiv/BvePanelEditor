@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Input;
 using BvePanelEditor.Core;
 
@@ -52,11 +52,24 @@ public partial class MainWindow
         if (_doc == null || (sender as FrameworkElement)?.DataContext is not ElementRow row) return;
         // 目のクリックは選択を変えない
         e.Handled = true;
+        // バリエーションを表示している間は、そのバリエーションに入れる・外す
+        if (_viewVariation != null)
+        {
+            ToggleMembership(row.IsHeader ? _doc.Members(row.GroupName) : row.Index >= 0 ? [row.Index] : [], _viewVariation);
+            return;
+        }
         if (row.IsHeader) ToggleHidden(_doc.Members(row.GroupName));
         else if (row.Index >= 0) ToggleHidden([row.Index]);
     }
 
-    private void OnToggleHiddenMenu(object? sender, RoutedEventArgs? e) => ToggleHidden(HiddenTargets());
+    private void OnToggleHiddenMenu(object? sender, RoutedEventArgs? e) => ToggleHiddenOrMembership();
+
+    /// <summary>Ctrl+H・右クリックの「非表示」: バリエーションを表示中なら、目のマークと同じく、そのバリエーションに入れる・外す。</summary>
+    private void ToggleHiddenOrMembership()
+    {
+        if (_viewVariation != null) ToggleMembership(HiddenTargets(), _viewVariation);
+        else ToggleHidden(HiddenTargets());
+    }
 
     // ---- BVE でも非表示（コメントアウト） ----
 

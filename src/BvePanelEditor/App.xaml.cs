@@ -67,6 +67,11 @@ public partial class App : Application
         string[]? digitimporttest = null;
         string? crashtest = null;
         string[]? listordertest = null;
+        string[]? spacepantest = null;
+        string[]? memtest = null;
+        string[]? variationtest = null;
+        string[]? variationimport = null;
+        string[]? grouptest = null;
         string[]? disabledtest = null;
         string[]? tiltshot = null;
         string[]? assigntest = null;
@@ -93,6 +98,11 @@ public partial class App : Application
             else if (e.Args[i] == "--tiltshot" && i + 2 < e.Args.Length) { tiltshot = e.Args[(i + 1)..(i + 3)]; i += 2; }
             else if (e.Args[i] == "--disabledtest" && i + 3 < e.Args.Length) { disabledtest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--listordertest" && i + 3 < e.Args.Length) { listordertest = e.Args[(i + 1)..(i + 4)]; i += 3; }
+            else if (e.Args[i] == "--spacepantest" && i + 2 < e.Args.Length) { spacepantest = e.Args[(i + 1)..(i + 3)]; i += 2; }
+            else if (e.Args[i] == "--memtest" && i + 3 < e.Args.Length) { memtest = e.Args[(i + 1)..(i + 4)]; i += 3; }
+            else if (e.Args[i] == "--variationtest" && i + 3 < e.Args.Length) { variationtest = e.Args[(i + 1)..(i + 4)]; i += 3; }
+            else if (e.Args[i] == "--variationimport" && i + 4 < e.Args.Length) { variationimport = e.Args[(i + 1)..]; i = e.Args.Length; }
+            else if (e.Args[i] == "--grouptest" && i + 3 < e.Args.Length) { grouptest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--crashtest" && i + 1 < e.Args.Length) crashtest = e.Args[++i];
             else if (e.Args[i] == "--digitimporttest" && i + 3 < e.Args.Length) { digitimporttest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--trashtest" && i + 2 < e.Args.Length) { trashtest = e.Args[(i + 1)..(i + 3)]; i += 2; }
@@ -136,6 +146,16 @@ public partial class App : Application
             w.Dispatcher.BeginInvoke(() => w.RunTiltShot(ts[0], ts[1]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (disabledtest is { } dst)
             w.Dispatcher.BeginInvoke(() => w.RunDisabledTest(dst[0], dst[1], dst[2]), System.Windows.Threading.DispatcherPriority.ContextIdle);
+        if (grouptest is { } grouptestA)
+            w.Dispatcher.BeginInvoke(() => w.RunGroupTest(grouptestA[0], grouptestA[1], grouptestA[2]), System.Windows.Threading.DispatcherPriority.ContextIdle);
+        if (variationimport is { } vi)
+            w.Dispatcher.BeginInvoke(() => w.RunVariationImport(vi[0], vi[1], vi[2], vi[3..]), System.Windows.Threading.DispatcherPriority.ContextIdle);
+        if (variationtest is { } vt)
+            w.Dispatcher.BeginInvoke(() => w.RunVariationTest(vt[0], vt[1], vt[2]), System.Windows.Threading.DispatcherPriority.ContextIdle);
+        if (memtest is { } mt)
+            w.Dispatcher.BeginInvoke(() => w.RunMemTest(mt[0], mt[1], mt[2]), System.Windows.Threading.DispatcherPriority.ContextIdle);
+        if (spacepantest is { } spt)
+            w.Dispatcher.BeginInvoke(() => w.RunSpacePanTest(spt[0], spt[1]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (listordertest is { } lot)
             w.Dispatcher.BeginInvoke(() => w.RunListOrderTest(lot[0], lot[1], lot[2]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (crashtest != null)
