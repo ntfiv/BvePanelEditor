@@ -5,9 +5,9 @@
 
 BVE Trainsim 5 / 6 の運転台パネルファイル（`BveTs Instrument Panel 2.00 / 2.01`）を、画面で見ながら編集するツールです。画像を読みこんで部品を作ることもできます。
 
-- 版: **0.1α**（試験版です。大事なパネルは、コピーをとってから使ってください）
+- 版: **0.2α**（試験版です。大事なパネルは、コピーをとってから使ってください）
 - ライセンス: MIT License（[LICENSE](LICENSE)）。使っているライブラリ・同梱素材は [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)
-- ダウンロード: [Releases](https://github.com/ntfiv/BvePanelEditor/releases) の `BvePanelEditor-0.1alpha-win-x64.zip`（標準の針・サンプルはこちらに入っています。このリポジトリのソースには入っていません）
+- ダウンロード: [Releases](https://github.com/ntfiv/BvePanelEditor/releases) の `BvePanelEditor-0.2alpha-win-x64.zip`（標準の針・サンプルはこちらに入っています。このリポジトリのソースには入っていません）
 
 ## 動作環境
 
