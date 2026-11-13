@@ -426,6 +426,8 @@
                             <WrapPanel Margin="0,4,0,0">
                                 <Button Content="値をリセット" Padding="6,2" Margin="0,0,4,0" Click="OnResetState" />
                                 <Button Content="すべて最大" Padding="6,2" Click="OnMaxState" />
+                                <Button Content="針を止める" Padding="6,2" Margin="4,0,0,0" Click="OnStopNeedles"
+                                        ToolTip="減衰比が 0 の針など、揺れ続ける針を今の値の角度で止めます" />
                             </WrapPanel>
                             <Separator Margin="0,6,0,2" />
                             <TextBlock x:Name="SelectedStateText" TextWrapping="Wrap" FontSize="11" Foreground="DimGray" Margin="0,0,0,4"

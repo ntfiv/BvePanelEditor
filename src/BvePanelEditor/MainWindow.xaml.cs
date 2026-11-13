@@ -1484,6 +1484,9 @@ public partial class MainWindow : Window
         _states.SetAll(r => r.Max);
     }
 
+    /// <summary>揺れ続ける針を、今の値の角度で止める。</summary>
+    private void OnStopNeedles(object sender, RoutedEventArgs e) => Canvas.StopNeedles();
+
     // ================= 確認用 =================
 
     /// <summary>確認用: 番号のオブジェクトを選ぶ（グループのオブジェクトならグループごと）。</summary>
