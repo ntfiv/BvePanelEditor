@@ -85,6 +85,95 @@ public static class VariationMerge
         return string.Join("\n", parts);
     }
 
+    /// <summary>キーごとの値（表示用キー名・元の書き方・比べる用に正規化した値）。重複したキーは最初のもの。</summary>
+    private static Dictionary<string, (string Orig, string Raw, string Norm)> ValuesOf(PanelSection s)
+    {
+        var imageKeys = PanelSpec.For(s.Kind).Where(k => k.Type == KeyType.Image).Select(k => k.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var subjectKeys = PanelSpec.For(s.Kind).Where(k => k.Type == KeyType.Subject).Select(k => k.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var d = new Dictionary<string, (string, string, string)>();
+        foreach (var l in s.Lines)
+            if (l.Kind == PanelLineKind.KeyValue)
+                d.TryAdd(l.Key.Trim().ToLowerInvariant(), (l.Key.Trim(), l.Value.Trim(), NormalizeValue(l.Key.Trim(), l.Value, imageKeys, subjectKeys)));
+        return d;
+    }
+
+    /// <summary>値比べの組分け（セクションの種類・名前・キーの顔ぶれ・不明な行。値と無効かどうかは含めない）。</summary>
+    private static string ShapeKey(PanelSection s)
+    {
+        var keys = s.Lines.Where(l => l.Kind == PanelLineKind.KeyValue).Select(l => l.Key.Trim().ToLowerInvariant()).Distinct().OrderBy(x => x, StringComparer.Ordinal);
+        var unk = s.Lines.Where(l => l.Kind == PanelLineKind.Unknown).Select(l => System.Text.RegularExpressions.Regex.Replace(l.Raw.Trim(), @"\s+", " "));
+        return s.Name.Trim().ToLowerInvariant() + "\n#名前:" + s.Title.Trim() + "\n" + string.Join("\n", keys) + "\n" + string.Join("\n", unk);
+    }
+
+    /// <summary>知らせでオブジェクトを指す名前（名前があれば「名前 [種類]」、なければ種類と状態量）。</summary>
+    private static string Label(PanelSection s)
+    {
+        if (!string.IsNullOrWhiteSpace(s.Title)) return $"{s.Title.Trim()} [{s.Name.Trim()}]";
+        var v = ValuesOf(s);
+        var hint = v.TryGetValue("subject", out var sub) ? sub.Raw : v.Values.FirstOrDefault(x => !string.IsNullOrEmpty(x.Raw)).Raw;
+        return string.IsNullOrEmpty(hint) ? $"[{s.Name.Trim()}]" : $"[{s.Name.Trim()}]（{hint}）";
+    }
+
+    /// <summary>分かれたオブジェクトの知らせ（載せるセクションの位置・短い文・詳しい文）。</summary>
+    public sealed record NearMissNote(int Section, string Text, string Detail);
+
+    /// <summary>
+    /// マスターの中で、並び位置や値の違いで分かれているオブジェクトを探す。
+    /// 各オブジェクトの入るバリエーションは条件（; @group）から求めるので、取り込み直後のマスターでも、手で作ったマスターでも同じように見つかる。
+    /// </summary>
+    public static List<NearMissNote> FindNearMisses(PanelDocument doc)
+    {
+        var names = doc.VariationNames;
+        if (names.Count < 2) return [];
+        var items = doc.Sections.Select((s, i) => (Sec: s, Members: new HashSet<int>(Enumerable.Range(0, names.Count).Where(j => s.InVariation(names[j]))), Pos: i)).ToList();
+        return DetectNearMisses(items, names);
+    }
+
+    private static List<NearMissNote> DetectNearMisses(IReadOnlyList<(PanelSection Sec, HashSet<int> Members, int Pos)> items, IReadOnlyList<string> names)
+    {
+        var all = new HashSet<int>(Enumerable.Range(0, names.Count));
+        bool Partial(HashSet<int> m) => !m.SetEquals(all);
+        string MemberNames(HashSet<int> m) => string.Join("・", names.Where((_, i) => m.Contains(i)));
+        var found = new List<NearMissNote>();
+        // 内容は同じで、並び位置が違うために分かれたもの
+        foreach (var g in items.Where(m => m.Sec.Kind != SectionKind.This).GroupBy(m => Key(m.Sec)))
+        {
+            var list = g.ToList();
+            if (list.Count >= 2 && list.Any(m => Partial(m.Members)) && list.Zip(list.Skip(1)).Any(p => p.Second.Pos - p.First.Pos <= 2))
+                found.Add(new NearMissNote(list[0].Pos,
+                    $"『{Label(list[0].Sec)}』は内容が同じオブジェクトが {list.Count} つに分かれています",
+                    "並び位置の違いで分かれています。元のパネル同士で並びをそろえてから取り込むと 1 つにまとめられます。1 つにまとめると、書き出しの並びはマスターの並びにそろいます"));
+        }
+        // 名前とキーの顔ぶれが同じで、値が違うために分かれたもの
+        foreach (var g in items.Where(m => m.Sec.Kind != SectionKind.This && !string.IsNullOrWhiteSpace(m.Sec.Title)).GroupBy(m => ShapeKey(m.Sec)))
+        {
+            var list = g.ToList();
+            if (list.Count < 2 || !list.Any(m => Partial(m.Members))) continue;
+            var reps = list.GroupBy(m => Key(m.Sec)).Select(x => x.First()).ToList(); // 同じ中身同士は並びの話なので 1 つに数える
+            if (reps.Count < 2) continue;
+            // 状態量（Subject）と画像が違うものは、別のオブジェクトとして作られているので知らせない
+            var identity = PanelSpec.For(reps[0].Sec.Kind).Where(k => k.Type is KeyType.Subject or KeyType.Image).Select(k => k.Name.ToLowerInvariant()).ToHashSet();
+            var repValues = reps.Select(r => ValuesOf(r.Sec)).ToList();
+            if (identity.Any(k => repValues.Select(v => v.TryGetValue(k, out var x) ? x.Norm : null).Distinct().Count() > 1)) continue;
+            var (a, b) = (reps[0], reps[1]);
+            var diffs = new List<string>();
+            if (a.Sec.Disabled != b.Sec.Disabled) diffs.Add("片方は行頭の「;」で無効化されています");
+            var av = ValuesOf(a.Sec); var bv = ValuesOf(b.Sec);
+            foreach (var k in av.Keys.Union(bv.Keys))
+            {
+                av.TryGetValue(k, out var x); bv.TryGetValue(k, out var y);
+                if (x.Norm == y.Norm) continue;
+                diffs.Add($"{(x.Orig ?? y.Orig)}: {MemberNames(a.Members)}={x.Raw ?? "（なし）"} / {MemberNames(b.Members)}={y.Raw ?? "（なし）"}");
+                if (diffs.Count >= 4) break;
+            }
+            if (diffs.Count == 0) continue;
+            found.Add(new NearMissNote(a.Pos,
+                $"『{Label(a.Sec)}』は値の違いで {list.Count} つに分かれています",
+                $"{string.Join("、", diffs)}。1 つにまとめると片方の値で書き出され、見た目が変わる可能性があります。それぞれのオブジェクトを選んで値を確認してください"));
+        }
+        return found;
+    }
+
     public static VariationMergeResult Merge(IReadOnlyList<VariationSource> sources, string masterPath)
     {
         if (sources.Count == 0) throw new ArgumentException("取り込むパネルがありません", nameof(sources));

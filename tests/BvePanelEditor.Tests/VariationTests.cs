@@ -162,6 +162,81 @@ public sealed class VariationTests : IDisposable
     /// BVE_VARIATION_MASTERS（; 区切り）を設定したときだけ動く。「; @group」の印の付いたマスターを読み（読み取りのみ）、
     /// そのまま書くと元と同じになり、印の読み間違いがないことを確かめる。
     /// </summary>
+    static string LampAt(string name, string loc) =>
+        $"\r\n;{name}\r\n[PilotLamp]\r\nSubject = ats\r\nLocation = {loc}\r\nDaytimeImage = a.png\r\n";
+
+    [Fact]
+    public void NearMissValueDifferenceIsReported()
+    {
+        // 同じ名前・同じキーの顔ぶれで、値だけが違う: 分けたまま、マスターから検出して知らせる（取り込みの知らせには混ぜない）
+        var a = Path.Combine(_dir, "a.txt"); var b = Path.Combine(_dir, "b.txt");
+        File.WriteAllText(a, Head + LampAt("速度計", "0, 0"));
+        File.WriteAllText(b, Head + LampAt("速度計", "10, 0"));
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Equal(2, r.Master.Sections.Count(s => s.Title == "速度計")); // まとめ方は変えない
+        Assert.DoesNotContain(r.Notes, n => n.Contains("分かれ"));
+        var near = VariationMerge.FindNearMisses(r.Master);
+        Assert.Contains(near, n => n.Text.Contains("値の違い") && n.Detail.Contains("Location") && n.Detail.Contains("10, 0"));
+    }
+
+    [Fact]
+    public void NearMissOrderDifferenceIsReported()
+    {
+        // 中身は同じで、並びが入れ替わっている: 片方が 2 つに分かれ、マスターから検出できる
+        var a = Path.Combine(_dir, "a.txt"); var b = Path.Combine(_dir, "b.txt");
+        File.WriteAllText(a, Head + Lamp("X", "sx") + Lamp("Y", "sy"));
+        File.WriteAllText(b, Head + Lamp("Y", "sy") + Lamp("X", "sx"));
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Contains(VariationMerge.FindNearMisses(r.Master), n => n.Detail.Contains("並び位置"));
+    }
+
+    [Fact]
+    public void NearMissNotReportedForOrdinaryPanels()
+    {
+        // 名前のない別々の表示灯（よくある形）と、同じ表示灯が 2 つある場合では知らせない
+        var a = Path.Combine(_dir, "a.txt"); var b = Path.Combine(_dir, "b.txt");
+        const string untitled = "\r\n[PilotLamp]\r\nSubject = s1\r\nLocation = 0, 0\r\nDaytimeImage = a.png\r\n"
+            + "\r\n[PilotLamp]\r\nSubject = s2\r\nLocation = 9, 9\r\nDaytimeImage = b.png\r\n";
+        File.WriteAllText(a, Head + untitled);
+        File.WriteAllText(b, Head + untitled);
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Empty(VariationMerge.FindNearMisses(r.Master));
+        File.WriteAllText(a, Head + Lamp("同", "s") + Lamp("同", "s"));
+        File.WriteAllText(b, Head + Lamp("同", "s") + Lamp("同", "s"));
+        r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Empty(VariationMerge.FindNearMisses(r.Master));
+        // バリエーションのない普通のパネルでは探さない
+        Assert.Empty(VariationMerge.FindNearMisses(PanelDocument.Parse(Head + Lamp("X", "sx"))));
+    }
+
+    [Fact]
+    public void NearMissNotReportedForDesignedDifferences()
+    {
+        // 状態量が違うものは、別のオブジェクトとして作られているので知らせない
+        var a = Path.Combine(_dir, "a.txt"); var b = Path.Combine(_dir, "b.txt");
+        File.WriteAllText(a, Head + "\r\n;速度計\r\n[PilotLamp]\r\nSubject = ats1\r\nLocation = 0, 0\r\nDaytimeImage = a.png\r\n");
+        File.WriteAllText(b, Head + "\r\n;速度計\r\n[PilotLamp]\r\nSubject = ats2\r\nLocation = 0, 0\r\nDaytimeImage = a.png\r\n");
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Empty(VariationMerge.FindNearMisses(r.Master));
+        // 同じ内容でも、マスターの中で遠くに分かれたものは知らせない（前後のオブジェクトが違うための合わせ込みの都合）
+        var text = "BveTs Instrument Panel 2.00\r\n;@バリエーション: A = a.txt\r\n;@バリエーション: B = b.txt\r\n\r\n[This]\r\nResolution = 1024\r\n"
+            + "\r\n; @group A" + LampAt("同じ", "0, 0") + "; @end\r\n"
+            + Lamp("a1", "s1") + Lamp("a2", "s2") + Lamp("a3", "s3")
+            + "\r\n; @group B" + LampAt("同じ", "0, 0") + "; @end\r\n";
+        Assert.Empty(VariationMerge.FindNearMisses(PanelDocument.Parse(text)));
+    }
+
+    [Fact]
+    public void NearMissFoundInHandMadeMaster()
+    {
+        // 手で書いたマスターでも、条件から入るバリエーションを求めて検出できる
+        var text = "BveTs Instrument Panel 2.00\r\n;@バリエーション: A = a.txt\r\n;@バリエーション: B = b.txt\r\n\r\n[This]\r\nResolution = 1024\r\n"
+            + "\r\n; @group A" + LampAt("速度計", "0, 0") + "; @end\r\n"
+            + "\r\n; @group B" + LampAt("速度計", "10, 0") + "; @end\r\n";
+        var near = VariationMerge.FindNearMisses(PanelDocument.Parse(text));
+        Assert.Contains(near, n => n.Text.Contains("値の違い") && n.Section > 0);
+    }
+
     [Fact]
     public void RealMastersRoundTrip()
     {
