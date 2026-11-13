@@ -420,10 +420,14 @@ public partial class MainWindow : Window
                     "文字コード", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
                 return false;
         }
+        bool madeBak = false;
         try
         {
             if (File.Exists(path) && _backedUp.Add(path))
+            {
                 File.Copy(path, path + ".bak", overwrite: true);
+                madeBak = true;
+            }
             AtomicFile.WriteAllBytes(path, bytes);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -438,7 +442,7 @@ public partial class MainWindow : Window
         if (moved) { _cache.Clear(); RebuildAll(); }
         AddRecent(_path); // 画像から作ったばかりのパネルも、保存したら最近使ったファイルに入れる
         if (_doc != null && _doc.CropSets.Count > 0) RememberCropPanel(_path);
-        Message($"保存しました（{enc.WebName}）。初回の保存では元のファイルを .bak に残しています" + WriteDirtyRag());
+        Message($"保存しました（{enc.WebName}）" + (madeBak ? "。元のファイルを .bak に残しました" : "") + WriteDirtyRag());
         UpdateTitle();
         return true;
     }
@@ -1113,6 +1117,31 @@ public partial class MainWindow : Window
     // レイヤー順のときは ↑↓ でレイヤーを上げ下げする（一覧の上ほど手前なので、↑ = レイヤーを上げる）
     private void OnAbout(object sender, RoutedEventArgs e) => new AboutWindow(this).ShowDialog();
 
+    /// <summary>同梱の説明書があればそれをメモ帳で、なければ公開ページをブラウザで開く。</summary>
+    private void OnHelpDocs(object sender, RoutedEventArgs e)
+    {
+        foreach (var rel in new[] { "docs/はじめにお読みください.txt", "はじめにお読みください.txt" })
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, rel);
+            if (!File.Exists(path)) continue;
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("notepad.exe", $"\"{path}\"") { UseShellExecute = true }); return; }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { Warn($"説明書を開けませんでした:\n{ex.Message}"); return; }
+        }
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/ntfiv/BvePanelEditor") { UseShellExecute = true }); }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { Warn($"ブラウザを開けませんでした:\n{ex.Message}"); }
+    }
+
+    private void OnShortcutList(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(this,
+            "Ctrl+N\t新しいパネルを作る\nCtrl+O\tパネルを開く\nCtrl+S\t上書き保存\nCtrl+Shift+S\t名前を付けて保存\n"
+            + "Ctrl+Z\t元に戻す（パネルのテキスト）\nCtrl+Y\tやり直し\nF2\t名前を変更\nF5\t画像を読み込み直す\n"
+            + "Delete\t選んだオブジェクトを削除\nCtrl+L\t位置ロックの切り替え\nCtrl+Shift+H\tBVE でも非表示にする（コメントアウト）の切り替え\n"
+            + "矢印キー\t選んだオブジェクトを動かす\n＋／－\t指針・円形ゲージの半径を変える（Shift で 5 ずつ）\n"
+            + "マウスホイール\t拡大・縮小\nスペース＋ドラッグ\t表示をスクロール\nEsc\t操作をやめる",
+            "ショートカットキー", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     private void OnMoveUp(object sender, RoutedEventArgs e) { if (_layerOrder) ChangeLayers(LayerOp.Up); else Move(-1); }
     private void OnMoveDown(object sender, RoutedEventArgs e) { if (_layerOrder) ChangeLayers(LayerOp.Down); else Move(1); }
 
@@ -1467,7 +1496,11 @@ public partial class MainWindow : Window
             : "（テスト用）パスの表示を元に戻しました");
     }
 
-    private void Message(string text) => MessageText.Text = text;
+    private void Message(string text)
+    {
+        MessageText.Text = text;
+        MessageText.ToolTip = string.IsNullOrEmpty(text) ? null : text; // 長い案内はカーソルを載せると全文が読める
+    }
 
     private void Warn(string text) => MessageBox.Show(this, text, AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
 }
