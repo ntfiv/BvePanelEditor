@@ -320,6 +320,7 @@ public partial class MainWindow : Window
         var text = _doc.Serialize();
         SetEditorText(text, clearUndo: true);
         _savedText = "";
+        LoadRag(announce: false); // 新しいパネルには前の車両の RealAnalogGauge 設定を持ち越さない
         RebuildAll();
         SetLocked(true);
         Dispatcher.BeginInvoke(() => { Canvas.FitAll(); SelectSection(0); }, DispatcherPriority.Loaded);
@@ -423,7 +424,7 @@ public partial class MainWindow : Window
         {
             if (File.Exists(path) && _backedUp.Add(path))
                 File.Copy(path, path + ".bak", overwrite: true);
-            File.WriteAllBytes(path, bytes);
+            AtomicFile.WriteAllBytes(path, bytes);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
