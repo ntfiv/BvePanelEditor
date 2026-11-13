@@ -68,7 +68,36 @@ public partial class MainWindow
         if (_doc != null) RebuildAll();
     }
 
-    private void OnProblemFold(object sender, System.Windows.Input.MouseButtonEventArgs e) => SetProblemsFolded(!_problemsFolded, save: true);
+    private System.Windows.Point _problemDragStart;
+    private double _problemDragHeight;
+    private bool _problemDragging;
+
+    /// <summary>問題の見出し: 押した位置を覚える（ドラッグで高さを変え、動かさなければクリックとして畳む／開く）。</summary>
+    private void OnProblemHeaderDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _problemDragStart = e.GetPosition(this);
+        _problemDragHeight = ProblemRowDef.Height.IsAbsolute ? ProblemRowDef.Height.Value : ProblemRowDef.ActualHeight;
+        _problemDragging = false;
+        (sender as System.Windows.UIElement)?.CaptureMouse();
+    }
+
+    private void OnProblemHeaderMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || sender is not System.Windows.UIElement el || !el.IsMouseCaptured) return;
+        var dy = e.GetPosition(this).Y - _problemDragStart.Y;
+        if (!_problemDragging && Math.Abs(dy) < 4) return;
+        if (_problemsFolded) return; // 畳んでいるときは、クリックで開くだけ
+        _problemDragging = true;
+        ProblemRowDef.Height = new GridLength(Math.Clamp(_problemDragHeight - dy, 48, Math.Max(120, ActualHeight - 260)));
+    }
+
+    private void OnProblemHeaderUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        (sender as System.Windows.UIElement)?.ReleaseMouseCapture();
+        if (_problemDragging) { if (ProblemRowDef.Height.IsAbsolute) _problemHeight = ProblemRowDef.Height; }
+        else SetProblemsFolded(!_problemsFolded, save: true);
+        _problemDragging = false;
+    }
 
     /// <summary>問題の欄を畳む・開く（次に起動したときも使う）。畳んでいても、問題があれば見出しの横に印を出す。</summary>
     public void SetProblemsFolded(bool folded, bool save)
