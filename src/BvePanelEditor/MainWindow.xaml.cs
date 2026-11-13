@@ -968,7 +968,7 @@ public partial class MainWindow : Window
                 var std = new MenuItem { Header = "指針（標準の針・角度を選んで）[Needle]…" };
                 std.Click += OnAddStandardNeedle;
                 menu.Items.Add(std);
-                var cover = new MenuItem { Header = "指針の蓋（選んだ指針の上に）…", IsEnabled = CoverTargets().Count > 0 };
+                var cover = new MenuItem { Header = "指針のふた（選んだ指針の上に）…", IsEnabled = CoverTargets().Count > 0 };
                 cover.Click += OnMakeCover;
                 menu.Items.Add(cover);
             }
@@ -1131,16 +1131,86 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { Warn($"ブラウザを開けませんでした:\n{ex.Message}"); }
     }
 
-    private void OnShortcutList(object sender, RoutedEventArgs e)
+    /// <summary>ヘルプ → ショートカットキー（説明書の「主な操作キー」と同じ顔ぶれ）。</summary>
+    private void OnShortcutList(object sender, RoutedEventArgs e) => BuildShortcutWindow(ShortcutLines).ShowDialog();
+
+    private static readonly string[] ShortcutLines =
+        [
+            "【ファイル】",
+            "Ctrl+N ／ Ctrl+O\t新規 ／ 開く",
+            "Ctrl+S ／ Ctrl+Shift+S\t上書き保存 ／ 名前を付けて保存",
+            "F5\t画像を読み込み直す",
+            "",
+            "【編集】",
+            "Ctrl+Z ／ Ctrl+Y\t元に戻す ／ やり直し（パネルのテキストの変更）",
+            "Ctrl+L\t位置ロックの解除・ロック",
+            "Ctrl+A\tすべて選択",
+            "Ctrl+D ／ Delete\t複製 ／ 削除",
+            "F2\t名前を変更",
+            "矢印キー\t選んだオブジェクトを 1px 動かす（Shift で 10px）",
+            "＋ ／ －\t選んだ指針・円形ゲージの半径を変える（Shift で 5px）",
+            "Ctrl+] ／ Ctrl+[\tレイヤーを 1 つ上げる ／ 下げる（Shift で最前面 ／ 最背面）",
+            "Ctrl+G ／ Ctrl+Shift+G\tグループ化 ／ グループを解除",
+            "Ctrl+H\t表示 ／ 非表示（パネルくんの画面だけ）",
+            "Ctrl+Shift+H\tBVE でも非表示（コメントアウト）",
+            "Esc\t針の向きを決める操作などをやめる",
+            "",
+            "【表示】",
+            "ホイール\t拡大・縮小",
+            "スペース＋左ドラッグ ／ 右・中ドラッグ\t表示を動かす",
+            "Ctrl+0 ／ Ctrl+1\t全体を表示 ／ 等倍",
+            "",
+            "【動作プレビュー】",
+            "Ctrl＋上下ドラッグ\tオブジェクトの状態量を動かす（Shift で細かく）",
+            "Ctrl＋クリック\t表示灯の点灯 ／ 消灯",
+        ];
+
+    /// <summary>ショートカットキーの一覧の窓（左にキー、右に動き。「【…】」の行は見出し）。</summary>
+    private Window BuildShortcutWindow(IEnumerable<string> lines)
     {
-        MessageBox.Show(this,
-            "Ctrl+N\t新しいパネルを作る\nCtrl+O\tパネルを開く\nCtrl+S\t上書き保存\nCtrl+Shift+S\t名前を付けて保存\n"
-            + "Ctrl+Z\t元に戻す（パネルのテキスト）\nCtrl+Y\tやり直し\nF2\t名前を変更\nF5\t画像を読み込み直す\n"
-            + "Delete\t選んだオブジェクトを削除\nCtrl+L\t位置ロックの切り替え\nCtrl+Shift+H\tBVE でも非表示にする（コメントアウト）の切り替え\n"
-            + "矢印キー\t選んだオブジェクトを動かす\n＋／－\t指針・円形ゲージの半径を変える（Shift で 5 ずつ）\n"
-            + "マウスホイール\t拡大・縮小\nスペース＋ドラッグ\t表示をスクロール\nEsc\t操作をやめる",
-            "ショートカットキー", MessageBoxButton.OK, MessageBoxImage.Information);
+        var grid = new Grid { Margin = new Thickness(14, 10, 14, 6) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        int row = 0;
+        foreach (var l in lines)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            if (l.StartsWith('【'))
+            {
+                var h = new TextBlock { Text = l.Trim('【', '】'), FontWeight = FontWeights.Bold, Margin = new Thickness(0, row == 0 ? 0 : 8, 0, 2) };
+                Grid.SetRow(h, row);
+                Grid.SetColumnSpan(h, 2);
+                grid.Children.Add(h);
+            }
+            else if (l.Split('\t') is [var key, var what])
+            {
+                var k = new TextBlock { Text = key, Margin = new Thickness(8, 1, 16, 1), FontWeight = FontWeights.SemiBold };
+                var w = new TextBlock { Text = what, Margin = new Thickness(0, 1, 0, 1), TextWrapping = TextWrapping.Wrap };
+                Grid.SetRow(k, row);
+                Grid.SetRow(w, row);
+                Grid.SetColumn(w, 1);
+                grid.Children.Add(k);
+                grid.Children.Add(w);
+            }
+            row++;
+        }
+        var ok = new Button { Content = "閉じる", Width = 90, IsDefault = true, IsCancel = true, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(14, 4, 14, 12) };
+        var dock = new DockPanel();
+        DockPanel.SetDock(ok, Dock.Bottom);
+        dock.Children.Add(ok);
+        dock.Children.Add(new ScrollViewer { Content = grid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        var win = new Window
+        {
+            Title = "ショートカットキー", Content = dock, Owner = IsLoaded ? this : null, Width = 620, SizeToContent = SizeToContent.Height, MaxHeight = 760,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.CanResizeWithGrip, ShowInTaskbar = false,
+            Background = SystemColors.WindowBrush,
+        };
+        ok.Click += (_, _) => win.Close();
+        return win;
     }
+
+    /// <summary>確認用: ショートカットキーの一覧の窓を作る（表示はしない）。</summary>
+    internal Window ShortcutWindowForTest() => BuildShortcutWindow(ShortcutLines);
 
     private void OnMoveUp(object sender, RoutedEventArgs e) { if (_layerOrder) ChangeLayers(LayerOp.Up); else Move(-1); }
     private void OnMoveDown(object sender, RoutedEventArgs e) { if (_layerOrder) ChangeLayers(LayerOp.Down); else Move(1); }
