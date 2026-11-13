@@ -93,7 +93,7 @@ public sealed class VariationTests : IDisposable
         Assert.Equal("共通,ワンマン,雨{雨}", Titles(doc));
         doc.SetMembership([2], "ツーマン", false);
 
-        // 書き出し: 入らない計器・印・一覧の行は書かない
+        // 書き出し: 入らないオブジェクト・印・一覧の行は書かない
         var two = doc.ExportVariation("ツーマン");
         Assert.DoesNotContain("@group", two);
         Assert.DoesNotContain("@バリエーション", two);
@@ -106,7 +106,7 @@ public sealed class VariationTests : IDisposable
         // 名前を変えると条件の中も変わる
         doc.RenameVariation("雨", "雨天");
         Assert.Equal("共通,ワンマン{ワンマン, 雨天},雨{雨天}", Titles(doc));
-        // 消すと、そのバリエーションだけの計器を返す
+        // 消すと、そのバリエーションだけのオブジェクトを返す
         var orphans = doc.DeleteVariation("雨天");
         Assert.Equal([3], orphans);
         Assert.Equal("共通,ワンマン{ワンマン},雨{なし}", Titles(doc));
@@ -178,9 +178,51 @@ public sealed class VariationTests : IDisposable
     }
 
     [Fact]
+    public void MergeTreatsSpellingDifferencesAsSameObject()
+    {
+        // 書き方だけの違い（画像の「.\」・Location の空白・キーの順番・数値の書き方）では、同じオブジェクトが割れない
+        var a = Path.Combine(_dir, "a.txt");
+        var b = Path.Combine(_dir, "b.txt");
+        File.WriteAllText(a, Head + Lamp("灯", "ats1", ".\\x.png"));
+        File.WriteAllText(b, Head + "\r\n;灯\r\n[PilotLamp]\r\nLocation = 0,0\r\nDaytimeImage = x.png\r\nSubject = ats1\r\n");
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Empty(r.Mismatches);
+        Assert.Equal(0, r.Partial); // 割れずに共通として 1 つにまとまる
+        Assert.Null(r.Master.Sections.First(s => s.Title == "灯").VariationCond);
+        Assert.Contains(r.Notes, n => n.Contains("書き方だけが違う"));
+    }
+
+    [Fact]
+    public void MergeKeepsTitlesPerVariation()
+    {
+        // 名前だけ違うオブジェクトはまとめない（まとめると書き出しで名前が元と変わる）
+        var a = Path.Combine(_dir, "a.txt");
+        var b = Path.Combine(_dir, "b.txt");
+        File.WriteAllText(a, Head + Lamp("速度計A", "ats1"));
+        File.WriteAllText(b, Head + Lamp("速度計B", "ats1"));
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Empty(r.Mismatches);
+        Assert.Equal(File.ReadAllText(a), r.Master.ExportVariation("A", _dir, _dir));
+        Assert.Equal(File.ReadAllText(b), r.Master.ExportVariation("B", _dir, _dir));
+    }
+
+    [Fact]
+    public void MergeNotesCommentOnlyDifference()
+    {
+        // コメントだけ違うオブジェクトは 1 つにまとめるが、知らせを出す
+        var a = Path.Combine(_dir, "a.txt");
+        var b = Path.Combine(_dir, "b.txt");
+        File.WriteAllText(a, Head + Lamp("灯", "ats1"));
+        File.WriteAllText(b, Head + "\r\n;灯\r\n[PilotLamp]\r\nSubject = ats1\r\n;Bだけのコメント\r\nLocation = 0, 0\r\nDaytimeImage = a.png\r\n");
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Null(r.Master.Sections.First(s => s.Title == "灯").VariationCond);
+        Assert.Contains(r.Notes, n => n.Contains("コメントが違う"));
+    }
+
+    [Fact]
     public void MergeFromExistingPanelsInOtherFolders()
     {
-        // 3 つのバリエーション（別々のフォルダ）。共通・一部・1 つだけの計器、[This] の違い
+        // 3 つのバリエーション（別々のフォルダ）。共通・一部・1 つだけのオブジェクト、[This] の違い
         string P(string sub, string body)
         {
             var d = Path.Combine(_dir, sub);

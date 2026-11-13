@@ -9,22 +9,72 @@ public sealed class VariationMergeResult
     public PanelDocument Master { get; init; } = new();
     /// <summary>取り込みで外した・合わせたものの知らせ。</summary>
     public List<string> Notes { get; } = [];
-    /// <summary>書き出し直すと元と違うバリエーション（計器・値・並びが合わない）。空なら全部同じ。</summary>
+    /// <summary>書き出し直すと元と違うバリエーション（オブジェクト・値・並びが合わない）。空なら全部同じ。</summary>
     public List<string> Mismatches { get; } = [];
-    /// <summary>共通の計器の数・一部のバリエーションだけの計器の数。</summary>
+    /// <summary>共通のオブジェクトの数・一部のバリエーションだけのオブジェクトの数。</summary>
     public int Common { get; set; }
     public int Partial { get; set; }
 }
 
 /// <summary>
 /// 既存のバリエーション別パネルから、マスターパネルを作る。
-/// 中身（見出しと、キーと値の並び）が同じ計器は 1 つにまとめ、入るバリエーションを条件にする。並びは 1 つ目のパネルを土台に、LCS で合わせる。
+/// 中身（見出しと、キーと値の並び）が同じオブジェクトは 1 つにまとめ、入るバリエーションを条件にする。並びは 1 つ目のパネルを土台に、LCS で合わせる。
 /// 画像の相対パスはマスターの場所からのものに直す。
 /// </summary>
 public static class VariationMerge
 {
-    /// <summary>計器の中身の見分け（見出し・無効かどうか・キーと値。コメントと空行は除く。キーは大文字小文字を区別しない）。</summary>
+    /// <summary>
+    /// オブジェクトの中身の見分け（見出し・無効かどうか・名前・キーと値。空行は除く）。
+    /// 書き方の違いで同じオブジェクトが割れないように、正規化して比べる:
+    /// キーの並び順は見ない、値の空白（カンマの前後など）と数値の書き方（1 と 1.0）はそろえる、
+    /// 画像の場所は区切り・「.\」・大文字小文字をそろえる、状態量（Subject）は大文字小文字を区別しない。
+    /// 名前（タイトル）も中身の一部として含める（名前だけ違うオブジェクトを 1 つにまとめると、書き出しで名前が元と変わってしまうため）。
+    /// コメント（名前以外）は含めない代わりに、コメントが違うときは Merge の知らせで伝える。
+    /// </summary>
     public static string Key(PanelSection s)
+    {
+        var imageKeys = PanelSpec.For(s.Kind).Where(k => k.Type == KeyType.Image).Select(k => k.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var subjectKeys = PanelSpec.For(s.Kind).Where(k => k.Type == KeyType.Subject).Select(k => k.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var parts = new List<string>();
+        foreach (var l in s.Lines)
+        {
+            if (l.Kind == PanelLineKind.KeyValue)
+                parts.Add($"{l.Key.Trim().ToLowerInvariant()}={NormalizeValue(l.Key.Trim(), l.Value, imageKeys, subjectKeys)}");
+            else if (l.Kind == PanelLineKind.Unknown)
+                parts.Add("!" + System.Text.RegularExpressions.Regex.Replace(l.Raw.Trim(), @"\s+", " "));
+        }
+        parts.Sort(StringComparer.Ordinal);
+        var head = (s.Disabled ? ";" : "") + s.Name.Trim().ToLowerInvariant();
+        return head + "\n#名前:" + s.Title.Trim() + "\n" + string.Join("\n", parts);
+    }
+
+    /// <summary>値の正規化（比べるためだけに使う。ファイルに書く値は元のまま）。</summary>
+    private static string NormalizeValue(string key, string value, HashSet<string> imageKeys, HashSet<string> subjectKeys)
+    {
+        var v = value.Trim();
+        if (imageKeys.Contains(key))
+        {
+            v = v.Trim('"').Replace('/', '\\');
+            while (v.StartsWith(".\\", StringComparison.Ordinal)) v = v[2..];
+            return v.ToLowerInvariant();
+        }
+        if (subjectKeys.Contains(key) || key.Equals("Subject", StringComparison.OrdinalIgnoreCase)) return v.ToLowerInvariant();
+        v = System.Text.RegularExpressions.Regex.Replace(v, @"\s+", " ").Replace(" ,", ",").Replace(", ", ",");
+        // 数値だけの要素は書き方をそろえる（「0.0」→「0」、「.5」→「0.5」）。ファイル名など数値でない要素はそのまま
+        var toks = v.Split(',');
+        for (int i = 0; i < toks.Length; i++)
+            if (System.Text.RegularExpressions.Regex.IsMatch(toks[i], @"^[+-]?(\d+\.?\d*|\.\d+)$") &&
+                double.TryParse(toks[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                toks[i] = d.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+        return string.Join(",", toks);
+    }
+
+    /// <summary>コメントだけの署名（比べるため。名前の行も含む）。</summary>
+    private static string CommentSig(PanelSection s) =>
+        string.Join("\n", s.Leading.Concat(s.Lines).Where(l => l.Kind == PanelLineKind.Comment).Select(l => l.Raw.Trim()));
+
+    /// <summary>正規化しない署名（書き方の違いを見つけるため）。</summary>
+    private static string RawSig(PanelSection s)
     {
         var parts = new List<string> { (s.Disabled ? ";" : "") + s.Name.Trim().ToLowerInvariant() };
         foreach (var l in s.Lines)
@@ -50,6 +100,8 @@ public static class VariationMerge
         }
         var first = docs[0];
         var notes = new List<string>();
+        bool commentDiff = false;
+        bool unifiedDiff = false;
 
         // 1 つ目を土台に、2 つ目から順に並びを合わせる
         var merged = first.Sections.Select(s => (Sec: s, Members: new HashSet<int> { 0 })).ToList();
@@ -70,23 +122,27 @@ public static class VariationMerge
                 if (x < a.Count && y < b.Count && a[x] == b[y])
                 {
                     merged[x].Members.Add(k);
+                    if (CommentSig(merged[x].Sec) != CommentSig(seq[y])) commentDiff = true;
+                    if (RawSig(merged[x].Sec) != RawSig(seq[y])) unifiedDiff = true;
                     next.Add(merged[x]);
                     x++; y++;
                 }
                 else if (x < a.Count && (y >= b.Count || dp[x + 1, y] >= dp[x, y + 1]))
                 {
-                    next.Add(merged[x]); // 今までのパネルだけにある計器
+                    next.Add(merged[x]); // 今までのパネルだけにあるオブジェクト
                     x++;
                 }
                 else
                 {
-                    var c = seq[y].Clone(); // このパネルだけにある計器
+                    var c = seq[y].Clone(); // このパネルだけにあるオブジェクト
                     next.Add((c, new HashSet<int> { k }));
                     y++;
                 }
             }
             merged = next;
         }
+        if (commentDiff) notes.Add("バリエーションごとにコメントが違うオブジェクトがありました。マスターでは、先に取り込んだパネルのコメントを使います");
+        if (unifiedDiff) notes.Add("書き方だけが違うオブジェクトを 1 つにまとめました（書き出しでは、先に取り込んだパネルの書き方になります）");
 
         var master = PanelDocument.Parse(sources[0].Text); // 1 行目・前置き・改行・切り抜き元などは 1 つ目のまま
         master.Sections.Clear();
@@ -97,7 +153,7 @@ public static class VariationMerge
         {
             sec.VariationCond = members.Count == sources.Count ? null : string.Join(", ", names.Where((_, i) => members.Contains(i)));
             if (sec.VariationCond == null) common++; else partial++;
-            // 2 つ目からのパネルだけにある計器の、パネルくんの付属情報（グループ・切り抜き元・PSD・メインパネル）は外す
+            // 2 つ目からのパネルだけにあるオブジェクトの、パネルくんの付属情報（グループ・切り抜き元・PSD・メインパネル）は外す
             if (!members.Contains(0))
             {
                 if (sec.Groups.Count > 0) { otherGroups = true; sec.Groups.Clear(); }
@@ -109,15 +165,15 @@ public static class VariationMerge
             }
             master.Sections.Add(sec);
         }
-        if (otherGroups) notes.Add("2 つ目からのパネルだけにある計器のグループは外しました（グループは 1 つ目のパネルのものだけを使います）");
-        if (otherMeta) notes.Add("2 つ目からのパネルだけにある計器の、切り抜き元・PSD・メインパネルのつながりは外しました");
+        if (otherGroups) notes.Add("2 つ目からのパネルだけにあるオブジェクトのグループは外しました（グループは 1 つ目のパネルのものだけを使います）");
+        if (otherMeta) notes.Add("2 つ目からのパネルだけにあるオブジェクトの、切り抜き元・PSD・メインパネルのつながりは外しました");
         // 並べ替えで続かなくなったグループは外す
         foreach (var g in master.GroupNames())
         {
             var m = master.Members(g);
             if (m[^1] - m[0] + 1 == m.Count) continue;
             foreach (var s in master.Sections) s.Groups.Remove(g);
-            notes.Add($"グループ「{g}」は、間にほかのバリエーションの計器が入って続かなくなったので外しました");
+            notes.Add($"グループ「{g}」は、間にほかのバリエーションのオブジェクトが入って続かなくなったので外しました");
         }
         // 切り抜き元・PSD の場所は 1 つ目のパネルのフォルダからのもの。マスターが別のフォルダなら外す
         var firstDir = Path.GetDirectoryName(Path.GetFullPath(sources[0].Path))!;
