@@ -89,7 +89,7 @@ public partial class MainWindow
             ChoiceDialog.TestAnswer = (m, i) => Answer(m, i, 1, 0, 0);
             int before = _doc!.Sections.Count;
             HandleDrop([framed], new Point(100, 100));
-            var dn = _doc.Sections[^1];
+            var dn = _doc.Sections[_selected];
             log.Add($"     コマ割済: Interval {dn.Get("Interval")}・状態量 {dn.Get("Subject")}・画像 {dn.Get("DaytimeImage")}");
             Check("2 の累乗でなければ、直すか聞く", asked.Any(a => a.Contains("20×100") && a.Contains("32×128")));
             Check("テスト画面を出し、1 コマの高さは画像から求める（10・10 コマ）", seen != null && seenInterval == 10 && seenFrames == 10);
@@ -116,7 +116,7 @@ public partial class MainWindow
             DigitTestWindow.TestAnswer = w => { w.SetInterval(10); return true; };
             HandleDrop([framed], new Point(100, 100));
             Check("「このまま使う」なら元の画像をそのまま指す（パネルのフォルダの中なのでコピーしない）", _doc.Sections.Count == before + 1
-                && _doc.Sections[^1].Get("DaytimeImage") == Path.Combine("src", "speed.png"));
+                && _doc.Sections[_selected].Get("DaytimeImage") == Path.Combine("src", "speed.png"));
 
             // ---- 単コマ: コマ割を作る画面 → 透明なコマ → テスト画面 ----
             List<string>? labels = null;
@@ -135,7 +135,7 @@ public partial class MainWindow
             HandleDrop([d10, d2, d1], new Point(300, 300));
             log.Add("     コマ: " + string.Join(" ／ ", labels ?? []));
             Check("透明なコマがなければ、用意するか聞く", asked.Any(a => a.Contains("透明なコマ")));
-            var sn = _doc.Sections[^1];
+            var sn = _doc.Sections[_selected];
             var sn0Name = sn.Title;
             Check("単コマの画像は 1 枚 1 コマ・名前の数の順（d1・d2・d10）", labels is ["d1.png", "d2.png", "d10.png"] && sn0Name == "d");
             var snFile = Path.Combine(PanelDir!, sn.Get("DaytimeImage") ?? "");
@@ -181,10 +181,11 @@ public partial class MainWindow
             log.Add("     連番: " + string.Join(" ／ ", labels ?? []) + "　夜: " + string.Join(" ／ ", (nightLabels ?? []).Select(n => n ?? "なし")));
             Check("1 枚読むと、同じフォルダの連番の画像（ID_motor_0〜3）を自動で読み込む", labels is ["ID_motor_0.png", "ID_motor_1.png", "ID_motor_2.png", "ID_motor_3.png"]);
             Check("夜の画像は名前（_N・N・数の前の _N）から自動で割り当て、夜の画像そのものはコマにしない", nightLabels is ["ID_motor_0_N.png", "ID_motor_1N.png", "ID_motor_N_2.png", null]);
-            var qn = _doc.Sections[^1];
+            var qn = _doc.Sections[_selected];
             var qDay = Path.Combine(PanelDir!, qn.Get("DaytimeImage") ?? "");
             var qNight = Path.Combine(PanelDir!, qn.Get("NighttimeImage") ?? "");
-            log.Add($"     連番の結果: Interval {qn.Get("Interval")}・昼 {qn.Get("DaytimeImage")}・夜 {qn.Get("NighttimeImage")}");
+            log.Add($"     連番の結果: Interval {qn.Get("Interval")}・昼 {qn.Get("DaytimeImage")}・夜 {qn.Get("NighttimeImage")}");
+
             Check("連番なら名前は末尾の数を外したもの（ID_motor）", qn.Title == "ID_motor");
             Check("昼と夜は同じ加工（1 コマ 12×12・4 コマ・16×64 に広げる）", _doc.Sections.Count == before + 1 && qn.Get("Interval") == "12" && seenFrames == 4 && testNight != null
                 && PngWriter.TryReadSize(qDay, out var qw, out var qh) && PngWriter.TryReadSize(qNight, out var nw, out var nh) && (qw, qh) == (16, 64) && (nw, nh) == (16, 64)
@@ -199,7 +200,7 @@ public partial class MainWindow
             DigitTestWindow.TestAnswer = w => w.SetNightFile(customNight);
             before = _doc.Sections.Count;
             HandleDrop([framed], new Point(100, 100));
-            var cn = _doc.Sections[^1];
+            var cn = _doc.Sections[_selected];
             var cnNight = Path.Combine(PanelDir!, cn.Get("NighttimeImage") ?? "");
             log.Add($"     コマ割済の夜: {cn.Get("NighttimeImage")}");
             Check("コマ割済でも夜の画像を選べ、昼と同じ加工（32×128）をする", _doc.Sections.Count == before + 1 && cn.Get("NighttimeImage") is { Length: > 0 }
@@ -248,7 +249,7 @@ public partial class MainWindow
                 before = _doc.Sections.Count;
                 HandleDrop([copy], new Point(200, 300));
                 LayerAssignAnswer = null;
-                var pd = _doc.Sections.Count > before ? _doc.Sections[^1] : null;
+                var pd = _doc.Sections.Count > before ? _doc.Sections[_selected] : null;
                 log.Add($"     PSD のコマ割済: 使えるレイヤー {composable} 枚・レイヤーを選ぶ画面 {(assignShown ? "あり" : "なし")}・Interval {pd?.Get("Interval")}・画像 {pd?.Get("DaytimeImage")}");
                 Check($"PSD のコマ割済（{psdName}）は、レイヤーが複数ならレイヤーを選ぶ画面を出し（1 枚ならそのまま）、PNG に書き出して置く", (assignShown == composable > 1) && pd is { Kind: SectionKind.DigitalNumber }
                     && File.Exists(Path.Combine(PanelDir!, pd.Get("DaytimeImage") ?? "")));
@@ -258,7 +259,7 @@ public partial class MainWindow
             ChoiceDialog.TestAnswer = (m, i) => Answer(m, i, 0, 0, 0);
             before = _doc.Sections.Count;
             HandleDrop([d1], new Point(400, 400));
-            Check("常点灯画像は表示灯（Subject = true）として置く", _doc.Sections.Count == before + 1 && _doc.Sections[^1].Kind == SectionKind.PilotLamp && _doc.Sections[^1].Get("Subject") == "true");
+            Check("常点灯画像は表示灯（Subject = true）として置く", _doc.Sections.Count == before + 1 && _doc.Sections[_selected].Kind == SectionKind.PilotLamp && _doc.Sections[_selected].Get("Subject") == "true");
 
             ChoiceDialog.TestAnswer = null;
             DigitTestWindow.TestAnswer = null;

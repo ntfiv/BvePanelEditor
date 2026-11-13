@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using BvePanelEditor.Core;
@@ -37,6 +37,12 @@ public sealed class StatePanel
 
     public event Action? Changed;
 
+    /// <summary>
+    /// プラグインが計算して書く状態量（キー → 入力の状態量のキー・入力の範囲・説明）。この状態量の欄は作らず、代わりに入力の欄を作る
+    /// （RealAnalogGauge の ats は、入力の kmph などを動かす）。
+    /// </summary>
+    public Func<IReadOnlyDictionary<string, (string Input, double Min, double Max, string Note)>>? Derived { get; init; }
+
     public StatePanel(StackPanel host, Dictionary<string, double> state)
     {
         _host = host;
@@ -59,7 +65,7 @@ public sealed class StatePanel
         Changed?.Invoke();
     }
 
-    /// <summary>選んだ計器の状態量の行に色を付ける。空なら色を消す。</summary>
+    /// <summary>選んだオブジェクトの状態量の行に色を付ける。空なら色を消す。</summary>
     public void Highlight(IEnumerable<string> keys, string label)
     {
         _highlightKeys = new HashSet<string>(keys, StringComparer.OrdinalIgnoreCase);
@@ -87,7 +93,7 @@ public sealed class StatePanel
     /// <summary>パネルで使われている状態量から欄を作る（同じ顔ぶれなら作り直さない）。</summary>
     public void Update(PanelScene? scene)
     {
-        var ranges = scene == null ? [] : ComputeRanges(scene);
+        var ranges = scene == null ? [] : ComputeRanges(scene, Derived?.Invoke());
         var sig = string.Join("|", ranges.Select(r => $"{r.Key}:{r.Min}:{r.Max}:{r.IsBool}"));
         if (sig == _signature) return;
         _signature = sig;
@@ -95,7 +101,7 @@ public sealed class StatePanel
         Build();
     }
 
-    public static List<StateRange> ComputeRanges(PanelScene scene)
+    public static List<StateRange> ComputeRanges(PanelScene scene, IReadOnlyDictionary<string, (string Input, double Min, double Max, string Note)>? derived = null)
     {
         var map = new Dictionary<string, StateRange>(StringComparer.OrdinalIgnoreCase);
         var onlyLamps = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
@@ -103,6 +109,26 @@ public sealed class StatePanel
         {
             var key = Subjects.BaseKey(it.Subject);
             if (key == null) continue;
+            // プラグインが書く状態量は、入力の状態量の欄にする（範囲は表の入力値の範囲）
+            if (derived != null && derived.TryGetValue(key, out var d))
+            {
+                var inKey = Subjects.BaseKey(d.Input) ?? d.Input;
+                if (!map.TryGetValue(inKey, out var ir))
+                {
+                    var ii = Subjects.Info(inKey);
+                    ir = new StateRange { Key = inKey, Label = ii.Label, Min = Math.Min(0, d.Min), Max = d.Max > d.Min ? d.Max : ii.Max, IsInteger = Subjects.IsAnyAts(inKey, out _) };
+                    map[inKey] = ir;
+                    onlyLamps[inKey] = false;
+                }
+                else
+                {
+                    ir.Min = Math.Min(ir.Min, d.Min);
+                    ir.Max = Math.Max(ir.Max, d.Max);
+                    onlyLamps[inKey] = false;
+                }
+                if (!ir.Label.Contains(d.Note, StringComparison.Ordinal)) ir.Label += $"（{d.Note}）";
+                continue;
+            }
             var info = Subjects.Info(key);
             bool isAts = Subjects.IsAnyAts(key, out _);
             if (!map.TryGetValue(key, out var r))

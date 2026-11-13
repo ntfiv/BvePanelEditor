@@ -19,7 +19,7 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// 針を置く。画像はパネルの needle フォルダにコピーする（同じ中身があればそれを使う）。置いた計器の番号を返す。
+    /// 針を置く。画像はパネルの needle フォルダにコピーする（同じ中身があればそれを使う）。置いたオブジェクトの番号を返す。
     /// 2 本以上（圧力計Ａ・時計などの組）は groupName（なければ「指針」）でグループにする。
     /// </summary>
     public List<int> PlaceNeedles(List<NeedleSpec> needles, Point at, string? groupName = null)
@@ -29,6 +29,7 @@ public partial class MainWindow
         var dir = Path.Combine(PanelDir, "needle");
         int layer = _doc.Sections.Where(s => s.Kind is SectionKind.PilotLamp or SectionKind.Needle or SectionKind.DigitalNumber or SectionKind.DigitalGauge)
             .Select(s => (int)Math.Round(PanelValues.Double(s.Get("Layer"), 0))).DefaultIfEmpty(0).Max() + 1;
+        var place = GetInsertPlace(); // 選んでいるオブジェクトのすぐ下（手前）に、そのレイヤーから順に
         string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
         var added = new List<int>();
         var copied = new List<string>();
@@ -56,9 +57,7 @@ public partial class MainWindow
                 if (n.TransparentColor != null) sec.Set("TransparentColor", n.TransparentColor);
                 // StopPin は書式 2.01 で足されたキーだが、ヘッダが 2.00 でも BVE（5.8 以降・6）は読む
                 if (n.StopPin) sec.Set("StopPin", "True");
-                JoinViewVariation(sec);
-                _doc.Sections.Add(sec);
-                added.Add(_doc.Sections.Count - 1);
+                added.Add(InsertNewSection(sec, place, added.Count, layerOffset: added.Count));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

@@ -37,11 +37,11 @@ public partial class MainWindow
             PanelValues.TryPoint(o0, out var ox, out var oy);
             Check("消失点も動かせる", self.Get("Origin") == PanelValues.Point(ox - 10, oy));
 
-            // ほかの計器を選ぶと、中心・消失点の選択は外れる
+            // ほかのオブジェクトを選ぶと、中心・消失点の選択は外れる
             if (_doc.Sections.Count > idx + 1)
             {
                 SelectForStartup(idx + 1);
-                Check("ほかの計器を選ぶと外れる", Canvas.ActivePoint == PanelCanvas.PanelPoint.None);
+                Check("ほかのオブジェクトを選ぶと外れる", Canvas.ActivePoint == PanelCanvas.PanelPoint.None);
                 SelectForStartup(idx);
             }
             // 両方選ぶ: 矢印キーで一緒に動き、横の位置をそろえられる

@@ -29,28 +29,31 @@ public sealed class ElementRow
     public string Layer { get; init; } = "";
     public Brush KindBrush { get; init; } = Brushes.Gray;
     public Visibility ProblemVisibility { get; init; } = Visibility.Collapsed;
-    /// <summary>BveEX の状態量（ats256 以上）を使っている計器。</summary>
+    /// <summary>BveEX の状態量（ats256 以上）を使っているオブジェクト。</summary>
     public Visibility BveExVisibility { get; init; } = Visibility.Collapsed;
-    /// <summary>パネルくんの画面で隠している（グループの見出しなら、中の計器が全部）。</summary>
+    /// <summary>RealAnalogGauge が動かす針（「RAG」の印）。</summary>
+    public Visibility RagVisibility { get; init; } = Visibility.Collapsed;
+    public string RagTip { get; init; } = "";
+    /// <summary>パネルくんの画面で隠している（グループの見出しなら、中のオブジェクトが全部）。</summary>
     public bool Hidden { get; init; }
     /// <summary>バリエーションを表示している（目のマークは「このバリエーションに入れる／外す」）。</summary>
     public bool VariationMode { get; init; }
-    /// <summary>表示中のバリエーションに入る（グループの見出しなら、中の計器が全部）。</summary>
+    /// <summary>表示中のバリエーションに入る（グループの見出しなら、中のオブジェクトが全部）。</summary>
     public bool InVariation { get; init; } = true;
     /// <summary>入るバリエーション（共通なら空）。一覧の行の右に小さく出す。</summary>
     public string VariationText { get; init; } = "";
     public Visibility VariationTextVisibility => VariationText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-    public string VariationTip => IsHeader ? $"グループの中の計器が全部入っているバリエーション: {VariationText}" : $"入るバリエーション: {VariationText}";
+    public string VariationTip => IsHeader ? $"グループの中のオブジェクトが全部入っているバリエーション: {VariationText}" : $"入るバリエーション: {VariationText}";
     private bool EyeClosed => VariationMode ? !InVariation : Hidden;
     /// <summary>目の印（Segoe MDL2 Assets: 表示 E890・非表示 ED1A）。</summary>
     public string Eye => EyeClosed ? "\uED1A" : "\uE890";
     public Brush EyeBrush => VariationMode ? (InVariation ? VariationEyeBrush : Brushes.Silver) : Hidden ? Brushes.Silver : Brushes.DimGray;
     public string EyeTip => VariationMode
-        ? (IsHeader ? "クリックで、グループの計器をまとめて、表示中のバリエーションに入れる／外す" : "クリックで、表示中のバリエーションに入れる／外す（ファイルの「; @group」に書きます）")
-        : (IsHeader ? "グループの計器をまとめて表示／非表示（パネルくんの画面だけ。ファイルには書きません）" : "表示／非表示（パネルくんの画面だけ。ファイルには書かず、BVE では表示されます）");
+        ? (IsHeader ? "クリックで、グループのオブジェクトをまとめて、表示中のバリエーションに入れる／外す" : "クリックで、表示中のバリエーションに入れる／外す（ファイルの「; @group」に書きます）")
+        : (IsHeader ? "グループのオブジェクトをまとめて表示／非表示（パネルくんの画面だけ。ファイルには書きません）" : "表示／非表示（パネルくんの画面だけ。ファイルには書かず、BVE では表示されます）");
     public double RowOpacity => Hidden || (VariationMode && !InVariation) ? 0.45 : 1;
     private static readonly Brush VariationEyeBrush = MakeFrozen(Color.FromRgb(0x1B, 0x5F, 0xC1));
-    /// <summary>コメントアウトして無効にした計器（BVE でも表示されない）。背景を灰色にする。</summary>
+    /// <summary>コメントアウトして無効にしたオブジェクト（BVE でも表示されない）。背景を灰色にする。</summary>
     public bool Disabled { get; init; }
     /// <summary>メインパネル・[This]（パネルの土台）。背景をごく薄い赤にする。</summary>
     public bool IsBase { get; init; }
@@ -67,7 +70,7 @@ public sealed class ElementRow
     public string Fold { get; init; } = "▼";
     public Visibility HeaderVisibility => IsHeader ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ItemVisibility => IsHeader ? Visibility.Collapsed : Visibility.Visible;
-    /// <summary>グループの中の計器は字下げする（入れ子の深さだけ）。</summary>
+    /// <summary>グループの中のオブジェクトは字下げする（入れ子の深さだけ）。</summary>
     public Thickness Indent { get; init; }
     /// <summary>グループの見出しの字下げ（外側のグループの数だけ）。</summary>
     public Thickness HeaderMargin { get; init; } = new(0, 2, 0, 1);
@@ -82,9 +85,12 @@ public sealed class ProblemRow
     /// <summary>カーソルを載せたときの説明（なければ本文）。</summary>
     public string? TipText { get; init; }
     public string Tip => TipText ?? Text;
-    public string Mark => BveEx ? "EX" : "⚠";
-    public Brush MarkBrush => BveEx ? Brushes.White : new SolidColorBrush(Color.FromRgb(0xD0, 0x80, 0x00));
-    public Brush MarkBackground => BveEx ? new SolidColorBrush(Color.FromRgb(0x2A, 0x6F, 0xC9)) : Brushes.Transparent;
+    /// <summary>警告ではない知らせの印（「RAG」など。null なら BveEx か警告の印）。</summary>
+    public string? InfoMark { get; init; }
+    public string Mark => InfoMark ?? (BveEx ? "EX" : "⚠");
+    public Brush MarkBrush => BveEx || InfoMark != null ? Brushes.White : new SolidColorBrush(Color.FromRgb(0xD0, 0x80, 0x00));
+    public Brush MarkBackground => InfoMark != null ? new SolidColorBrush(Color.FromRgb(0x2E, 0x7D, 0x4F))
+        : BveEx ? new SolidColorBrush(Color.FromRgb(0x2A, 0x6F, 0xC9)) : Brushes.Transparent;
 }
 
 public partial class MainWindow : Window
@@ -99,8 +105,8 @@ public partial class MainWindow : Window
     private bool _suppressText;
     private bool _suppressCaret;
     private bool _suppressList;
-    private int _selected = -1;                  // 主に選んでいる計器
-    private List<int> _selSet = [];              // 選んでいる計器すべて
+    private int _selected = -1;                  // 主に選んでいるオブジェクト
+    private List<int> _selSet = [];              // 選んでいるオブジェクトすべて
     private string? _selGroup;                   // グループごと選んでいるときのグループ名
     private readonly HashSet<string> _folded = []; // 一覧で折りたたんでいるグループ
     private readonly HashSet<string> _backedUp = new(StringComparer.OrdinalIgnoreCase);
@@ -143,6 +149,7 @@ public partial class MainWindow : Window
         _props.MultiCommit += OnMultiCommit;
         _props.AlignRequested += Align;
         _props.LayerRequested += ChangeLayers;
+        _props.UnifyLayerRequested += to => { FlushReparse(); UnifyLayers(LayerTargets(), to); };
         _props.ViewLimitRequested += () => OpenViewLimit(null);
         _props.MainPanelPicked += OnMainPanelPicked;
         _props.ResolutionFromMainRequested += OnResolutionFromMain;
@@ -156,7 +163,7 @@ public partial class MainWindow : Window
         };
         _props.Show(null, -1);
 
-        _states = new StatePanel(StateHost, Canvas.State);
+        _states = new StatePanel(StateHost, Canvas.State) { Derived = RagDerivedStates };
         _states.Changed += () => Canvas.InvalidateVisual();
         _states.Update(null);
 
@@ -166,14 +173,14 @@ public partial class MainWindow : Window
         Canvas.ViewChanged += () => ZoomText.Text = $"{Canvas.Zoom * 100:0}%";
         Canvas.LockedEditAttempt += () =>
         {
-            if (_variationMode) { Message("バリエーション編集モードでは計器の位置は動かせません。ほかのタブ（プロパティなど）に戻ると動かせます"); return; }
+            if (_variationMode) { Message("バリエーション編集モードではオブジェクトの位置は動かせません。ほかのタブ（プロパティなど）に戻ると動かせます"); return; }
             Message("位置はロック中です。パネル画面左上の「🔒 位置ロック中」をクリック（または Ctrl+L）すると動かせます");
             FlashLockButton();
         };
         Canvas.ValueDragStarted += OnValueDragStarted;
         Canvas.ValueDragged += OnValueDragged;
         Canvas.ValueClicked += OnValueClicked;
-        Canvas.Ticked += dt => { if (SweepCheck.IsChecked == true) _states.Sweep(dt); };
+        Canvas.Ticked += dt => { if (SweepCheck.IsChecked == true) _states.Sweep(dt); RagTick(dt); };
 
         PreviewKeyDown += OnWindowKeyDown;
         Drop += OnDropFile;
@@ -275,6 +282,7 @@ public partial class MainWindow : Window
         CoverButton.Visibility = Visibility.Collapsed;
         SetEditorText(text, clearUndo: true);
         _savedText = text;
+        LoadRag(announce: false);
         RebuildAll();
         SetLocked(true);
         Dispatcher.BeginInvoke(() => Canvas.FitAll(), DispatcherPriority.Loaded);
@@ -429,7 +437,7 @@ public partial class MainWindow : Window
         if (moved) { _cache.Clear(); RebuildAll(); }
         AddRecent(_path); // 画像から作ったばかりのパネルも、保存したら最近使ったファイルに入れる
         if (_doc != null && _doc.CropSets.Count > 0) RememberCropPanel(_path);
-        Message($"保存しました（{enc.WebName}）。初回の保存では元のファイルを .bak に残しています");
+        Message($"保存しました（{enc.WebName}）。初回の保存では元のファイルを .bak に残しています" + WriteDirtyRag());
         UpdateTitle();
         return true;
     }
@@ -441,6 +449,7 @@ public partial class MainWindow : Window
 
     private bool ConfirmDiscard()
     {
+        if (!ConfirmRagDiscard()) return false;
         if (IsDirty)
         {
             var r = MessageBox.Show(this, "変更が保存されていません。保存しますか？", "確認", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
@@ -552,7 +561,7 @@ public partial class MainWindow : Window
         if (_doc == null) return;
         var old = _doc;
         _doc = PanelDocument.Parse(Editor.Text);
-        CarryHidden(old, _doc); // テキストを直しても、非表示にした計器は非表示のまま
+        CarryHidden(old, _doc); // テキストを直しても、非表示にしたオブジェクトは非表示のまま
         RebuildAll();
     }
 
@@ -579,7 +588,7 @@ public partial class MainWindow : Window
         var rows = new List<ElementRow>();
         bool blankThis = IsBlankThis();
         // レイヤー順: 手前（レイヤーが大きい）ほど上。同じレイヤーならファイルの後ろ（BVE で手前に描かれる）ほど上。[This] はいちばん下。
-        // グループはひとかたまりのまま（いちばん手前の計器の位置に置き、中もレイヤー順）
+        // グループはひとかたまりのまま（いちばん手前のオブジェクトの位置に置き、中もレイヤー順）
         var order = _layerOrder ? LayerOrder() : Enumerable.Range(0, _doc.Sections.Count).ToList();
         for (int k = 0; k < order.Count; k++)
         {
@@ -613,12 +622,15 @@ public partial class MainWindow : Window
                 // メインパネルは「メインパネル」と画像の名前、画像のない [This] は「[This]（画像なし）」（前の版の透明な画像なら「（透明）」）
                 Kind = s.IsMainPanel && s.Kind == SectionKind.PilotLamp ? MainPanel.Title : s.Kind == SectionKind.This && blankThis ? "[This]" : PanelSpec.KindLabel(s.Kind),
                 Subject = s.Kind == SectionKind.This ? (string.IsNullOrWhiteSpace(s.Get("DaytimeImage")) ? "（画像なし）" : blankThis ? "（透明）" : Path.GetFileName(s.Get("DaytimeImage") ?? ""))
-                    : s.IsMainPanel ? Path.GetFileName(s.Get("DaytimeImage") ?? "") : SubjectLabel(s.Get("Subject")),
+                    : s.IsMainPanel ? Path.GetFileName(s.Get("DaytimeImage") ?? "")
+                    : RagOf(s) is { } rgs ? $"{SubjectLabel(s.Get("Subject"))} ← {rgs.Subject}" : SubjectLabel(s.Get("Subject")),
                 Title = s.Title,
                 Layer = s.Kind == SectionKind.This ? "" : $"L{s.Get("Layer") ?? "0"}",
                 KindBrush = KindBrush(s),
                 ProblemVisibility = problemSections.Contains(i) ? Visibility.Visible : Visibility.Collapsed,
                 BveExVisibility = bveExSections.Contains(i) ? Visibility.Visible : Visibility.Collapsed,
+                RagVisibility = RagOf(s) != null ? Visibility.Visible : Visibility.Collapsed,
+                RagTip = RagOf(s) is { } rg ? RagRowTip(rg) : "",
                 Hidden = s.ViewHidden,
                 VariationMode = _viewVariation != null,
                 InVariation = _viewVariation == null || s.InVariation(_viewVariation),
@@ -634,7 +646,7 @@ public partial class MainWindow : Window
         _suppressList = false;
         ShowSelectionDetails(scroll: false);
 
-        // BveEX の状態量（ats256 以上）は警告にせず、「BveEX 対応計器」としていちばん上に 1 行でまとめる
+        // BveEX の状態量（ats256 以上）は警告にせず、「BveEX 対応オブジェクト」としていちばん上に 1 行でまとめる
         var warnings = _scene.Problems.Where(p => !p.BveEx).ToList();
         var problemRows = new List<ProblemRow>();
         // 1 行目の文字コードの指定と中身が違ったファイル（中身の文字コードで読み書きしている）。短く出し、説明はカーソルを載せたとき
@@ -659,8 +671,8 @@ public partial class MainWindow : Window
             {
                 Section = bveExSections.Min(),
                 BveEx = true,
-                Text = $"BveEX 対応計器（{range}・{bveExSections.Count} 個）",
-                TipText = $"BveEX 対応車両: {range} を {bveExSections.Count} 個の計器で使っています（BveEX の状態量。BVE 本体の ats は 0〜255 なので、BveEX なしでは動きません）。計器の一覧の「EX」の印の計器です",
+                Text = $"BveEX 対応オブジェクト（{range}・{bveExSections.Count} 個）",
+                TipText = $"BveEX 対応車両: {range} を {bveExSections.Count} 個のオブジェクトで使っています（BveEX の状態量。BVE 本体の ats は 0〜255 なので、BveEX なしでは動きません）。オブジェクトの一覧の「EX」の印のオブジェクトです",
             });
         }
         problemRows.AddRange(warnings.Select(p => new ProblemRow
@@ -668,9 +680,12 @@ public partial class MainWindow : Window
             Section = p.Section,
             Text = p.Section >= 0 ? $"#{p.Section + 1} {DisplayName(_doc.Sections[p.Section])}: {p.Message}" : p.Message,
         }));
+        var ragRows = RagProblemRows();
+        problemRows.InsertRange(0, ragRows.Where(r => r.InfoMark != null));
+        problemRows.AddRange(ragRows.Where(r => r.InfoMark == null));
         ProblemList.ItemsSource = problemRows;
-        int warnCount = warnings.Count + (_info.HeaderEncoding != null ? 1 : 0);
-        ProblemHeader.Text = (warnCount == 0 ? "問題なし" : $"問題 {warnCount} 件（ダブルクリックで移動）") + (bveExSections.Count > 0 ? "・BveEX 対応計器あり" : "");
+        int warnCount = warnings.Count + (_info.HeaderEncoding != null ? 1 : 0) + ragRows.Count(r => r.InfoMark == null);
+        ProblemHeader.Text = (warnCount == 0 ? "問題なし" : $"問題 {warnCount} 件（ダブルクリックで移動）") + (bveExSections.Count > 0 ? "・BveEX 対応オブジェクトあり" : "");
         ProblemHeader.Foreground = warnCount == 0 ? Brushes.SeaGreen : Brushes.DarkOrange;
         ProblemIcon.Visibility = warnCount > 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -700,7 +715,7 @@ public partial class MainWindow : Window
         SectionKind.Needle => Brushes.RoyalBlue,
         SectionKind.DigitalNumber => Brushes.MediumSeaGreen,
         SectionKind.DigitalGauge => Brushes.MediumOrchid,
-        _ => Brushes.DarkMagenta, // 読めない計器（赤はメインパネルに使う）
+        _ => Brushes.DarkMagenta, // 読めないオブジェクト（赤はメインパネルに使う）
     };
 
     // ================= 選択 =================
@@ -933,6 +948,11 @@ public partial class MainWindow : Window
     private void OnAddButton(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu();
+        var images = new MenuItem { Header = "画像を読み込む（常点灯画像・DigitalNumber）…",
+            ToolTip = "画像・PSD を選ぶと、ドロップしたときと同じく、常点灯画像・DigitalNumber（コマ割済）・DigitalNumber（単コマ）のどれとして読み込むかを聞きます" };
+        images.Click += OnAddImages;
+        menu.Items.Add(images);
+        menu.Items.Add(new Separator());
         foreach (var (kind, label) in new[] { (SectionKind.PilotLamp, "表示灯"), (SectionKind.Needle, "指針"), (SectionKind.DigitalNumber, "デジタル数字"), (SectionKind.DigitalGauge, "円形ゲージ") })
         {
             var mi = new MenuItem { Header = $"{label} [{kind}]", Tag = kind.ToString() };
@@ -1014,20 +1034,13 @@ public partial class MainWindow : Window
         }
         sec.Set("Layer", layer.ToString());
 
-        int at = _selected >= 0 ? _selected + 1 : _doc.Sections.Count;
-        if (_selGroup != null && _doc.RunOf(_selGroup) is { } run)
-        {
-            at = run.Last + 1;          // グループごと選んでいればグループの最後に入れる
-            sec.SetGroups([.. _doc.ParentPath(_selGroup), _selGroup]);
-        }
-        else if (_selected >= 0) sec.SetGroups(_doc.Sections[_selected].Groups); // グループの中の計器の後ろなら同じグループに
-        JoinViewVariation(sec);
-        _doc.Sections.Insert(at, sec);
+        // 選んでいるオブジェクトのすぐ下（ファイルで 1 つ後ろ＝BVE ではすぐ手前）に、同じレイヤー・同じグループで入れる（何も選んでいなければ最後）
+        int at = InsertNewSection(sec, GetInsertPlace(), 0);
         _selected = at;
         CommitModel();
         SelectSection(at);
         Canvas.AllowFreshEdit([at]);
-        Message($"{PanelSpec.KindLabel(kind)}を追加しました{ViewVariationNote}。Subject などを右の欄で直してください。追加した計器は、選んでいる間だけ位置ロック中でも動かせます（ほかを選ぶとロックに戻ります）");
+        Message($"{PanelSpec.KindLabel(kind)}を追加しました{ViewVariationNote}。Subject などを右の欄で直してください。追加したオブジェクトは、選んでいる間だけ位置ロック中でも動かせます（ほかを選ぶとロックに戻ります）");
         Dispatcher.BeginInvoke(BeginRename, DispatcherPriority.Loaded);
     }
 
@@ -1036,7 +1049,7 @@ public partial class MainWindow : Window
         if (_doc == null || _selected < 0) return;
         FlushReparse();
         if (_selGroup != null) { DuplicateGroup(_selGroup); return; }
-        if (_selSet.Count > 1) { Message("複製は 1 つの計器か、グループごと選んだときに使えます"); return; }
+        if (_selSet.Count > 1) { Message("複製は 1 つのオブジェクトか、グループごと選んだときに使えます"); return; }
         var src = _doc.Sections[_selected];
         if (src.Kind == SectionKind.This) { Message("[This] は 1 つだけなので複製できません"); return; }
         var copy = src.Clone();
@@ -1084,11 +1097,11 @@ public partial class MainWindow : Window
             ApplySelection(_doc.Members(g)[0], _doc.Members(g), g, SelectionSource.Other);
             return;
         }
-        if (_selSet.Count > 1) { Message("並べ替えは 1 つの計器か、グループごと選んだときに使えます"); return; }
+        if (_selSet.Count > 1) { Message("並べ替えは 1 つのオブジェクトか、グループごと選んだときに使えます"); return; }
         int to = _doc.MoveSection(_selected, delta);
         if (to == _selected)
         {
-            if (_doc.Sections[_selected].Group != null) Message("グループの中の計器はグループの中だけで動きます（外すときは「グループから外す」）");
+            if (_doc.Sections[_selected].Group != null) Message("グループの中のオブジェクトはグループの中だけで動きます（外すときは「グループから外す」）");
             return;
         }
         _selected = to;
@@ -1106,15 +1119,15 @@ public partial class MainWindow : Window
     private bool _layerOrder;
 
     /// <summary>
-    /// レイヤー順の並び（計器の番号）: レイヤーの大きい順・同じならファイルの後ろから。[This] はいちばん下。
-    /// グループは崩さず、ひとかたまりにして、いちばん手前の計器の位置に置く（中もレイヤー順）。
+    /// レイヤー順の並び（オブジェクトの番号）: レイヤーの大きい順・同じならファイルの後ろから。[This] はいちばん下。
+    /// グループは崩さず、ひとかたまりにして、いちばん手前のオブジェクトの位置に置く（中もレイヤー順）。
     /// </summary>
     private List<int> LayerOrder()
     {
         var doc = _doc!;
         double L(int i) => PanelValues.Double(doc.Sections[i].Get("Layer"), 0);
         var idx = Enumerable.Range(0, doc.Sections.Count).Where(i => doc.Sections[i].Kind != SectionKind.This).ToList();
-        // かたまり: グループごと（同じ名前でもファイルで離れていれば別のかたまり）と、グループに入っていない計器 1 つずつ
+        // かたまり: グループごと（同じ名前でもファイルで離れていれば別のかたまり）と、グループに入っていないオブジェクト 1 つずつ
         // 入れ子のグループは、中も同じように並べる（depth はグループの深さ）
         List<int> Order(List<int> xs, int depth)
         {
@@ -1197,6 +1210,7 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        if (e.Key == Key.Escape && Canvas.PickPoint != null) { StopRagPick(); Message("向きを決めるのをやめました"); e.Handled = true; return; }
         if (e.Key == Key.Delete && !inText && Keyboard.Modifiers == ModifierKeys.None) { OnDelete(null, null); e.Handled = true; }
     }
 
@@ -1205,18 +1219,18 @@ public partial class MainWindow : Window
     private string? _valueKey;
     private double _valueStart;
 
-    /// <summary>計器の状態量のキー（kmphd1 → kmph）。動かせる値がなければ null。</summary>
+    /// <summary>オブジェクトの状態量のキー（kmphd1 → kmph）。動かせる値がなければ null。</summary>
     private string? StateKeyOf(int section) =>
         _doc != null && section >= 0 && section < _doc.Sections.Count && _doc.Sections[section].Kind != SectionKind.This
-            ? Subjects.BaseKey(_doc.Sections[section].Get("Subject") ?? "") : null;
+            ? RagInputKey(Subjects.BaseKey(_doc.Sections[section].Get("Subject") ?? "")) : null;
 
-    /// <summary>動作プレビュー欄で、選んだ計器の値の行に色を付ける。</summary>
+    /// <summary>動作プレビュー欄で、選んだオブジェクトの値の行に色を付ける。</summary>
     private void UpdateStateHighlight()
     {
         if (_doc != null && (_selSet.Count > 1 || _selGroup != null))
         {
             var keys = _selSet.Select(StateKeyOf).OfType<string>().Distinct().ToList();
-            var label = _selGroup != null ? $"グループ「{_selGroup}」" : $"{_selSet.Count} 個の計器";
+            var label = _selGroup != null ? $"グループ「{_selGroup}」" : $"{_selSet.Count} 個のオブジェクト";
             _states.Highlight(keys, label);
             SelectedStateText.Text = keys.Count == 0
                 ? $"選択中: {label}\n動かせる値はありません。"
@@ -1226,7 +1240,7 @@ public partial class MainWindow : Window
         if (_doc == null || _selected < 0 || _selected >= _doc.Sections.Count)
         {
             _states.Highlight([], "");
-            SelectedStateText.Text = "計器を選ぶと、その値の行に色が付きます。パネル上で Ctrl を押しながら計器を上下にドラッグすると値を動かせます。";
+            SelectedStateText.Text = "オブジェクトを選ぶと、その値の行に色が付きます。パネル上で Ctrl を押しながらオブジェクトを上下にドラッグすると値を動かせます。";
             return;
         }
         var s = _doc.Sections[_selected];
@@ -1234,7 +1248,7 @@ public partial class MainWindow : Window
         var name = DisplayName(s);
         _states.Highlight(key == null ? [] : [key], name);
         SelectedStateText.Text = s.Kind == SectionKind.This
-            ? "パネル本体には動かせる値がありません。計器を選んでください。"
+            ? "パネル本体には動かせる値がありません。オブジェクトを選んでください。"
             : key == null
                 ? $"選択中: {name}\nSubject が true（常表示）か未設定なので、動かせる値はありません。"
                 : $"選択中: {name}\n「{key}」の行に色を付けています。パネル上で Ctrl を押しながら上下にドラッグしても動かせます（Shift で細かく、表示灯は Ctrl＋クリックで切り替え）。";
@@ -1246,7 +1260,7 @@ public partial class MainWindow : Window
         if (_valueKey == null || _states.Range(_valueKey) == null)
         {
             _valueKey = null;
-            Message("この計器には動かせる値がありません（Subject が true か未設定）");
+            Message("このオブジェクトには動かせる値がありません（Subject が true か未設定）");
             return;
         }
         _valueStart = Canvas.State.GetValueOrDefault(_valueKey);
@@ -1370,7 +1384,7 @@ public partial class MainWindow : Window
 
     // ================= 確認用 =================
 
-    /// <summary>確認用: 番号の計器を選ぶ（グループの計器ならグループごと）。</summary>
+    /// <summary>確認用: 番号のオブジェクトを選ぶ（グループのオブジェクトならグループごと）。</summary>
     public void SelectForStartup(int index)
     {
         if (_doc != null && index >= 0 && index < _doc.Sections.Count && _doc.Sections[index].TopGroup is { } g)

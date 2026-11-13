@@ -19,6 +19,25 @@ public partial class MainWindow
     private static bool IsPsdFile(string f) => Path.GetExtension(f).Equals(".psd", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>読み込んだ画像・PSD をどう使うか聞いて、今のパネルに置く。</summary>
+    /// <summary>
+    /// 追加メニューの「画像を読み込む…」: 画像・PSD を選んで、ドロップしたときと同じく読み込む（常点灯画像・コマ割済・単コマを聞く）。
+    /// 置く場所は、パネル画面の真ん中。
+    /// </summary>
+    private void OnAddImages(object? sender, RoutedEventArgs? e)
+    {
+        if (_doc == null) { Message("先にパネルファイルを開くか、新規パネルを作ってください"); return; }
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            AddToRecent = false, Multiselect = true, Title = "読み込む画像・PSD",
+            Filter = "画像・PSD|" + string.Join(";", ImageExtensions.Append(".psd").Select(x => "*" + x)) + "|すべて|*.*",
+        };
+        if (PanelDir != null) dlg.InitialDirectory = PanelDir;
+        if (dlg.ShowDialog(this) != true) return;
+        var files = dlg.FileNames.Where(f => IsImageFile(f) || IsPsdFile(f)).ToList();
+        if (files.Count == 0) { Message("画像・PSD を選んでください"); return; }
+        ImportImagesToPanel(files, null);
+    }
+
     public void ImportImagesToPanel(IReadOnlyList<string> files, Point? at)
     {
         var name = Path.GetFileName(files[0]) + (files.Count > 1 ? $" ほか {files.Count - 1} 個" : "");
@@ -271,17 +290,18 @@ public partial class MainWindow
         AddImportedSections([sec], $"デジタル数字「{title}」を置きました（1 コマの高さ {interval}・状態量 {sec.Get("Subject")}）。{note}");
     }
 
-    /// <summary>読み込んだ計器をパネルに足して選ぶ（選んでいる間は位置ロック中でも動かせる）。</summary>
+    /// <summary>読み込んだオブジェクトをパネルに足して選ぶ（選んでいる間は位置ロック中でも動かせる）。</summary>
     private void AddImportedSections(List<PanelSection> sections, string message)
     {
         var added = new List<int>();
-        foreach (var s in sections) { JoinViewVariation(s); _doc!.Sections.Add(s); added.Add(_doc.Sections.Count - 1); }
+        var place = GetInsertPlace(); // 選んでいるオブジェクトのすぐ下（手前）に、同じレイヤーで
+        foreach (var s in sections) added.Add(InsertNewSection(s, place, added.Count));
         CommitModel();
         _cache.Clear();
         RebuildAll();
         ApplySelection(added[0], added, null, SelectionSource.Other);
         Canvas.AllowFreshEdit(added);
         Canvas.Focus();
-        Message(message + "状態量やレイヤーは右の欄で直せます。追加した計器は、選んでいる間だけ位置ロック中でも動かせます");
+        Message(message + "状態量やレイヤーは右の欄で直せます。追加したオブジェクトは、選んでいる間だけ位置ロック中でも動かせます");
     }
 }

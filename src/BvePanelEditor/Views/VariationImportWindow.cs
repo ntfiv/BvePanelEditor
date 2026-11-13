@@ -50,7 +50,7 @@ public sealed partial class VariationImportWindow : Window
         var root = new DockPanel { Margin = new Thickness(10) };
         var top = new TextBlock
         {
-            Text = "バリエーションごとに作ってあるパネルファイルを選ぶと、中身（見出しとキー・値）が同じ計器を 1 つにまとめたマスターパネルを作ります。"
+            Text = "バリエーションごとに作ってあるパネルファイルを選ぶと、中身（見出しとキー・値）が同じオブジェクトを 1 つにまとめたマスターパネルを作ります。"
                 + "どのバリエーションに入るかは「; @group 名前」で書きます。元のパネルは書き換えません。"
                 + "別々のフォルダのパネルでも、画像の場所をマスターからのものに直して取り込みます。出力ファイルは元のパネルファイルにするので、書き出すと元の場所に作り直せます。",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8),

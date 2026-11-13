@@ -4,7 +4,7 @@ namespace BvePanelEditor.Core;
 /// 書式 2.01 の Tilt（計器の面の傾き）を、プレビュー用に画面へ移す。
 /// BVE の資料にあるのは「angleX: X 軸まわり・上向きが正」「angleY: Y 軸まわり・左向きが正」「Perspective: 大きいほど遠近が弱い（既定 1）」だけなので、
 /// BVE6 の画面（E217 の調整用の目盛り画像を Tilt 47 で置いたもの）と比べて、次の式を決めた（ずれは平均 0.6 画素ほど）。
-/// 1. 面上の点（計器の Location からのずれ u, v。下が +v）を X 軸まわりに回す（上側が奥へ）、続けて Y 軸まわりに回す（右側が奥へ）
+/// 1. 面上の点（オブジェクトの Location からのずれ u, v。下が +v）を X 軸まわりに回す（上側が奥へ）、続けて Y 軸まわりに回す（右側が奥へ）
 /// 2. 奥行き z の点を、[This] の Origin（消失点）から見て d / (d + z) 倍の所に置く。d = Resolution × Perspective
 /// 面上の点から画面の点への写し方は射影変換（3×3 の行列）になるので、逆向き（画面 → 面）も求められる。
 /// </summary>
@@ -44,7 +44,7 @@ public sealed class TiltProjection
 
     /// <summary>
     /// Tilt の角度があれば作る（0, 0 なら null。描くときは今までどおり）。
-    /// cx, cy は傾ける中心（計器の Location）。resolution・perspective は [This] の値（0 以下なら既定）。
+    /// cx, cy は傾ける中心（オブジェクトの Location）。resolution・perspective は [This] の値（0 以下なら既定）。
     /// camX, camY は遠近の中心（[This] の Origin）。
     /// </summary>
     public static TiltProjection? Create(double cx, double cy, double angleX, double angleY, double resolution, double perspective, double camX, double camY)
@@ -58,7 +58,7 @@ public sealed class TiltProjection
         return new TiltProjection(cx, cy, angleX, angleY, res * per * DistanceFactor, camX, camY);
     }
 
-    /// <summary>遠近の中心を計器の位置にする（[This] の Origin が分からないとき）。</summary>
+    /// <summary>遠近の中心をオブジェクトの位置にする（[This] の Origin が分からないとき）。</summary>
     public static TiltProjection? Create(double cx, double cy, double angleX, double angleY, double resolution, double perspective) =>
         Create(cx, cy, angleX, angleY, resolution, perspective, cx, cy);
 

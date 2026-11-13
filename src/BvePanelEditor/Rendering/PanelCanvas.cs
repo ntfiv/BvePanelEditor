@@ -36,27 +36,35 @@ public sealed class PanelCanvas : FrameworkElement
         set { _positionLocked = value; InvalidateVisual(); }
     }
 
+    /// <summary>設定すると、左クリックした場所（パネル座標）をこれに渡し、選ぶ・動かすはしない（RealAnalogGauge の表で針の向きを決めるとき）。</summary>
+    public Action<Point>? PickPoint
+    {
+        get => _pickPoint;
+        set { _pickPoint = value; Cursor = value != null ? Cursors.Cross : null; }
+    }
+    private Action<Point>? _pickPoint;
+
     /// <summary>ロック中に動かそうとした。</summary>
     public event Action? LockedEditAttempt;
 
-    /// <summary>Ctrl＋ドラッグで計器の値を動かし始めた（引数はセクション番号）。</summary>
+    /// <summary>Ctrl＋ドラッグでオブジェクトの値を動かし始めた（引数はセクション番号）。</summary>
     public event Action<int>? ValueDragStarted;
     /// <summary>Ctrl＋ドラッグ中（セクション番号、押した所からの縦の移動量 px。上が正、細かく動かすとき true）。</summary>
     public event Action<int, double, bool>? ValueDragged;
     /// <summary>Ctrl＋クリック（動かさずに離した）。</summary>
     public event Action<int>? ValueClicked;
-    /// <summary>主に選んでいる計器（プロパティ欄に出すもの）。</summary>
+    /// <summary>主に選んでいるオブジェクト（プロパティ欄に出すもの）。</summary>
     public int Selected { get; private set; } = -1;
 
     private readonly List<int> _set = [];
-    /// <summary>選んでいる計器すべて（ドラッグ・矢印キーで一緒に動く）。</summary>
+    /// <summary>選んでいるオブジェクトすべて（ドラッグ・矢印キーで一緒に動く）。</summary>
     public IReadOnlyList<int> SelectedSet => _set;
     /// <summary>グループごと選んでいるときのグループ名。</summary>
     public string? SelectedGroup { get; private set; }
-    /// <summary>ダブルクリックで「中に入った」グループ。この中は、クリックですぐ中のかたまり（中のグループ、または計器 1 つ）を選べる。</summary>
+    /// <summary>ダブルクリックで「中に入った」グループ。この中は、クリックですぐ中のかたまり（中のグループ、またはオブジェクト 1 つ）を選べる。</summary>
     public string? EnteredGroup { get; private set; }
 
-    /// <summary>キャンバスの操作で選択が変わった（引数は主に選んでいる計器）。</summary>
+    /// <summary>キャンバスの操作で選択が変わった（引数は主に選んでいるオブジェクト）。</summary>
     public event Action<int>? SelectionChanged;
     /// <summary>ドラッグや矢印キーで値を変え終わった（引数はセクション番号）。</summary>
     public event Action<int>? EditCommitted;
@@ -84,7 +92,15 @@ public sealed class PanelCanvas : FrameworkElement
     private TimeSpan _lastFrame;
 
     private static readonly Brush Background = Freeze(new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2E)));
+    /// <summary>選んでいるオブジェクトの枠（動かせるとき: 黄色の実線）。</summary>
     private static readonly Pen SelPen = Freeze(new Pen(new SolidColorBrush(Color.FromRgb(0xFF, 0xD8, 0x40)), 1.5));
+    /// <summary>選んでいるオブジェクトの枠（位置ロックで動かせないとき: 黄色の点線）。</summary>
+    private static readonly Pen SelLockedPen = Freeze(new Pen(new SolidColorBrush(Color.FromRgb(0xFF, 0xD8, 0x40)), 1.5) { DashStyle = new DashStyle([3, 2], 0) });
+
+    private static readonly Pen SelLockedSolidPen = Freeze(new Pen(SelLockedPen.Brush, 1.5));
+
+    /// <summary>今の選択の枠のペン（動かせるか・動かせないかで変える）。</summary>
+    public Pen SelectionPen => EditLocked ? SelLockedPen : SelPen;
     private static readonly Pen HoverPen = Freeze(new Pen(new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)), 1) { DashStyle = DashStyles.Dash });
     /// <summary>表示範囲の外を暗くする（30%）。</summary>
     private static readonly Brush OutsideLimitBrush = Freeze(new SolidColorBrush(Color.FromArgb(0x4D, 0, 0, 0)));
@@ -201,7 +217,7 @@ public sealed class PanelCanvas : FrameworkElement
     private readonly HashSet<int> _fresh = [];
 
     /// <summary>
-    /// 追加したばかりの計器（画像のドロップ・計器を追加・指針を置く）。それだけを選んでいる間は、位置ロック中でも動かせる。
+    /// 追加したばかりのオブジェクト（画像のドロップ・オブジェクトを追加・指針を置く）。それだけを選んでいる間は、位置ロック中でも動かせる。
     /// ほかを選ぶ・選択を外すと空になる（ロックに戻る）。
     /// </summary>
     public void AllowFreshEdit(IEnumerable<int> sections)
@@ -220,17 +236,22 @@ public sealed class PanelCanvas : FrameworkElement
         FreshChanged?.Invoke();
     }
 
-    /// <summary>追加したばかりで動かせる計器があるか。</summary>
+    /// <summary>追加したばかりで動かせるオブジェクトがあるか。</summary>
     public bool HasFreshEdit => _fresh.Count > 0;
 
-    /// <summary>追加したばかりの計器の「動かしてよい」が付いた・外れた。</summary>
+    /// <summary>追加したばかりのオブジェクトの「動かしてよい」が付いた・外れた。</summary>
     public event Action? FreshChanged;
 
-    /// <summary>今選んでいる計器を、位置ロックのために動かせないか（追加したばかりの計器だけを選んでいるなら動かせる）。</summary>
+    /// <summary>今選んでいるオブジェクトを、位置ロックのために動かせないか（追加したばかりのオブジェクトだけを選んでいるなら動かせる）。</summary>
     public bool EditLocked => PositionLocked && (ForceLocked || !(_fresh.Count > 0 && _set.Count > 0 && _set.All(_fresh.Contains)));
 
-    /// <summary>位置ロックを固定する（追加したばかりの計器も動かさない。バリエーション編集モード）。</summary>
-    public bool ForceLocked { get; set; }
+    /// <summary>位置ロックを固定する（追加したばかりのオブジェクトも動かさない。バリエーション編集モード）。</summary>
+    public bool ForceLocked
+    {
+        get => _forceLocked;
+        set { _forceLocked = value; InvalidateVisual(); }
+    }
+    private bool _forceLocked;
 
     /// <summary>1 つだけ選ぶ。</summary>
     public void Select(int section, bool raise = false)
@@ -261,14 +282,14 @@ public sealed class PanelCanvas : FrameworkElement
     }
 
     /// <summary>
-    /// クリックで選ぶかたまりのグループ: 中に入ったグループの中なら、そのすぐ中のグループ（直下の計器なら null）。
+    /// クリックで選ぶかたまりのグループ: 中に入ったグループの中なら、そのすぐ中のグループ（直下のオブジェクトなら null）。
     /// 外なら、いちばん外のグループ（入っていなければ null）。
     /// </summary>
     private string? GroupOf(int section) =>
         Document != null && section >= 0 && section < Document.Sections.Count ? Document.UnitGroup(section, EnteredFor(section)) : null;
 
     /// <summary>
-    /// 計器から見た「中に入ったグループ」: 中に入ったグループの中ならそのグループ、外なら、計器を含むそのグループの外側のグループ
+    /// オブジェクトから見た「中に入ったグループ」: 中に入ったグループの中ならそのグループ、外なら、オブジェクトを含むそのグループの外側のグループ
     /// （入れ子の中で隣のかたまりをクリックしても、外側のグループの中に入ったままにする）。どれにも入っていなければ null。
     /// </summary>
     private string? EnteredFor(int section)
@@ -281,7 +302,7 @@ public sealed class PanelCanvas : FrameworkElement
         return null;
     }
 
-    /// <summary>計器が中に入ったグループ（かその外側のグループ）の中か。</summary>
+    /// <summary>オブジェクトが中に入ったグループ（かその外側のグループ）の中か。</summary>
     private bool InEntered(int section) => EnteredFor(section) != null;
 
     /// <summary>set のどれもが同じ「中に入ったグループ」の中なら、そのグループ（ただし set がちょうどそのグループ全部なら null）。</summary>
@@ -291,7 +312,7 @@ public sealed class PanelCanvas : FrameworkElement
         return exact == e ? Document!.ParentGroup(e) is { } p && set.All(i => Document.Sections[i].Groups.Contains(p)) ? p : null : e;
     }
 
-    /// <summary>set がちょうどあるグループの計器全部なら、そのグループ（いちばん外側のもの）。</summary>
+    /// <summary>set がちょうどあるグループのオブジェクト全部なら、そのグループ（いちばん外側のもの）。</summary>
     private string? ExactGroup(IReadOnlyCollection<int> set)
     {
         if (Document == null || set.Count == 0) return null;
@@ -306,9 +327,9 @@ public sealed class PanelCanvas : FrameworkElement
     private List<int> MembersOf(string group) => Document?.Members(group) ?? [];
 
     /// <summary>
-    /// パネル上のクリックで選ぶ。グループの計器なら最初はいちばん外のグループ全体、ダブルクリックでそのグループの中に入り、
-    /// すぐ中のかたまり（中のグループ、または計器 1 つ）を選ぶ（入れ子なら、ダブルクリックのたびに 1 つ内側へ）。
-    /// Shift で選択に足す・外す。戻り値は当たった計器（なければ -1）。
+    /// パネル上のクリックで選ぶ。グループのオブジェクトなら最初はいちばん外のグループ全体、ダブルクリックでそのグループの中に入り、
+    /// すぐ中のかたまり（中のグループ、またはオブジェクト 1 つ）を選ぶ（入れ子なら、ダブルクリックのたびに 1 つ内側へ）。
+    /// Shift で選択に足す・外す。戻り値は当たったオブジェクト（なければ -1）。
     /// </summary>
     public int SelectAt(Point panel, bool doubleClick, bool shift)
     {
@@ -439,7 +460,7 @@ public sealed class PanelCanvas : FrameworkElement
 
         dc.PushTransform(new MatrixTransform(View));
         if (!Scene.ThisHidden) DrawDayNight(dc, Scene.BaseDay, Scene.BaseNight, new Point(0, 0), Scene.ThisSection >= 0);
-        // 一覧で非表示にした計器は描かない
+        // 一覧で非表示にしたオブジェクトは描かない
         foreach (var item in Scene.Items) if (!item.Hidden) DrawItem(dc, item);
         dc.Pop();
 
@@ -698,7 +719,7 @@ public sealed class PanelCanvas : FrameworkElement
             if (scene.HasOrigin) Label(dc, "消失点 Origin" + Hint(oOn, scene.Origin), ToScreen(scene.Origin) + Off(oOn, !centerLower), (oOn ? OriginActivePen : OriginPen).Brush);
         }
 
-        // マウスを乗せた計器（グループならグループの枠）
+        // マウスを乗せたオブジェクト（グループならグループの枠）
         if (_hover >= 0 && !_set.Contains(_hover) && scene.ItemFor(_hover) is { } hv)
         {
             var hg = GroupOf(_hover);
@@ -714,17 +735,19 @@ public sealed class PanelCanvas : FrameworkElement
         if (EnteredGroup != null && EnteredGroup != SelectedGroup) GroupBox(dc, EnteredGroup, GroupInsidePen, GroupPen.Brush, $"グループ: {EnteredGroup} の中");
         if (SelectedGroup != null) GroupBox(dc, SelectedGroup, GroupPen, GroupPen.Brush, $"グループ: {SelectedGroup}（{MembersOf(SelectedGroup).Count}）");
 
+        // 選んでいるオブジェクトの枠: 動かせるときは黄色の実線、位置ロックで動かせないときは黄色の点線
+        var selPen = SelectionPen;
         foreach (var idx in _set)
-            if (idx != Selected && scene.ItemFor(idx) is { } other) Poly(dc, other.Outline(), SelPen);
+            if (idx != Selected && scene.ItemFor(idx) is { } other) Ring(dc, other.Outline(), selPen);
 
         if (scene.ItemFor(Selected) is { } sel)
         {
-            Poly(dc, sel.Outline(), SelPen);
-            if (SelectedGroup == null) TitleLabel(dc, sel, SelPen.Brush);
+            Ring(dc, sel.Outline(), selPen);
+            if (SelectedGroup == null) TitleLabel(dc, sel, selPen.Brush);
             if (RadiusGroup().Count > 0)
             {
                 var c = ToScreen(sel.Location);
-                Cross(dc, c, SelPen, 8);
+                Cross(dc, c, EditLocked ? SelLockedSolidPen : SelPen, 8);
                 double rs = sel.Radius * _zoom;
                 if (rs > 0 && sel.Tilt != null) TiltedCircle(dc, sel, sel.Radius, HoverPen);
                 else if (rs > 0) dc.DrawEllipse(null, HoverPen, c, rs, rs);
@@ -742,7 +765,7 @@ public sealed class PanelCanvas : FrameworkElement
         }
     }
 
-    /// <summary>計器の名前を枠の左上に出す。</summary>
+    /// <summary>オブジェクトの名前を枠の左上に出す。</summary>
     private void TitleLabel(DrawingContext dc, RenderItem item, Brush brush)
     {
         var text = item.Title.Length > 0 ? item.Title : $"{PanelSpec.KindLabel(item.Kind)} {item.Subject}";
@@ -751,7 +774,7 @@ public sealed class PanelCanvas : FrameworkElement
         Label(dc, text, at, brush);
     }
 
-    /// <summary>グループの計器全部を囲む枠と名前。</summary>
+    /// <summary>グループのオブジェクト全部を囲む枠と名前。</summary>
     private void GroupBox(DrawingContext dc, string group, Pen pen, Brush labelBrush, string label)
     {
         var pts = MembersOf(group).Select(i => Scene!.ItemFor(i)).Where(it => it != null).SelectMany(it => it!.Outline()).Select(ToScreen).ToList();
@@ -773,7 +796,7 @@ public sealed class PanelCanvas : FrameworkElement
     }
 
     /// <summary>
-    /// 半径を変えられる計器: 選んでいる指針・円形ゲージ 1 つか、同じ回転の中心（Location）にある指針・円形ゲージ全部（時計の 3 本、圧力計の 2 本など）。
+    /// 半径を変えられるオブジェクト: 選んでいる指針・円形ゲージ 1 つか、同じ回転の中心（Location）にある指針・円形ゲージ全部（時計の 3 本、圧力計の 2 本など）。
     /// それ以外の選び方なら空。
     /// </summary>
     private List<RenderItem> RadiusGroup()
@@ -800,6 +823,20 @@ public sealed class PanelCanvas : FrameworkElement
     }
 
     private Point RadiusHandle(RenderItem sel) => ToScreen(new Point(sel.Location.X, sel.Location.Y - Math.Max(sel.Radius, 4)));
+
+    /// <summary>閉じた枠を 1 本の線で描く（点線が角で途切れない）。</summary>
+    private void Ring(DrawingContext dc, Point[] pts, Pen pen)
+    {
+        if (pts.Length < 2) return;
+        var g = new StreamGeometry();
+        using (var c = g.Open())
+        {
+            c.BeginFigure(ToScreen(pts[0]), false, true);
+            c.PolyLineTo(pts.Skip(1).Select(ToScreen).ToList(), true, false);
+        }
+        g.Freeze();
+        dc.DrawGeometry(null, pen, g);
+    }
 
     private void Poly(DrawingContext dc, Point[] pts, Pen pen)
     {
@@ -900,7 +937,7 @@ public sealed class PanelCanvas : FrameworkElement
             var it = Scene.Items[i];
             if (it.Hidden || !it.HitTest(panel)) continue;
             // メインパネルは選ばない（全体を覆うので、何もない所と同じく [This] にする）。
-            // 絵のある所ならそこで止め、透明な所（窓の穴など）なら下の計器を選べるようにする
+            // 絵のある所ならそこで止め、透明な所（窓の穴など）なら下のオブジェクトを選べるようにする
             if (it.IsMainPanel)
             {
                 if (OpaqueAt(it, panel)) return -1;
@@ -911,7 +948,73 @@ public sealed class PanelCanvas : FrameworkElement
         return -1;
     }
 
-    /// <summary>確認用: パネルの点 p をクリックしたときに選ぶ計器（-1 = [This]）。</summary>
+    // ---- 重なったオブジェクトを選ぶ ----
+
+    private MouseButton _panButton;
+    private Point? _pendingTopClick;
+
+    /// <summary>点にあるオブジェクト（上から順。非表示のオブジェクトは除く。メインパネルは絵のある所だけ）。</summary>
+    public List<int> HitItems(Point panel)
+    {
+        var list = new List<int>();
+        if (Scene == null) return list;
+        for (int i = Scene.Items.Count - 1; i >= 0; i--)
+        {
+            var it = Scene.Items[i];
+            if (it.Hidden || !it.HitTest(panel)) continue;
+            if (it.IsMainPanel && !OpaqueAt(it, panel)) continue;
+            list.Add(it.Section);
+        }
+        return list;
+    }
+
+    /// <summary>選んでいるオブジェクト（[This] とメインパネルは除く）のどれかが点にあるか。</summary>
+    private bool SelectionUnder(Point panel) =>
+        Scene != null && _set.Any(i => i != Scene.ThisSection && Scene.ItemFor(i) is { Hidden: false, IsMainPanel: false } it && it.HitTest(panel));
+
+    /// <summary>オブジェクトを 1 つだけ選ぶ（グループの中でも、そのオブジェクトだけ。重なったオブジェクトを一覧から選んだとき）。</summary>
+    public void SelectItemDirect(int section)
+    {
+        if (Document == null || section < 0 || section >= Document.Sections.Count) return;
+        SetSelection(section, [section], null, Document.Sections[section].Group);
+        SelectionChanged?.Invoke(section);
+    }
+
+    /// <summary>右クリックのメニュー: 点にあるオブジェクト（上から順）。選ぶとそのオブジェクトだけを選ぶ。</summary>
+    private void ShowItemsMenu(Point panel)
+    {
+        var items = ItemsMenuEntries(panel);
+        if (items.Count == 0) return;
+        var menu = new System.Windows.Controls.ContextMenu { PlacementTarget = this, Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint };
+        menu.Items.Add(new System.Windows.Controls.MenuItem { Header = "ここにあるオブジェクト（上から順）", IsEnabled = false });
+        menu.Items.Add(new System.Windows.Controls.Separator());
+        foreach (var (section, label) in items)
+        {
+            var mi = new System.Windows.Controls.MenuItem { Header = label, IsChecked = _set.Contains(section) };
+            int s = section;
+            mi.Click += (_, _) => SelectItemDirect(s);
+            menu.Items.Add(mi);
+        }
+        menu.IsOpen = true;
+    }
+
+    /// <summary>右クリックのメニューの項目（オブジェクトの番号と、名前・種類・レイヤー）。</summary>
+    public List<(int Section, string Label)> ItemsMenuEntries(Point panel)
+    {
+        var list = new List<(int, string)>();
+        if (Scene == null || Document == null) return list;
+        foreach (var i in HitItems(panel))
+        {
+            var s = Document.Sections[i];
+            var it = Scene.ItemFor(i);
+            var kind = s.IsMainPanel ? "メインパネル" : PanelSpec.KindLabel(s.Kind);
+            var name = s.Title.Length > 0 ? s.Title : kind;
+            list.Add((i, $"{name}（{kind}・L{it?.Layer ?? 0}{(s.Groups.Count > 0 ? "・グループ " + string.Join("/", s.Groups) : "")}）"));
+        }
+        return list;
+    }
+
+    /// <summary>確認用: パネルの点 p をクリックしたときに選ぶオブジェクト（-1 = [This]）。</summary>
     public int HitForTest(Point p) => HitItem(p);
 
     /// <summary>確認用: 画面の座標 from から to へドラッグする（押す・動かす・離す）。</summary>
@@ -969,14 +1072,21 @@ public sealed class PanelCanvas : FrameworkElement
         // 中・右ドラッグ、またはスペースを押しながら左ドラッグで表示を動かす
         if (Space.IsPanButton(button))
         {
+            _panButton = button;
             _drag = DragMode.Pan;
             Space.BeginPan();
             CaptureMouse();
             return;
         }
+        // 点を拾っている間は、左クリックの場所（パネル座標）を渡すだけ（選ぶ・動かすはしない）
+        if (button == MouseButton.Left && PickPoint is { } pick)
+        {
+            pick(pp);
+            return;
+        }
         if (button != MouseButton.Left) return;
 
-        // Ctrl＋ドラッグ: 位置ではなく、その計器の値（状態量）を動かしてプレビューする。ロック中でも使える
+        // Ctrl＋ドラッグ: 位置ではなく、そのオブジェクトの値（状態量）を動かしてプレビューする。ロック中でも使える
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             int vh = HitItem(pp);
@@ -991,7 +1101,7 @@ public sealed class PanelCanvas : FrameworkElement
             }
         }
 
-        // 選択中の計器・パネル本体のハンドル（ロック中・複数選択中は使わない）
+        // 選択中のオブジェクト・パネル本体のハンドル（ロック中・複数選択中は使わない）
         if (!EditLocked && RadiusGroup() is { Count: > 0 } rg && Scene.ItemFor(Selected) is { } sel && Near(sp, RadiusHandle(sel)))
         {
             _radiusStarts.Clear();
@@ -1012,7 +1122,7 @@ public sealed class PanelCanvas : FrameworkElement
             {
                 if (shift)
                 {
-                    // Shift＋クリック: 選択に足す・外す（計器と同じ。ドラッグしても動かさない）
+                    // Shift＋クリック: 選択に足す・外す（オブジェクトと同じ。ドラッグしても動かさない）
                     ActivePoint = point == PanelPoint.Both ? PanelPoint.Both : ActivePoint ^ point;
                     _drag = DragMode.Blocked;
                     _blockedSilently = true;
@@ -1027,6 +1137,15 @@ public sealed class PanelCanvas : FrameworkElement
                 return;
             }
             ActivePoint = PanelPoint.None;
+        }
+
+        // 選んでいるオブジェクトの上で押したら、上に別のオブジェクトが重なっていても、選んでいるオブジェクトを動かす
+        // （動かさずに離したら、いつもどおりいちばん上のオブジェクトを選ぶ）
+        if (clicks < 2 && !EditLocked && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && SelectionUnder(pp) && !_set.Contains(HitItem(pp)))
+        {
+            _pendingTopClick = pp;
+            StartMoveDrag();
+            return;
         }
 
         int hit = SelectAt(pp, clicks >= 2, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
@@ -1050,7 +1169,7 @@ public sealed class PanelCanvas : FrameworkElement
     }
 
     /// <summary>
-    /// 囲み選択: 四角に丸ごと入っている計器を選ぶ。グループは中身が全部入ったときだけ（中に入ったグループは 1 つずつ）。
+    /// 囲み選択: 四角に丸ごと入っているオブジェクトを選ぶ。グループは中身が全部入ったときだけ（中に入ったグループは 1 つずつ）。
     /// </summary>
     public void SelectInRect(Rect panelRect, bool add)
     {
@@ -1058,7 +1177,7 @@ public sealed class PanelCanvas : FrameworkElement
         var inside = new HashSet<int>();
         foreach (var it in Scene.Items)
         {
-            if (it.IsMainPanel || it.Hidden) continue; // メインパネル・非表示の計器は囲んでも選ばない
+            if (it.IsMainPanel || it.Hidden) continue; // メインパネル・非表示のオブジェクトは囲んでも選ばない
             var o = it.Outline();
             var b = new Rect(new Point(o.Min(q => q.X), o.Min(q => q.Y)), new Point(o.Max(q => q.X), o.Max(q => q.Y)));
             if (panelRect.Contains(b)) inside.Add(it.Section);
@@ -1086,7 +1205,7 @@ public sealed class PanelCanvas : FrameworkElement
         SelectionChanged?.Invoke(Selected);
     }
 
-    /// <summary>選んでいる計器すべての元の位置を覚えてから動かし始める。</summary>
+    /// <summary>選んでいるオブジェクトすべての元の位置を覚えてから動かし始める。</summary>
     private void StartMoveDrag()
     {
         _moveStarts.Clear();
@@ -1195,7 +1314,7 @@ public sealed class PanelCanvas : FrameworkElement
     }
 
     /// <summary>
-    /// 選んでいる計器をまとめて動かす。fromStart なら押した時の位置から d だけ、そうでなければ今の位置から d だけ。
+    /// 選んでいるオブジェクトをまとめて動かす。fromStart なら押した時の位置から d だけ、そうでなければ今の位置から d だけ。
     /// </summary>
     private void MoveSelected(Vector d, bool fromStart)
     {
@@ -1268,7 +1387,16 @@ public sealed class PanelCanvas : FrameworkElement
             return;
         }
         if (_dragMoved && mode is not (DragMode.Pan or DragMode.Blocked) && Selected >= 0) EditCommitted?.Invoke(Selected);
-        if (mode == DragMode.Pan) { Space.EndPan(); ViewChanged?.Invoke(); }
+        // 選んでいるオブジェクトの上で押して動かさずに離した: いつもどおりいちばん上のオブジェクトを選ぶ
+        if (_pendingTopClick is { } top && !_dragMoved) SelectAt(top, false, false);
+        _pendingTopClick = null;
+        if (mode == DragMode.Pan)
+        {
+            Space.EndPan();
+            ViewChanged?.Invoke();
+            // 右クリック（動かさずに離した）: その点にあるオブジェクトを一覧で出して選べるようにする
+            if (!_dragMoved && _panButton == MouseButton.Right) ShowItemsMenu(ToPanel(_dragStartScreen));
+        }
     }
 
     protected override void OnMouseLeave(MouseEventArgs e)
@@ -1310,7 +1438,7 @@ public sealed class PanelCanvas : FrameworkElement
             e.Handled = true;
             return;
         }
-        // 中心・消失点はいつもの位置ロックのまま。計器は追加したばかりのものだけ動かせる
+        // 中心・消失点はいつもの位置ロックのまま。オブジェクトは追加したばかりのものだけ動かせる
         if (Selected == Scene.ThisSection && ActivePoint != PanelPoint.None ? PositionLocked : EditLocked)
         {
             LockedEditAttempt?.Invoke();

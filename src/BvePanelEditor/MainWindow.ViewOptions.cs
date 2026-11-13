@@ -51,7 +51,7 @@ public partial class MainWindow
         catch (IOException) { }
     }
 
-    // ---- 計器の一覧の 1 行表示・問題の欄を畳む ----
+    // ---- オブジェクトの一覧の 1 行表示・問題の欄を畳む ----
 
     private bool _compactList;
     private bool _problemsFolded;
@@ -59,7 +59,7 @@ public partial class MainWindow
 
     private void OnCompactList(object sender, RoutedEventArgs e) => SetCompactList(CompactListCheck.IsChecked == true, save: true);
 
-    /// <summary>計器の一覧を 1 行表示にする・戻す（次に起動したときも使う）。</summary>
+    /// <summary>オブジェクトの一覧を 1 行表示にする・戻す（次に起動したときも使う）。</summary>
     public void SetCompactList(bool compact, bool save)
     {
         _compactList = compact;

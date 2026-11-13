@@ -144,7 +144,7 @@ public partial class MainWindow
             SelectSection(needle);
             var nkey = StateKeyOf(needle)!;
             Check("選んだ指針の値の行に色が付く", _states.HighlightedKey == nkey);
-            Check("案内に選択中の計器が出る", SelectedStateText.Text.Contains("選択中"));
+            Check("案内に選択中のオブジェクトが出る", SelectedStateText.Text.Contains("選択中"));
             var nr = _states.Range(nkey)!;
             Canvas.State[nkey] = nr.Min;
             OnValueDragStarted(needle);
@@ -177,7 +177,7 @@ public partial class MainWindow
             if (always >= 0)
             {
                 SelectSection(always);
-                Check("常表示（true）の計器は色を付けない", _states.HighlightedKey == null && SelectedStateText.Text.Contains("動かせる値はありません"));
+                Check("常表示（true）のオブジェクトは色を付けない", _states.HighlightedKey == null && SelectedStateText.Text.Contains("動かせる値はありません"));
             }
 
             // ===== グループ =====
@@ -193,7 +193,7 @@ public partial class MainWindow
                 var g = _selGroup;
                 Check("グループにするとグループ全体が選ばれる", g != null && _selSet.Count == pick.Count && Canvas.SelectedGroup == g);
                 var members = _doc.Members(g!);
-                Check("グループの計器はファイル内で連続する", members[^1] - members[0] == members.Count - 1);
+                Check("グループのオブジェクトはファイル内で連続する", members[^1] - members[0] == members.Count - 1);
                 Check("ファイルに開始行と終了行が入る", Editor.Text.Contains($";===== グループ: {g} =====") && Editor.Text.Contains($";===== グループ終わり: {g} ====="));
                 Check("一覧にグループの見出し行が出る", Rows.Any(r => r.IsHeader && r.GroupName == g) && Rows.Count(r => !r.IsHeader && members.Contains(r.Index) && r.Indent.Left > 0) == members.Count);
                 var hlRange = Enumerable.Range(_highlighter.FirstLine, _highlighter.HeaderLine - _highlighter.FirstLine + 1)
@@ -222,14 +222,14 @@ public partial class MainWindow
                     Canvas.SelectAt(new Point(-5000, -5000), false, false);
                     Check("グループの外をクリックすると抜ける", Canvas.EnteredGroup == null);
                 }
-                else log.Add("     （グループの計器がほかの計器の下に隠れていて、クリックの確認は省略）");
+                else log.Add("     （グループのオブジェクトがほかのオブジェクトの下に隠れていて、クリックの確認は省略）");
 
-                // 折りたたんだグループの中の計器を 1 つ選ぶと、そのグループが開く
+                // 折りたたんだグループの中のオブジェクトを 1 つ選ぶと、そのグループが開く
                 _folded.Add(g!);
                 RebuildAll();
-                Check("折りたたむと中の計器が一覧から消える", !Rows.Any(r => !r.IsHeader && members.Contains(r.Index)));
+                Check("折りたたむと中のオブジェクトが一覧から消える", !Rows.Any(r => !r.IsHeader && members.Contains(r.Index)));
                 ApplySelection(members[0], [members[0]], null, SelectionSource.Other);
-                Check("中の計器を選ぶとグループが開いて一覧で選ばれる", !_folded.Contains(g!) && ElementList.SelectedItem is ElementRow { Index: var fi } && fi == members[0]);
+                Check("中のオブジェクトを選ぶとグループが開いて一覧で選ばれる", !_folded.Contains(g!) && ElementList.SelectedItem is ElementRow { Index: var fi } && fi == members[0]);
 
                 // まとめて動かす
                 ApplySelection(members[0], members, g, SelectionSource.Other);
@@ -296,7 +296,7 @@ public partial class MainWindow
                 Check("すべて選択が一覧にも伝わる", ElementList.SelectedItems.Count >= instruments.Count);
 
                 Canvas.SelectInRect(new Rect(-1e6, -1e6, 2e6, 2e6), add: false);
-                Check("全体を囲むと計器が全部選ばれる", _selSet.Count == _scene.Items.Count);
+                Check("全体を囲むとオブジェクトが全部選ばれる", _selSet.Count == _scene.Items.Count);
                 var lamps2 = _doc.Sections.Select((x, i) => (x, i)).Where(t => t.x.Kind == SectionKind.PilotLamp && _scene.ItemFor(t.i) != null).Select(t => t.i).ToList();
                 if (lamps2.Count >= 3)
                 {

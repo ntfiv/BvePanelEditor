@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using BvePanelEditor.Core;
 using BvePanelEditor.Rendering;
@@ -139,7 +139,9 @@ public partial class MainWindow
 
             int before = _doc!.Sections.Count;
             var center = _doc.This is { } t && PanelValues.TryPoint(t.Get("Center"), out var cx, out var cy) ? new Point(cx, cy) : Canvas.ViewCenterPanel;
+            SelectSection(-1); // 何も選ばずに置く（ファイルの最後に足す）
             var a = PlaceNeedles(speed, new Point(center.X - 300, center.Y));
+            SelectSection(-1); // 何も選ばずに置く（ファイルの最後に足す）
             var b = PlaceNeedles(clock, new Point(center.X + 300, center.Y), "時計");
             Check("速度計 1 本・時計 3 本を置ける", a.Count == 1 && b.Count == 3 && _doc.Sections.Count == before + 4);
             var sp = _doc.Sections[a[0]];
@@ -153,6 +155,7 @@ public partial class MainWindow
             Check("1 本だけの速度計はグループにしない", _doc.Sections[a[0]].Group == null);
             Check("時計の 3 本は同じ位置で、時・分・秒の順に手前", b.Select(i => _doc.Sections[i].Get("Location")).Distinct().Count() == 1 && layers[0] < layers[1] && layers[1] < layers[2]);
             // もう一度置いても、同じ画像は増やさない
+            SelectSection(-1); // 何も選ばずに置く（ファイルの最後に足す）
             PlaceNeedles(speed, center);
             Check("同じ画像はコピーし直さない（_2 を作らない）", !File.Exists(Path.Combine(PanelDir!, "needle", "nd_speed_2.png")));
             Check("画像の問題はない", !_scene!.Problems.Any(p => p.Message.Contains("画像")));
@@ -160,15 +163,18 @@ public partial class MainWindow
             // 圧力計Ａ・Ｂ: 赤が下・黒が上で、同じ位置
             Check("圧力計Ａは 赤Ａタイプ（下）＋黒（上）", prsA.Count == 2 && Path.GetFileName(prsA[0].DayFile) == "nd_prs1_low.png" && Path.GetFileName(prsA[1].DayFile) == "nd_prs_up.png");
             Check("圧力計Ｂは 赤Ｂタイプ（下）＋黒（上）", prsB.Count == 2 && Path.GetFileName(prsB[0].DayFile) == "needle_prs_low_E217.png" && Path.GetFileName(prsB[1].DayFile) == "nd_prs_up.png");
+            SelectSection(-1); // 何も選ばずに置く（ファイルの最後に足す）
             var pa = PlaceNeedles(prsA, new Point(center.X, center.Y + 300), "圧力計Ａ");
             Check("圧力計Ａの 2 本はグループ「圧力計Ａ」になり、グループごと選ぶ", pa.All(i => _doc.Sections[i].Group == "圧力計Ａ") && _selGroup == "圧力計Ａ");
             Check("グループごと選んでいても「蓋を作る」が出る（2 本まとめて）", CoverButton.Visibility == Visibility.Visible && CoverTargets().Count == 2);
+            SelectSection(-1); // 何も選ばずに置く（ファイルの最後に足す）
             var tunedAt = PlaceNeedles([tuned], new Point(center.X - 300, center.Y + 300));
             // 速度計Ｃ・E217
             var all = NeedleCatalog.Builtin();
             var c = all.First(p => p.Label == "速度計の針Ｃタイプ").Needles[0];
             Check("速度計の針Ｃタイプ（speed_toyo・半径 248・中心 32,252・6.3／0.5）", Path.GetFileName(c.DayFile) == "speed_toyo.png" && File.Exists(c.DayFile) && File.Exists(c.NightFile!)
                 && c.Radius == 248 && c.OriginX == 32 && c.OriginY == 252 && c.InitialAngle == -125 && c.NaturalFreq == 6.3 && c.DampingRatio == 0.5);
+            SelectSection(-1); // 何も選ばずに置く（ファイルの最後に足す）
             var e217 = PlaceNeedles(all.First(p => p.Label == "圧力計(E217)").Needles, new Point(center.X + 300, center.Y + 300), "圧力計(E217)");
             var es = e217.Select(i => _doc.Sections[i]).ToList();
             log.Add("     圧力計(E217): " + string.Join(" ／ ", es.Select(x => $"{x.Title} {x.Get("Location")} L{x.Get("Layer")}")));
@@ -179,6 +185,7 @@ public partial class MainWindow
                 && es[2].Get("InitialAngle") == "-130.8" && es[2].Get("LastAngle") == "136.5" && es[2].Get("Minimum") == "10" && es[2].Get("Maximum") == "1000" && es[2].Get("NaturalFreq") == "80" && es[2].Get("DampingRatio") == "0.1");
             Check("StopPin は書式 2.00 のパネルにも書く", es[2].Get("StopPin") == "True");
             Check("E217 の画像は exe の needle_E217 フォルダにあり、パネルにコピーする", es.All(x => File.Exists(Path.Combine(PanelDir!, x.Get("DaytimeImage")!))) && es[3].Get("DaytimeImage")!.EndsWith("needle_prs_up_E217.png"));
+            SelectSection(-1); // 何も選ばずに置く（ファイルの最後に足す）
             var sp217 = PlaceNeedles(all.First(p => p.Label == "速度計(E217)").Needles, new Point(center.X - 300, center.Y - 300), "速度計(E217)");
             Check("速度計(E217) は影＋針（影は 6, 3 ずらして下）", sp217.Count == 2 && _doc.Sections[sp217[0]].Title == "速度計の影(E217)"
                 && PanelValues.Double(_doc.Sections[sp217[0]].Get("Layer"), 0) < PanelValues.Double(_doc.Sections[sp217[1]].Get("Layer"), 0)

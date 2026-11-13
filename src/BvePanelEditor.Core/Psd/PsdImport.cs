@@ -42,7 +42,7 @@ public sealed class PsdImportResult
 {
     public List<PsdOutputFile> Files = [];
     public PsdBaseResult? Base;
-    /// <summary>パネルに足す計器（表示灯・数字）。グループの計器は連続して並んでいる。</summary>
+    /// <summary>パネルに足すオブジェクト（表示灯・数字）。グループのオブジェクトは連続して並んでいる。</summary>
     public List<PanelSection> Sections = [];
     public List<string> Warnings = [];
 }

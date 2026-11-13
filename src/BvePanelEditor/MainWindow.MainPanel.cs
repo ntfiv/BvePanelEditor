@@ -84,7 +84,7 @@ public partial class MainWindow
         RebuildAll();
         SelectSection(at);
         Message($"[This] の画像をメインパネル（レイヤー {MainPanel.Layer}）にし、[This] からは画像を外しました。"
-            + (before > 0 ? "ほかの計器はメインパネルより上になるようにレイヤーを上げています。" : "") + "メインパネルより下（レイヤー 0 など）に窓などを置けます");
+            + (before > 0 ? "ほかのオブジェクトはメインパネルより上になるようにレイヤーを上げています。" : "") + "メインパネルより下（レイヤー 0 など）に窓などを置けます");
         return true;
     }
 

@@ -19,7 +19,7 @@ public static class PanelSpec
         new("TransparentColor", "透過色", KeyType.Color, "透明にする色（6 桁の 16 進数）"),
         new("Center", "中心", KeyType.Point, "既定の視点で画面の中央になる座標"),
         new("Origin", "消失点", KeyType.Point, "消失点の座標"),
-        new("Perspective", "パース", KeyType.Number, "Tilt を付けた計器の遠近感の強さ。大きいほど弱い（既定 1）。プレビューの遠近は近似です", true),
+        new("Perspective", "パース", KeyType.Number, "Tilt を付けたオブジェクトの遠近感の強さ。大きいほど弱い（既定 1）。プレビューの遠近は近似です", true),
     ];
 
     public static readonly KeySpec[] PilotLamp =

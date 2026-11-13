@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -30,6 +30,29 @@ public sealed class DigitTestWindow : Window
     private readonly StackPanel _dnSwitch = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
     private readonly StripView _strip = new();
     private readonly FrameView _frame = new();
+    private readonly ScrollViewer _frameScroll = new()
+    {
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+    };
+    private readonly ComboBox _zoomBox = new() { Width = 110 };
+    private Point? _dragFrom;
+    private Point _dragOffset;
+
+    /// <summary>見え方の拡大率の段階。</summary>
+    private static readonly double[] ZoomLevels = [0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
+
+    /// <summary>見え方の拡大率（null は枠に合わせる）。拡大したときは、はみ出た分をスクロールで見る。</summary>
+    private void SetZoom(double? zoom)
+    {
+        _frame.Zoom = zoom;
+        var vis = zoom == null ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
+        _frameScroll.HorizontalScrollBarVisibility = vis;
+        _frameScroll.VerticalScrollBarVisibility = vis;
+        _frame.UpdateSize();
+    }
+
+    /// <summary>確認用: 見え方の拡大率（null は枠に合わせる）。</summary>
+    internal double? PreviewZoom { get => _frame.Zoom; set => _zoomBox.SelectedIndex = value is { } z ? Array.IndexOf(ZoomLevels, z) + 1 : 0; }
     private readonly TextBox _interval = new() { Width = 60, VerticalContentAlignment = VerticalAlignment.Center };
     private readonly Slider _value = new() { Minimum = 0, IsSnapToTickEnabled = true, TickFrequency = 1, Width = 260 };
     private readonly TextBlock _valueText = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), MinWidth = 90 };
@@ -117,7 +140,55 @@ public sealed class DigitTestWindow : Window
         var right = new StackPanel();
         Grid.SetColumn(right, 1);
         var look = new GroupBox { Header = "BVE での見え方（今の値のコマ）" };
-        look.Content = new Border { Child = _frame, Height = 230, Background = Brushes.DimGray, Margin = new Thickness(4) };
+        var lookPanel = new DockPanel();
+        var zoomRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 4, 0) };
+        DockPanel.SetDock(zoomRow, Dock.Top);
+        zoomRow.Children.Add(new TextBlock { Text = "拡大", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+        _zoomBox.ItemsSource = new[] { "枠に合わせる" }.Concat(ZoomLevels.Select(z => $"{z * 100:0}%")).ToList();
+        _zoomBox.SelectedIndex = 0;
+        _zoomBox.SelectionChanged += (_, _) =>
+        {
+            if (_zoomBox.SelectedIndex < 0) return;
+            SetZoom(_zoomBox.SelectedIndex == 0 ? null : ZoomLevels[_zoomBox.SelectedIndex - 1]);
+        };
+        zoomRow.Children.Add(_zoomBox);
+        zoomRow.Children.Add(new TextBlock
+        {
+            Text = "ホイールで拡大・縮小、ドラッグで動かす", Foreground = Brushes.Gray, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+        });
+        lookPanel.Children.Add(zoomRow);
+        _frameScroll.Content = _frame;
+        _frameScroll.PreviewMouseWheel += (_, e) =>
+        {
+            e.Handled = true;
+            double cur = _frame.Zoom ?? _frame.FitScale;
+            double next = e.Delta > 0 ? ZoomLevels.FirstOrDefault(z => z > cur * 1.001, ZoomLevels[^1]) : ZoomLevels.LastOrDefault(z => z < cur / 1.001, ZoomLevels[0]);
+            _zoomBox.SelectedIndex = Array.IndexOf(ZoomLevels, next) + 1;
+        };
+        _frameScroll.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (_frame.Zoom == null) return;
+            _dragFrom = e.GetPosition(_frameScroll);
+            _dragOffset = new Point(_frameScroll.HorizontalOffset, _frameScroll.VerticalOffset);
+            _frameScroll.CaptureMouse();
+            _frameScroll.Cursor = System.Windows.Input.Cursors.SizeAll;
+            e.Handled = true;
+        };
+        _frameScroll.PreviewMouseMove += (_, e) =>
+        {
+            if (_dragFrom is not { } from || !_frameScroll.IsMouseCaptured) return;
+            var p = e.GetPosition(_frameScroll);
+            _frameScroll.ScrollToHorizontalOffset(_dragOffset.X - (p.X - from.X));
+            _frameScroll.ScrollToVerticalOffset(_dragOffset.Y - (p.Y - from.Y));
+        };
+        _frameScroll.PreviewMouseLeftButtonUp += (_, _) =>
+        {
+            _dragFrom = null;
+            if (_frameScroll.IsMouseCaptured) _frameScroll.ReleaseMouseCapture();
+            _frameScroll.Cursor = null;
+        };
+        lookPanel.Children.Add(new Border { Child = _frameScroll, Height = 300, Background = Brushes.DimGray, Margin = new Thickness(4) });
+        look.Content = lookPanel;
         right.Children.Add(look);
 
         var valueRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
@@ -311,11 +382,34 @@ public sealed class DigitTestWindow : Window
         private BitmapSource? _bmp;
         private int _interval, _current;
 
+        /// <summary>拡大率（null は枠に合わせる）。</summary>
+        public double? Zoom { get; set; }
+
+        /// <summary>枠に合わせたときの拡大率（最後に描いたもの）。</summary>
+        public double FitScale { get; private set; } = 1;
+
         public FrameView() => RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.NearestNeighbor);
 
         public void Set(BitmapSource bmp, int interval, int current)
         {
             _bmp = bmp; _interval = Math.Max(1, interval); _current = current;
+            UpdateSize();
+            InvalidateVisual();
+        }
+
+        /// <summary>拡大しているときは、拡大した大きさ（＋余白）にする。枠に合わせるときは枠いっぱい。</summary>
+        public void UpdateSize()
+        {
+            if (Zoom is { } z && _bmp != null)
+            {
+                Width = _bmp.PixelWidth * z + 16;
+                Height = _interval * z + 16;
+            }
+            else
+            {
+                Width = double.NaN;
+                Height = double.NaN;
+            }
             InvalidateVisual();
         }
 
@@ -326,7 +420,9 @@ public sealed class DigitTestWindow : Window
             if (top >= _bmp.PixelHeight) return;
             int h = Math.Min(_interval, _bmp.PixelHeight - top);
             var crop = new CroppedBitmap(_bmp, new Int32Rect(0, top, _bmp.PixelWidth, h));
-            double s = Math.Max(0.1, Math.Min(8, Math.Min((ActualWidth - 16) / _bmp.PixelWidth, (ActualHeight - 16) / _interval)));
+            double fit = Math.Max(0.1, Math.Min(32, Math.Min((ActualWidth - 16) / _bmp.PixelWidth, (ActualHeight - 16) / _interval)));
+            if (Zoom == null) FitScale = fit;
+            double s = Zoom ?? fit;
             double w = _bmp.PixelWidth * s, hh = _interval * s;
             var r = new Rect((ActualWidth - w) / 2, (ActualHeight - hh) / 2, w, hh);
             dc.DrawRectangle(Checker, new Pen(Brushes.Gray, 1), r);

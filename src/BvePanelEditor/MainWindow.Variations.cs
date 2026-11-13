@@ -9,7 +9,7 @@ using Microsoft.Win32;
 namespace BvePanelEditor;
 
 /// <summary>
-/// バリエーション展開: マスターパネル（全部入り）の計器ごとに入るバリエーションを決め、バリエーションごとのパネルファイルを書き出す。
+/// バリエーション展開: マスターパネル（全部入り）のオブジェクトごとに入るバリエーションを決め、バリエーションごとのパネルファイルを書き出す。
 /// ファイルの印は「; @group 条件」〜「; @end」、一覧は前置きの「;@バリエーション: 名前 = 出力ファイル」。
 /// </summary>
 public partial class MainWindow
@@ -32,7 +32,7 @@ public partial class MainWindow
         root.Children.Add(new TextBlock
         {
             Text = "全部入りのパネル（マスターパネル）から、バリエーション（路線など）ごとのパネルファイルを書き出します。"
-                + "計器ごとに入るバリエーションを決めます（パネル画面の左上で表示するバリエーションを選ぶと、一覧の目のマークで入れる・外すを切り替えられます）。"
+                + "オブジェクトごとに入るバリエーションを決めます（パネル画面の左上で表示するバリエーションを選ぶと、一覧の目のマークで入れる・外すを切り替えられます）。"
                 + "パネルファイルにはコメント「; @group 名前」〜「; @end」で書きます。",
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.DimGray, Margin = new Thickness(0, 0, 0, 6),
         });
@@ -43,16 +43,16 @@ public partial class MainWindow
         root.Children.Add(_varList);
 
         root.Children.Add(VarButton("現在の表示状態をバリエーションとして追加", OnAddVariation,
-            "今パネル画面に出ている計器（目のマークで隠していないもの。バリエーションを表示中なら、そのバリエーションの計器）が入るバリエーションを足します"));
+            "今パネル画面に出ているオブジェクト（目のマークで隠していないもの。バリエーションを表示中なら、そのバリエーションのオブジェクト）が入るバリエーションを足します"));
         var row2 = new WrapPanel();
-        row2.Children.Add(_varDuplicate = VarButton("バリエーションを複製", OnDuplicateVariation, "選んだバリエーションと同じ計器が入るバリエーションを足します"));
+        row2.Children.Add(_varDuplicate = VarButton("バリエーションを複製", OnDuplicateVariation, "選んだバリエーションと同じオブジェクトが入るバリエーションを足します"));
         row2.Children.Add(_varDelete = VarButton("バリエーションを削除", OnDeleteVariation, "選んだバリエーションを一覧から消します"));
         root.Children.Add(row2);
         var row3 = new WrapPanel();
         row3.Children.Add(_varUp = VarButton("↑", () => MoveVariation(-1), "一覧で上へ"));
         row3.Children.Add(_varDown = VarButton("↓", () => MoveVariation(1), "一覧で下へ"));
         row3.Children.Add(VarButton("表示する", () => { if (_varList.SelectedIndex == 0) SetViewVariation(null); else if (SelectedVariation is { } v) SetViewVariation(v.Name); }, "パネル画面をこのバリエーションの見た目にします（一覧の目のマークで入れる・外す。ダブルクリックでも）"));
-        row3.Children.Add(VarButton("マスターを表示", () => SetViewVariation(null), "すべての計器を表示します"));
+        row3.Children.Add(VarButton("マスターを表示", () => SetViewVariation(null), "すべてのオブジェクトを表示します"));
         root.Children.Add(row3);
 
         _varEdit.Children.Add(new TextBlock { Text = "名前（空白と , ! ; # [ ] = は使えません）", Margin = new Thickness(0, 6, 0, 0) });
@@ -76,13 +76,13 @@ public partial class MainWindow
         root.Children.Add(export);
 
         root.Children.Add(new Separator { Margin = new Thickness(0, 10, 0, 6) });
-        root.Children.Add(new TextBlock { Text = "選んでいる計器が入るバリエーション", FontWeight = FontWeights.SemiBold });
+        root.Children.Add(new TextBlock { Text = "選んでいるオブジェクトが入るバリエーション", FontWeight = FontWeights.SemiBold });
         root.Children.Add(_varCheckTitle);
         root.Children.Add(_varChecks);
 
         root.Children.Add(new Separator { Margin = new Thickness(0, 10, 0, 6) });
         root.Children.Add(VarButton("既存のパネルからマスターを作る…", OnImportVariations,
-            "バリエーションごとに作ってあるパネルファイルを集めて、同じ計器を 1 つにまとめたマスターパネルを作ります"));
+            "バリエーションごとに作ってあるパネルファイルを集めて、同じオブジェクトを 1 つにまとめたマスターパネルを作ります"));
 
         _variationTab = new TabItem { Header = "バリエーション", Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } };
         RightTabs.Items.Add(_variationTab);
@@ -133,18 +133,18 @@ public partial class MainWindow
         // マスターの行では、名前・出力ファイル・複製・削除・並べ替え・選んだものの書き出しは使えない
         _varEdit.IsEnabled = v != null;
         foreach (var b in new[] { _varDelete, _varUp, _varDown, _varExportOne }) if (b != null) b.IsEnabled = v != null;
-        if (_varDuplicate != null) _varDuplicate.IsEnabled = v != null || _varList.SelectedIndex == 0; // マスターの行も複製できる（すべての計器が入る）
+        if (_varDuplicate != null) _varDuplicate.IsEnabled = v != null || _varList.SelectedIndex == 0; // マスターの行も複製できる（すべてのオブジェクトが入る）
         _varName.Text = v?.Name ?? "";
         _varFile.Text = v?.File ?? "";
     }
 
-    /// <summary>選んでいる計器が入るバリエーションのチェック。</summary>
+    /// <summary>選んでいるオブジェクトが入るバリエーションのチェック。</summary>
     private void RefreshVariationChecks()
     {
         _varChecks.Children.Clear();
         if (_doc == null || _doc.Variations.Count == 0) { _varCheckTitle.Text = "バリエーションを足すと、ここで選べます"; return; }
         var targets = VariationTargets();
-        if (targets.Count == 0) { _varCheckTitle.Text = "計器を選んでください"; return; }
+        if (targets.Count == 0) { _varCheckTitle.Text = "オブジェクトを選んでください"; return; }
         bool common = targets.All(i => _doc.Sections[i].VariationCond == null);
         _varCheckTitle.Text = (targets.Count == 1 ? "" : $"{targets.Count} 個　") + (common ? "共通（すべてのバリエーションに入ります）" : "チェックしたバリエーションに入ります");
         foreach (var v in _doc.Variations)
@@ -157,7 +157,7 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>入る・外すを切り替える計器（グループごと選んでいればその中身。[This] も入れられる）。</summary>
+    /// <summary>入る・外すを切り替えるオブジェクト（グループごと選んでいればその中身。[This] も入れられる）。</summary>
     private List<int> VariationTargets()
     {
         if (_doc == null) return [];
@@ -182,8 +182,8 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// グループの見出しに出すバリエーション: 中の計器が全部入っているバリエーション（「・」でつなぐ）。
-    /// 全部のバリエーションに入っている（共通）・どれにも全部は入っていないときは空。一覧がなければ、中の計器の条件がそろっているときだけその条件。
+    /// グループの見出しに出すバリエーション: 中のオブジェクトが全部入っているバリエーション（「・」でつなぐ）。
+    /// 全部のバリエーションに入っている（共通）・どれにも全部は入っていないときは空。一覧がなければ、中のオブジェクトの条件がそろっているときだけその条件。
     /// </summary>
     private string GroupVariationText(IReadOnlyList<int> members)
     {
@@ -198,7 +198,7 @@ public partial class MainWindow
         return inAll.Count == 0 || inAll.Count == all.Count ? "" : string.Join("・", inAll);
     }
 
-    /// <summary>バリエーションを表示しているとき、新しく足す計器はそのバリエーションだけに入れる。</summary>
+    /// <summary>バリエーションを表示しているとき、新しく足すオブジェクトはそのバリエーションだけに入れる。</summary>
     private void JoinViewVariation(PanelSection s)
     {
         if (_viewVariation != null && _doc != null && _doc.VariationNames.Contains(_viewVariation)) s.VariationCond = _viewVariation;
@@ -213,7 +213,7 @@ public partial class MainWindow
     private TabItem? _variationTab;
 
     /// <summary>
-    /// バリエーションのタブを開いている間は「バリエーション編集モード」: 計器の位置は動かさない（位置ロックに固定）。
+    /// バリエーションのタブを開いている間は「バリエーション編集モード」: オブジェクトの位置は動かさない（位置ロックに固定）。
     /// パネル画面の左上の位置ロック・表示灯のボタンは隠し、「バリエーション編集モード」と出す。
     /// </summary>
     private void OnRightTabChanged(object sender, SelectionChangedEventArgs e)
@@ -241,7 +241,7 @@ public partial class MainWindow
         VariationModeBadge.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         UpdateCoverButton();
         UpdateVariationModeBadge();
-        Message(on ? "バリエーション編集モードです（計器の位置は動かしません）。ほかのタブに戻ると、運転台の編集に戻ります" : "運転台の編集に戻りました");
+        Message(on ? "バリエーション編集モードです（オブジェクトの位置は動かしません）。ほかのタブに戻ると、運転台の編集に戻ります" : "運転台の編集に戻りました");
     }
 
     private static readonly System.Windows.Media.Brush BadgeMaster = Frozen(0xE8, 0xC0, 0x30, 0x30), BadgeMasterBorder = Frozen(0xFF, 0xFF, 0xC0, 0xC0);
@@ -267,7 +267,7 @@ public partial class MainWindow
         if (_variationMode && locked) _lockBeforeVariationMode = true; // モード中にロックした（ファイルを開いたときなど）なら、抜けたあともロック
         if (!_variationMode || locked) return false;
         LockButton.IsChecked = LockMenu.IsChecked = true;
-        Message("バリエーション編集モードでは計器の位置は動かせません。ほかのタブ（プロパティなど）に戻ると、位置ロックを外せます");
+        Message("バリエーション編集モードではオブジェクトの位置は動かせません。ほかのタブ（プロパティなど）に戻ると、位置ロックを外せます");
         return true;
     }
 
@@ -287,8 +287,8 @@ public partial class MainWindow
         _viewVariation = name != null && _doc.VariationNames.Contains(name) ? name : null;
         RebuildAll();
         UpdateVariationModeBadge();
-        Message(_viewVariation == null ? "マスター（すべての計器）を表示しています"
-            : $"バリエーション「{_viewVariation}」を表示しています。一覧の目のマークで、このバリエーションに入れる・外すを切り替えられます。足した計器はこのバリエーションだけに入ります");
+        Message(_viewVariation == null ? "マスター（すべてのオブジェクト）を表示しています"
+            : $"バリエーション「{_viewVariation}」を表示しています。一覧の目のマークで、このバリエーションに入れる・外すを切り替えられます。足したオブジェクトはこのバリエーションだけに入ります");
     }
 
     // ---- 一覧の操作 ----
@@ -308,7 +308,7 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// 今の表示状態をバリエーションとして足す。今パネル画面に出ている計器（目のマークで隠していないもの。
+    /// 今の表示状態をバリエーションとして足す。今パネル画面に出ているオブジェクト（目のマークで隠していないもの。
     /// バリエーションを表示中なら、そのバリエーションに入っていて隠していないもの）が入る。
     /// </summary>
     private void OnAddVariation()
@@ -321,13 +321,13 @@ public partial class MainWindow
         var others = Enumerable.Range(0, _doc.Sections.Count).Except(shown).ToList();
         bool first = _doc.Variations.Count == 0;
         _doc.Variations.Add(new PanelVariation { Name = name, File = DefaultVariationFile(name) });
-        // 表示していない計器はこのバリエーションに入れない（1 つ目なら「どのバリエーションにも入らない」になり、問題の欄に出る。あとで足すバリエーションで使える）
+        // 表示していないオブジェクトはこのバリエーションに入れない（1 つ目なら「どのバリエーションにも入らない」になり、問題の欄に出る。あとで足すバリエーションで使える）
         _doc.SetMembership(shown, name, true);
         _doc.SetMembership(others, name, false);
         CommitModel();
         SelectVariationRow(_doc.Variations.Count - 1);
-        Message($"今の表示状態をバリエーション「{name}」として足しました（計器 {shown.Count} 個{(others.Count > 0 ? $"。入らない計器 {others.Count} 個" : "")}）。名前と出力ファイルを直してください"
-            + (first && others.Count > 0 ? "。隠した計器は、ほかのバリエーションを足すときに表示して使えます" : ""));
+        Message($"今の表示状態をバリエーション「{name}」として足しました（オブジェクト {shown.Count} 個{(others.Count > 0 ? $"。入らないオブジェクト {others.Count} 個" : "")}）。名前と出力ファイルを直してください"
+            + (first && others.Count > 0 ? "。隠したオブジェクトは、ほかのバリエーションを足すときに表示して使えます" : ""));
         _varName.Focus();
         _varName.SelectAll();
     }
@@ -337,41 +337,41 @@ public partial class MainWindow
         if (_doc == null) return;
         if (_varList.SelectedIndex == 0)
         {
-            // マスターの行の複製: すべての計器が入るバリエーションを足す
+            // マスターの行の複製: すべてのオブジェクトが入るバリエーションを足す
             FlushReparse();
             var all = UniqueVariationName("すべて");
             _doc.Variations.Add(new PanelVariation { Name = all, File = DefaultVariationFile(all) });
             _doc.SetMembership(Enumerable.Range(0, _doc.Sections.Count), all, true);
             CommitModel();
             SelectVariationRow(_doc.Variations.Count - 1);
-            Message($"マスターを「{all}」として複製しました（すべての計器が入ります）");
+            Message($"マスターを「{all}」として複製しました（すべてのオブジェクトが入ります）");
             return;
         }
         if (SelectedVariation is not { } src) return;
         FlushReparse();
         var name = UniqueVariationName(src.Name);
         _doc.Variations.Insert(_doc.Variations.IndexOf(src) + 1, new PanelVariation { Name = name, File = DefaultVariationFile(name) });
-        // 元のバリエーションに入る、条件付きの計器を新しいバリエーションにも入れる
+        // 元のバリエーションに入る、条件付きのオブジェクトを新しいバリエーションにも入れる
         var members = Enumerable.Range(0, _doc.Sections.Count).Where(i => _doc.Sections[i].VariationCond != null && _doc.Sections[i].InVariation(src.Name)).ToList();
         _doc.SetMembership(members, name, true);
         CommitModel();
         SelectVariationRow(_doc.VariationNames.IndexOf(name));
-        Message($"バリエーション「{src.Name}」を「{name}」として複製しました（同じ計器が入ります）");
+        Message($"バリエーション「{src.Name}」を「{name}」として複製しました（同じオブジェクトが入ります）");
     }
 
     private void OnDeleteVariation()
     {
         if (_doc == null || SelectedVariation is not { } v) return;
         FlushReparse();
-        // そのバリエーションだけに入っている計器
+        // そのバリエーションだけに入っているオブジェクト
         var only = Enumerable.Range(0, _doc.Sections.Count).Where(i => _doc.Sections[i].VariationCond != null
             && _doc.MembershipOf(i) is { Count: 1 } m && m[0] == v.Name).ToList();
         int pick = 1;
         if (only.Count > 0)
         {
             pick = ChoiceDialog.Show(this, "バリエーションの削除",
-                $"バリエーション「{v.Name}」だけに入っている計器が {only.Count} 個あります。どうしますか？",
-                [$"その計器も消す（{only.Count} 個）", "その計器は残して共通にする"]);
+                $"バリエーション「{v.Name}」だけに入っているオブジェクトが {only.Count} 個あります。どうしますか？",
+                [$"そのオブジェクトも消す（{only.Count} 個）", "そのオブジェクトは残して共通にする"]);
             if (pick < 0) return;
         }
         else if (!Confirm($"バリエーション「{v.Name}」を一覧から消しますか？（Ctrl+Z で戻せます）")) return;
@@ -380,7 +380,7 @@ public partial class MainWindow
         else foreach (var i in only) _doc.Sections[i].VariationCond = null;
         if (_viewVariation == v.Name) _viewVariation = null;
         CommitModel();
-        Message($"バリエーション「{v.Name}」を消しました" + (only.Count > 0 ? (pick == 0 ? $"（そのバリエーションだけの計器 {only.Count} 個も消しました）" : $"（そのバリエーションだけの計器 {only.Count} 個は共通にしました）") : ""));
+        Message($"バリエーション「{v.Name}」を消しました" + (only.Count > 0 ? (pick == 0 ? $"（そのバリエーションだけのオブジェクト {only.Count} 個も消しました）" : $"（そのバリエーションだけのオブジェクト {only.Count} 個は共通にしました）") : ""));
     }
 
     private void MoveVariation(int delta)
@@ -416,7 +416,7 @@ public partial class MainWindow
         if (defaultFile) v.File = DefaultVariationFile(name); // 出力ファイルが初期値のままなら、名前に合わせる
         if (_viewVariation == old) _viewVariation = name;
         CommitModel();
-        Message($"バリエーション名を「{old}」から「{name}」にしました（計器の条件も直しました）");
+        Message($"バリエーション名を「{old}」から「{name}」にしました（オブジェクトの条件も直しました）");
     }
 
     private void CommitVariationFile()
@@ -449,7 +449,7 @@ public partial class MainWindow
     // ---- 書き出し ----
 
     /// <summary>
-    /// バリエーションのパネルファイルを書き出す。マスターを保存してから、入らない計器を消したパネルを出力ファイルに書く。
+    /// バリエーションのパネルファイルを書き出す。マスターを保存してから、入らないオブジェクトを消したパネルを出力ファイルに書く。
     /// 文字コード・改行はマスターのまま。すでにあるファイルは確認してから上書きする（最初の上書きでは .bak を残す）。戻り値は書き出したファイル。
     /// </summary>
     public List<string> ExportVariations(IReadOnlyList<PanelVariation> vars)
@@ -481,7 +481,7 @@ public partial class MainWindow
             return written;
         }
         if (_doc.UnknownVariationNames() is { Count: > 0 } unknown)
-            Message($"一覧にないバリエーション名（{string.Join("、", unknown)}）の計器は、どのバリエーションにも入りません");
+            Message($"一覧にないバリエーション名（{string.Join("、", unknown)}）のオブジェクトは、どのバリエーションにも入りません");
         var exists = targets.Where(t => File.Exists(t.Path)).ToList();
         if (exists.Count > 0 && !Confirm($"次のファイルを上書きします（最初の上書きでは .bak を残します）。\n\n{string.Join("\n", exists.Select(t => "・" + Path.GetRelativePath(masterDir, t.Path)))}\n\n続けますか？"))
             return written;
@@ -554,9 +554,9 @@ public partial class MainWindow
         }
         _viewVariation = null;
         LoadPanel(masterPath, null);
-        var msg = $"マスターパネル「{Path.GetFileName(masterPath)}」を作りました。共通の計器 {result.Common} 個、一部のバリエーションだけの計器 {result.Partial} 個です。";
+        var msg = $"マスターパネル「{Path.GetFileName(masterPath)}」を作りました。共通のオブジェクト {result.Common} 個、一部のバリエーションだけのオブジェクト {result.Partial} 個です。";
         if (result.Mismatches.Count > 0) msg += $"\n\n書き出し直すと元と違うバリエーションがあります: {string.Join("、", result.Mismatches)}";
-        else msg += "\n\n各バリエーションを書き出し直すと、元のパネルと同じ計器・値・並びになることを確かめました。";
+        else msg += "\n\n各バリエーションを書き出し直すと、元のパネルと同じオブジェクト・値・並びになることを確かめました。";
         if (result.Notes.Count > 0) msg += "\n\n" + string.Join("\n", result.Notes.Select(n => "・" + n));
         if (!IsTestRun) MessageBox.Show(this, msg, "既存のパネルからマスターを作る", MessageBoxButton.OK, MessageBoxImage.Information);
         Message($"マスターパネルを作りました（共通 {result.Common} 個・一部だけ {result.Partial} 個）");

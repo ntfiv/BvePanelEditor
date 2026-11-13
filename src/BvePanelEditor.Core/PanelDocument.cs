@@ -113,7 +113,7 @@ public sealed class PanelSection
 
     /// <summary>
     /// 入るバリエーションの条件（「A, B」「!A」の書き方。null なら共通＝すべてのバリエーション）。
-    /// ファイルでは計器の前に「; @group 条件」、共通に戻るところに「; @end」と書く。
+    /// ファイルではオブジェクトの前に「; @group 条件」、共通に戻るところに「; @end」と書く。
     /// </summary>
     public string? VariationCond { get; set; }
 
@@ -126,7 +126,7 @@ public sealed class PanelSection
     /// <summary>いちばん外側のグループ（なければ null）。</summary>
     public string? TopGroup => Groups.Count > 0 ? Groups[0] : null;
 
-    /// <summary>入っているグループを、ほかの計器と同じにする（外側から順）。</summary>
+    /// <summary>入っているグループを、ほかのオブジェクトと同じにする（外側から順）。</summary>
     public void SetGroups(IEnumerable<string> groups)
     {
         var list = groups.ToList();
@@ -134,7 +134,7 @@ public sealed class PanelSection
         Groups.AddRange(list);
     }
 
-    /// <summary>この計器の画像を作った PSD のレイヤー（「フォルダ/レイヤー」の形）。ファイルでは見出しのすぐ下の「;@PSDレイヤー: 名前」。</summary>
+    /// <summary>このオブジェクトの画像を作った PSD のレイヤー（「フォルダ/レイヤー」の形）。ファイルでは見出しのすぐ下の「;@PSDレイヤー: 名前」。</summary>
     public List<string> PsdLayers { get; } = [];
 
     /// <summary>どの PSD から作ったか（PanelDocument.PsdSources の番号。ふつうは 1）。ファイルでは「;@PSDレイヤー #2: 名前」。</summary>
@@ -153,12 +153,12 @@ public sealed class PanelSection
     public bool ViewHidden { get; set; }
 
     /// <summary>
-    /// コメントアウトして無効にした計器（BVE でも表示されない）。ファイルでは見出しと中身の行の頭に「;」を付けた形
+    /// コメントアウトして無効にしたオブジェクト（BVE でも表示されない）。ファイルでは見出しと中身の行の頭に「;」を付けた形
     /// （「;[Needle]」「;Subject = kmph」。中の空行は「;」だけの行）。HeaderRaw と Lines は「;」を外した形で持ち、書き出すときに付ける。
     /// </summary>
     public bool Disabled { get; set; }
 
-    /// <summary>無効にした計器のかたまりの後ろの行（空行など。「;」を付けずにそのまま書く）。</summary>
+    /// <summary>無効にしたオブジェクトのかたまりの後ろの行（空行など。「;」を付けずにそのまま書く）。</summary>
     public List<PanelLine> After { get; } = [];
 
     /// <summary>無効にする（中身の末尾の空行はかたまりの外へ出す）。</summary>
@@ -318,7 +318,7 @@ public sealed class PanelSection
     public string TitleSource =>
         TrySplitTitle(HeaderRaw, out _, out _) ? "見出し行" : LeadingTitle(out _, out _, out _) ? "直前の行" : "";
 
-    /// <summary>計器の名前（直前のコメント）。なければ空。</summary>
+    /// <summary>オブジェクトの名前（直前のコメント）。なければ空。</summary>
     public string Title
     {
         get
@@ -393,7 +393,7 @@ public sealed class CropSet
     public const string OverMainMark = "メインパネルに重ねる";
 }
 
-/// <summary>グループの書き方の問題（Section は関係する計器の番号、なければ -1）。</summary>
+/// <summary>グループの書き方の問題（Section は関係するオブジェクトの番号、なければ -1）。</summary>
 public sealed record GroupWarning(int Section, string Message);
 
 /// <summary>運転台パネルファイル全体。コメントや書式を崩さず読み書きする。</summary>
@@ -500,9 +500,9 @@ public sealed partial class PanelDocument
         string? cond = null;               // 今の「; @group」の条件（null なら共通）
         int condLine = 0;
         var groups = new List<string>();  // 今読んでいるグループ（外側から順）
-        var groupStarts = new List<int>(); // それぞれのグループの最初の計器の番号
+        var groupStarts = new List<int>(); // それぞれのグループの最初のオブジェクトの番号
         var cropLayers = new List<(string Name, bool Night, List<string> Layers, int Line)>();
-        PanelSection? disabled = null; // 今読んでいる、コメントアウトした計器のかたまり
+        PanelSection? disabled = null; // 今読んでいる、コメントアウトしたオブジェクトのかたまり
         for (int i = 1; i < lines.Count; i++)
         {
             string raw = lines[i];
@@ -518,13 +518,18 @@ public sealed partial class PanelDocument
                 cropLayers.Add((clName, clNight, clLayers, i + 1));
                 continue;
             }
+            if (TryRagLine(raw, out var ragIni))
+            {
+                doc.RagIni = ragIni;
+                continue;
+            }
             if (TryVariationLine(raw, out var variation))
             {
                 doc.Variations.RemoveAll(v => v.Name == variation.Name);
                 doc.Variations.Add(variation);
                 continue;
             }
-            // バリエーションの印（「; @group 条件」〜「; @end」）は本文の行として持たず、次の計器の条件にする
+            // バリエーションの印（「; @group 条件」〜「; @end」）は本文の行として持たず、次のオブジェクトの条件にする
             if (TryVariationMark(raw, out var isEnd, out var markCond))
             {
                 if (isEnd)
@@ -563,19 +568,19 @@ public sealed partial class PanelDocument
                         doc.Sections[^1].IsMainPanel = true;
                     }
                 }
-                else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どの計器のものかわからない「@メインパネル」の行があります（無視します）"));
+                else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どのオブジェクトのものかわからない「@メインパネル」の行があります（無視します）"));
                 continue;
             }
             if (TryCropShapeLine(raw, out var cropShape))
             {
                 if (doc.Sections.Count > 0 && ReferenceEquals(current, doc.Sections[^1].Lines)) doc.Sections[^1].CropShapes.Add(cropShape);
-                else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どの計器のものかわからない「@切り抜き形」の行があります（無視します）"));
+                else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どのオブジェクトのものかわからない「@切り抜き形」の行があります（無視します）"));
                 continue;
             }
             if (TryCropLine(raw, out var cropName))
             {
                 if (doc.Sections.Count > 0 && ReferenceEquals(current, doc.Sections[^1].Lines)) doc.Sections[^1].CropSet = cropName;
-                else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どの計器のものかわからない「@切り抜き」の行があります（無視します）"));
+                else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どのオブジェクトのものかわからない「@切り抜き」の行があります（無視します）"));
                 continue;
             }
             if (TryPsdLayers(raw, out var layerSrc, out var psdLayers))
@@ -586,7 +591,7 @@ public sealed partial class PanelDocument
                     doc.Sections[^1].PsdLayers.AddRange(psdLayers);
                     doc.Sections[^1].PsdSource = layerSrc;
                 }
-                else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どの計器のものかわからない「@PSDレイヤー」の行があります（無視します）"));
+                else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どのオブジェクトのものかわからない「@PSDレイヤー」の行があります（無視します）"));
                 continue;
             }
             // グループの開始行・終了行は本文の行として持たず、グループの切り替えだけに使う（書き出すときに作り直す）
@@ -606,7 +611,7 @@ public sealed partial class PanelDocument
                         else if (endName.Length > 0 && endName != groups[k])
                             doc.GroupWarnings.Add(new(start < doc.Sections.Count ? start : -1, $"{i + 1} 行目: グループ「{groups[k]}」の終わりの名前が「{endName}」になっています"));
                         if (start >= doc.Sections.Count)
-                            doc.GroupWarnings.Add(new(-1, $"グループ「{groups[k]}」に計器がありません（無視します）"));
+                            doc.GroupWarnings.Add(new(-1, $"グループ「{groups[k]}」にオブジェクトがありません（無視します）"));
                     }
                     groups.RemoveRange(close, groups.Count - close);
                     groupStarts.RemoveRange(close, groupStarts.Count - close);
@@ -620,7 +625,7 @@ public sealed partial class PanelDocument
                 groupStarts.Add(doc.Sections.Count);
                 continue;
             }
-            // コメントアウトした計器の見出し（行頭の「;」のすぐ後ろが [PilotLamp] など）
+            // コメントアウトしたオブジェクトの見出し（行頭の「;」のすぐ後ろが [PilotLamp] など）
             bool disabledHeader = IsDisabledSectionHeader(raw);
             if (!disabledHeader && disabled != null)
             {
@@ -802,6 +807,16 @@ public sealed partial class PanelDocument
 
     public static string VariationLine(PanelVariation v) => $";@バリエーション: {v.Name} = {v.File}";
 
+    /// <summary>RealAnalogGauge の親 ini の行「;@RealAnalogGauge: パス」（パスはパネルファイルからの相対）。</summary>
+    public static bool TryRagLine(string raw, out string path)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(raw, @"^\s*[;#]+\s*@RealAnalogGauge\s*[:：]\s*(?<p>.*?)\s*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        path = m.Success ? m.Groups["p"].Value : "";
+        return m.Success && path.Length > 0;
+    }
+
+    public static string RagLine(string path) => $";@RealAnalogGauge: {path}";
+
     public static bool IsMainPanelLine(string raw) => System.Text.RegularExpressions.Regex.IsMatch(raw, @"^\s*[;#]+\s*@メインパネル\s*$");
 
     /// <summary>「;@切り抜き: 発光」の行か。</summary>
@@ -824,7 +839,7 @@ public sealed partial class PanelDocument
     public static string GroupEndLine(string name) => $";===== グループ終わり: {name} =====";
 
     /// <summary>
-    /// コメントアウトした計器の見出しか（行頭の「;」のすぐ後ろが [PilotLamp]・[Needle]・[DigitalGauge]・[DigitalNumber]）。
+    /// コメントアウトしたオブジェクトの見出しか（行頭の「;」のすぐ後ろが [PilotLamp]・[Needle]・[DigitalGauge]・[DigitalNumber]）。
     /// [This] や知らない名前は、ふつうのコメントのまま。
     /// </summary>
     public static bool IsDisabledSectionHeader(string raw)
@@ -848,9 +863,9 @@ public sealed partial class PanelDocument
     public IEnumerable<string> EnumerateLines() => EnumerateTagged().Select(t => t.Raw);
 
     /// <summary>
-    /// 本文の行を、どの計器の何の行かと一緒に並べる。書き出しと行番号の計算はどちらもこれを使う。
-    /// グループのかたまりの最初の計器では説明コメントの前（先頭の空行の後ろ）に開始行を、
-    /// 最後の計器では本文の後ろ（末尾の空行の前）に終了行を出す。
+    /// 本文の行を、どのオブジェクトの何の行かと一緒に並べる。書き出しと行番号の計算はどちらもこれを使う。
+    /// グループのかたまりの最初のオブジェクトでは説明コメントの前（先頭の空行の後ろ）に開始行を、
+    /// 最後のオブジェクトでは本文の後ろ（末尾の空行の前）に終了行を出す。
     /// </summary>
     public IEnumerable<(string Raw, int Section, LineRole Role)> EnumerateTagged()
     {
@@ -867,13 +882,14 @@ public sealed partial class PanelDocument
             if (src.Night != null) yield return (PsdFileLine(true, src.Night, src.Id), -1, LineRole.Preamble);
         }
         foreach (var v in Variations) yield return (VariationLine(v), -1, LineRole.Preamble);
+        if (!string.IsNullOrWhiteSpace(RagIni)) yield return (RagLine(RagIni), -1, LineRole.Preamble);
         foreach (var l in Preamble) yield return (l.Raw, -1, LineRole.Preamble);
         for (int i = 0; i < Sections.Count; i++)
         {
             var s = Sections[i];
-            // バリエーションの条件が前の計器と変われば、ここに「; @group 条件」（共通に戻るなら「; @end」）を書く
+            // バリエーションの条件が前のオブジェクトと変われば、ここに「; @group 条件」（共通に戻るなら「; @end」）を書く
             bool mark = (i == 0 ? null : Sections[i - 1].VariationCond) != s.VariationCond;
-            // 前の計器と共通でないグループはここで始まり、次の計器と共通でないグループはここで終わる（入れ子は外側から始め、内側から終える）
+            // 前のオブジェクトと共通でないグループはここで始まり、次のオブジェクトと共通でないグループはここで終わる（入れ子は外側から始め、内側から終える）
             static int Common(List<string> a, List<string> b) { int c = 0; while (c < a.Count && c < b.Count && a[c] == b[c]) c++; return c; }
             int beginFrom = i == 0 ? 0 : Common(Sections[i - 1].Groups, s.Groups);
             int endFrom = i == Sections.Count - 1 ? 0 : Common(s.Groups, Sections[i + 1].Groups);
@@ -887,7 +903,7 @@ public sealed partial class PanelDocument
             for (int g = beginFrom; g < s.Groups.Count; g++) yield return (GroupBeginLine(s.Groups[g]), i, LineRole.GroupBegin);
             for (int k = lead; k < s.Leading.Count; k++) yield return (s.Leading[k].Raw, i, LineRole.Leading);
 
-            // 無効にした計器は、見出しと中身の行の頭に「;」を付ける（中の空行は「;」だけ）
+            // 無効にしたオブジェクトは、見出しと中身の行の頭に「;」を付ける（中の空行は「;」だけ）
             string Out(PanelLine l) => !s.Disabled ? l.Raw : l.Kind == PanelLineKind.Blank && l.Raw.Length == 0 ? ";" : ";" + l.Raw;
             yield return (s.Disabled ? ";" + s.HeaderRaw : s.HeaderRaw, i, LineRole.SectionHeader);
             if (s.IsMainPanel) yield return (MainPanelLine, i, LineRole.Body);
@@ -901,7 +917,7 @@ public sealed partial class PanelDocument
             for (int g = s.Groups.Count - 1; g >= endFrom; g--) yield return (GroupEndLine(s.Groups[g]), i, LineRole.GroupEnd);
             for (int k = tail; k < s.Lines.Count; k++) yield return (Out(s.Lines[k]), i, LineRole.Body);
             foreach (var l in s.After) yield return (l.Raw, i, LineRole.Body);
-            // 最後の計器が条件付きなら、最後に「; @end」で閉じる
+            // 最後のオブジェクトが条件付きなら、最後に「; @end」で閉じる
             if (i == Sections.Count - 1 && s.VariationCond != null) yield return (VariationMarkLine(null), i, LineRole.VariationMark);
         }
     }

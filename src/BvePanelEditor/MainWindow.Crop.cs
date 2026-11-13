@@ -207,7 +207,7 @@ public partial class MainWindow
         }
         int start = doc.Sections.Count;
         doc.Sections.AddRange(result.Sections);
-        // 今のパネルに新しいメインパネルを足したときは、前からある計器をメインパネルより上にする
+        // 今のパネルに新しいメインパネルを足したときは、前からあるオブジェクトをメインパネルより上にする
         if (newPanelPath == null && useNewMain && result.Main != null)
             MainPanel.RaiseAbove(doc, (int)PanelValues.Double(result.Main.Get("Layer"), MainPanel.Layer), [.. result.Sections]);
 

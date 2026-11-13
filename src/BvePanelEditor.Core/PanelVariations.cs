@@ -13,12 +13,12 @@ public sealed class PanelVariation
 }
 
 /// <summary>
-/// 計器が入るバリエーションの条件（ファイルでは「; @group 条件」）。書き方:
+/// オブジェクトが入るバリエーションの条件（ファイルでは「; @group 条件」）。書き方:
 /// 「,」か「、」で区切り、どれかが合えば入る。「A」はバリエーションが A のとき、「!A」は A 以外のとき。空・「共通」は共通。
 /// </summary>
 public static partial class VariationCondition
 {
-    /// <summary>どのバリエーションにも入らない計器の条件（一覧に使えない名前）。</summary>
+    /// <summary>どのバリエーションにも入らないオブジェクトの条件（一覧に使えない名前）。</summary>
     public const string None = "なし";
 
     [GeneratedRegex(@"[\s,!;#\[\]=、]")]
@@ -70,19 +70,22 @@ public static partial class VariationCondition
     }
 }
 
-/// <summary>バリエーションの一覧・計器の入るバリエーション・書き出し。</summary>
+/// <summary>バリエーションの一覧・オブジェクトの入るバリエーション・書き出し。</summary>
 public sealed partial class PanelDocument
 {
     /// <summary>バリエーションの一覧（ファイルの前置きの「;@バリエーション」の行。並びも一覧の順）。</summary>
     public List<PanelVariation> Variations { get; } = [];
 
+    /// <summary>RealAnalogGauge の親 ini（パネルファイルからの相対パス。手で選んだときだけ書く）。ファイルでは「;@RealAnalogGauge: パス」。</summary>
+    public string? RagIni { get; set; }
+
     public List<string> VariationNames => Variations.Select(v => v.Name).ToList();
 
-    /// <summary>計器が入るバリエーション（一覧の順）。</summary>
+    /// <summary>オブジェクトが入るバリエーション（一覧の順）。</summary>
     public List<string> MembershipOf(int index) => Variations.Select(v => v.Name).Where(n => Sections[index].InVariation(n)).ToList();
 
     /// <summary>
-    /// 計器をバリエーション name に入れる・外す。条件は入るバリエーションの並び（全部なら共通、どれにも入らなければ「なし」）に作り直す。
+    /// オブジェクトをバリエーション name に入れる・外す。条件は入るバリエーションの並び（全部なら共通、どれにも入らなければ「なし」）に作り直す。
     /// 一覧にない名前の項（「!」の付かないもの）はそのまま残す。
     /// </summary>
     public void SetMembership(IEnumerable<int> indices, string name, bool include)
@@ -102,7 +105,7 @@ public sealed partial class PanelDocument
         }
     }
 
-    /// <summary>バリエーション名を変える（計器の条件の中の名前も）。</summary>
+    /// <summary>バリエーション名を変える（オブジェクトの条件の中の名前も）。</summary>
     public void RenameVariation(string oldName, string newName)
     {
         foreach (var v in Variations.Where(v => v.Name == oldName)) v.Name = newName;
@@ -114,8 +117,8 @@ public sealed partial class PanelDocument
     }
 
     /// <summary>
-    /// バリエーションを一覧から消す。計器の条件は残りのバリエーションで作り直す。
-    /// 戻り値は、そのバリエーションだけに入っていた計器（どのバリエーションにも入らなくなった計器）。
+    /// バリエーションを一覧から消す。オブジェクトの条件は残りのバリエーションで作り直す。
+    /// 戻り値は、そのバリエーションだけに入っていたオブジェクト（どのバリエーションにも入らなくなったオブジェクト）。
     /// </summary>
     public List<int> DeleteVariation(string name)
     {
@@ -142,7 +145,7 @@ public sealed partial class PanelDocument
     }
 
     /// <summary>
-    /// バリエーション name のパネルファイルの中身を作る。入らない計器を消し、条件の印とバリエーションの一覧の行を書かない。
+    /// バリエーション name のパネルファイルの中身を作る。入らないオブジェクトを消し、条件の印とバリエーションの一覧の行を書かない。
     /// 出力先のフォルダ outDir がマスターのフォルダ masterDir と違えば、画像の場所（相対パス）を直す。
     /// </summary>
     public string ExportVariation(string name, string? masterDir = null, string? outDir = null)
@@ -166,7 +169,7 @@ public sealed partial class PanelDocument
         string.Equals(Path.GetFullPath(a).TrimEnd('\\', '/'), Path.GetFullPath(b).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 計器の画像（DaytimeImage など）の相対パスを、fromDir からのものから toDir からのものに直す。フルパスはそのまま。
+    /// オブジェクトの画像（DaytimeImage など）の相対パスを、fromDir からのものから toDir からのものに直す。フルパスはそのまま。
     /// 区切りは元の書き方（\ か /）に合わせる。
     /// </summary>
     public static void RebasePaths(PanelSection s, string fromDir, string toDir)

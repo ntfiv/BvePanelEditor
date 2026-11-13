@@ -6,7 +6,7 @@
         WindowStartupLocation="CenterOwner" Background="{x:Static SystemColors.WindowBrush}" PreviewKeyDown="OnWindowKeyDown">
     <DockPanel Background="{x:Static SystemColors.WindowBrush}">
         <TextBlock DockPanel.Dock="Top" Margin="8,8,8,0" TextWrapping="Wrap" FontSize="13"
-                   Text="この画面では昼パネルの計器消灯・点灯と夜パネルの計器消灯・点灯の４枚の画像を元に、車両パネルのベースを制作できます。" />
+                   Text="この画面では昼パネルのオブジェクト消灯・点灯と夜パネルのオブジェクト消灯・点灯の４枚の画像を元に、車両パネルのベースを制作できます。" />
         <!-- 上: 画像 -->
         <Grid DockPanel.Dock="Top" Margin="8,8,8,4">
             <Grid.ColumnDefinitions>
@@ -187,7 +187,7 @@
                             </CheckBox>
                             <TextBlock Grid.Row="2" Text="名前" VerticalAlignment="Center" />
                             <TextBox x:Name="OvName" Grid.Row="2" Grid.Column="1" Margin="0,2" LostKeyboardFocus="OnOverlayPropCommit" KeyDown="OnOverlayPropKey"
-                                     ToolTip="計器の名前（パネルファイルでは見出しのすぐ上のコメント）。部品用の画像では、PilotLamp 部品の「切り抜き元」の名前になります" />
+                                     ToolTip="オブジェクトの名前（パネルファイルでは見出しのすぐ上のコメント）。部品用の画像では、PilotLamp 部品の「切り抜き元」の名前になります" />
                             <TextBlock Grid.Row="3" Text="位置" VerticalAlignment="Center" ToolTip="画像の左上を置く位置（メインパネルの画像の座標、px）。見本でドラッグ・矢印キーでも動かせます" />
                             <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
                                 <TextBlock Text="X" VerticalAlignment="Center" Margin="0,0,4,0" />
@@ -248,7 +248,7 @@
                         </Grid.RowDefinitions>
                         <TextBlock Text="名前" VerticalAlignment="Center" />
                         <TextBox x:Name="NameBox" Grid.Column="1" Margin="0,2" LostKeyboardFocus="OnPropCommit" KeyDown="OnPropKey"
-                                 ToolTip="計器の名前（パネルファイルでは見出しのすぐ上のコメント）。PNG のファイル名にも使います" />
+                                 ToolTip="オブジェクトの名前（パネルファイルでは見出しのすぐ上のコメント）。PNG のファイル名にも使います" />
                         <TextBlock Grid.Row="1" Text="状態量" VerticalAlignment="Center" />
                         <ComboBox x:Name="SubjectBox" Grid.Row="1" Grid.Column="1" Margin="0,2" IsEditable="True"
                                   LostKeyboardFocus="OnPropCommit" DropDownClosed="OnPropCommitAny" KeyDown="OnPropKey" ToolTip="Subject。0 以外のとき点灯" />

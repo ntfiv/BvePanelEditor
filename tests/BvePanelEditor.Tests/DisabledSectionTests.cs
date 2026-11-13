@@ -3,7 +3,7 @@ using Xunit;
 
 namespace BvePanelEditor.Tests;
 
-/// <summary>コメントアウトして無効にした計器（BVE でも表示されない）。</summary>
+/// <summary>コメントアウトして無効にしたオブジェクト（BVE でも表示されない）。</summary>
 public sealed class DisabledSectionTests
 {
     private const string E217Style = "BveTs Instrument Panel 2.01\r\n\r\n[This]\r\nResolution = 3840\r\nDaytimeImage = Main.png\r\n\r\n"
@@ -53,16 +53,16 @@ public sealed class DisabledSectionTests
     public void BlankLinesInsideAndMetaLinesSurvive()
     {
         var text = "BveTs Instrument Panel 2.00\r\n\r\n[This]\r\nDaytimeImage = a.png\r\n\r\n"
-            + ";===== グループ: 計器 =====\r\n[PilotLamp]\r\n;@切り抜き: 発光\r\nSubject = door\r\n\r\nLocation = 1, 2\r\n;===== グループ終わり: 計器 =====\r\n\r\n"
+            + ";===== グループ: オブジェクト =====\r\n[PilotLamp]\r\n;@切り抜き: 発光\r\nSubject = door\r\n\r\nLocation = 1, 2\r\n;===== グループ終わり: オブジェクト =====\r\n\r\n"
             + "[Needle]\r\nSubject = bc\r\n";
         var doc = PanelDocument.Parse(text);
         Assert.Equal(text, doc.Serialize());
         doc.Sections[1].Disable();
         var off = doc.Serialize();
-        Assert.Contains(";[PilotLamp]\r\n;@切り抜き: 発光\r\n;Subject = door\r\n;\r\n;Location = 1, 2\r\n;===== グループ終わり: 計器 =====\r\n\r\n[Needle]", off);
+        Assert.Contains(";[PilotLamp]\r\n;@切り抜き: 発光\r\n;Subject = door\r\n;\r\n;Location = 1, 2\r\n;===== グループ終わり: オブジェクト =====\r\n\r\n[Needle]", off);
         var again = PanelDocument.Parse(off);
         Assert.True(again.Sections[1].Disabled);
-        Assert.Equal("計器", again.Sections[1].Group);
+        Assert.Equal("オブジェクト", again.Sections[1].Group);
         Assert.Equal("発光", again.Sections[1].CropSet);
         Assert.Equal("1, 2", again.Sections[1].Get("Location"));
         Assert.False(again.Sections[2].Disabled);

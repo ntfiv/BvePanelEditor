@@ -1,8 +1,8 @@
 ﻿namespace BvePanelEditor.Core;
 
 /// <summary>
-/// 計器のグループ。グループの中にグループを入れられる（入れ子）。計器はそれぞれ、外側から順に入っているグループの名前を持つ（PanelSection.Groups）。
-/// グループの計器はファイル内で必ず連続して並ぶようにする（開始行・終了行でかたまりを囲んで書くため）。
+/// オブジェクトのグループ。グループの中にグループを入れられる（入れ子）。オブジェクトはそれぞれ、外側から順に入っているグループの名前を持つ（PanelSection.Groups）。
+/// グループのオブジェクトはファイル内で必ず連続して並ぶようにする（開始行・終了行でかたまりを囲んで書くため）。
 /// グループ名はファイル全体で重ならないようにする（名前でグループを見分ける）。
 /// </summary>
 public sealed partial class PanelDocument
@@ -11,7 +11,7 @@ public sealed partial class PanelDocument
     public List<string> GroupNames() =>
         Sections.SelectMany(s => s.Groups).Distinct().ToList();
 
-    /// <summary>グループの計器の番号（中のグループの計器も含む。ファイル内の順）。</summary>
+    /// <summary>グループのオブジェクトの番号（中のグループのオブジェクトも含む。ファイル内の順）。</summary>
     public List<int> Members(string name)
     {
         var list = new List<int>();
@@ -56,14 +56,14 @@ public sealed partial class PanelDocument
     public bool IsAncestorGroup(string a, string b) => ParentPath(b).Contains(a);
 
     /// <summary>
-    /// 計器 index を、外側のグループ parent の中で 1 つの「かたまり」として見たときのグループ。
-    /// parent のすぐ中のグループに入っていればそのグループ、parent の直下の計器なら null。
+    /// オブジェクト index を、外側のグループ parent の中で 1 つの「かたまり」として見たときのグループ。
+    /// parent のすぐ中のグループに入っていればそのグループ、parent の直下のオブジェクトなら null。
     /// parent が null なら、いちばん外のグループ（入っていなければ null）。
     /// </summary>
     public string? UnitGroup(int index, string? parent)
     {
         var g = Sections[index].Groups;
-        int level = parent == null ? 0 : g.IndexOf(parent) + 1; // parent の外の計器は、いちばん外で見る
+        int level = parent == null ? 0 : g.IndexOf(parent) + 1; // parent の外のオブジェクトは、いちばん外で見る
         return level < g.Count ? g[level] : null;
     }
 
@@ -87,7 +87,7 @@ public sealed partial class PanelDocument
             if (!used.Contains($"グループ {n}")) return $"グループ {n}";
     }
 
-    /// <summary>グループにすると並び順が変わる（グループの計器の間にあって、後ろへ回る）計器。</summary>
+    /// <summary>グループにすると並び順が変わる（グループのオブジェクトの間にあって、後ろへ回る）オブジェクト。</summary>
     public List<int> SectionsReorderedBy(IEnumerable<int> indices)
     {
         var m = indices.Distinct().Order().ToList();
@@ -100,7 +100,7 @@ public sealed partial class PanelDocument
     }
 
     /// <summary>
-    /// 選んだ計器をグループにするときに入れる外側のグループ（外から順）。選んだ計器がみな入っているグループのうち、
+    /// 選んだオブジェクトをグループにするときに入れる外側のグループ（外から順）。選んだオブジェクトがみな入っているグループのうち、
     /// 丸ごと選んでいないもの（丸ごと選んでいれば、そのグループごと新しいグループに入れる）。
     /// </summary>
     public List<string> CommonParent(IEnumerable<int> indices)
@@ -120,7 +120,7 @@ public sealed partial class PanelDocument
         return p;
     }
 
-    /// <summary>グループにすると、一部の計器だけが抜けるグループ（選んだ計器がそのグループの一部だけのとき）。</summary>
+    /// <summary>グループにすると、一部のオブジェクトだけが抜けるグループ（選んだオブジェクトがそのグループの一部だけのとき）。</summary>
     public List<string> GroupsSplitBy(IEnumerable<int> indices)
     {
         var m = indices.Distinct().Where(i => i >= 0 && i < Sections.Count).ToList();
@@ -131,10 +131,10 @@ public sealed partial class PanelDocument
     }
 
     /// <summary>
-    /// 計器をグループにする。選んだ計器がみな同じグループの中なら、そのグループの中に作る（入れ子）。
-    /// 丸ごと選んだグループは、グループごと新しいグループに入れる。一部だけ選んだグループからは、その計器を外す。
-    /// ばらばらに並んでいれば最初の計器の位置にまとめる（計器どうしの前後は保つ）。
-    /// 名前は重ならないように直す。戻り値はグループにした計器の新しい番号。
+    /// オブジェクトをグループにする。選んだオブジェクトがみな同じグループの中なら、そのグループの中に作る（入れ子）。
+    /// 丸ごと選んだグループは、グループごと新しいグループに入れる。一部だけ選んだグループからは、そのオブジェクトを外す。
+    /// ばらばらに並んでいれば最初のオブジェクトの位置にまとめる（オブジェクトどうしの前後は保つ）。
+    /// 名前は重ならないように直す。戻り値はグループにしたオブジェクトの新しい番号。
     /// </summary>
     public List<int> MakeGroup(IEnumerable<int> indices, string name)
     {
@@ -174,7 +174,7 @@ public sealed partial class PanelDocument
         return Enumerable.Range(at, picked.Count).ToList();
     }
 
-    /// <summary>グループを解除する（計器と、中のグループはそのまま残す）。</summary>
+    /// <summary>グループを解除する（オブジェクトと、中のグループはそのまま残す）。</summary>
     public void Ungroup(string name)
     {
         foreach (var s in Sections) s.Groups.Remove(name);
@@ -193,7 +193,7 @@ public sealed partial class PanelDocument
     }
 
     /// <summary>
-    /// 1 つの計器を、いちばん内側のグループから外す（外側のグループには残る）。かたまりの途中にあれば、かたまりのすぐ後ろへ移す。
+    /// 1 つのオブジェクトを、いちばん内側のグループから外す（外側のグループには残る）。かたまりの途中にあれば、かたまりのすぐ後ろへ移す。
     /// 戻り値は新しい番号。
     /// </summary>
     public int RemoveFromGroup(int index)
@@ -209,7 +209,7 @@ public sealed partial class PanelDocument
     }
 
     /// <summary>
-    /// 1 つの計器を前後に動かす。入っているグループの中だけで動き、隣のグループ（同じ高さのグループ）は丸ごと飛び越える。
+    /// 1 つのオブジェクトを前後に動かす。入っているグループの中だけで動き、隣のグループ（同じ高さのグループ）は丸ごと飛び越える。
     /// 戻り値は新しい番号。
     /// </summary>
     public int MoveSection(int index, int delta) => MoveRun(index, index, Sections[index].Groups.ToList(), delta);
@@ -287,11 +287,11 @@ public sealed partial class PanelDocument
         return (Enumerable.Range(run.Last + 1, copies.Count).ToList(), newName);
     }
 
-    /// <summary>グループの計器を全部消す（中のグループも）。戻り値は消した数。</summary>
+    /// <summary>グループのオブジェクトを全部消す（中のグループも）。戻り値は消した数。</summary>
     public int DeleteGroup(string name) => Sections.RemoveAll(s => s.Groups.Contains(name));
 
     /// <summary>
-    /// 外側のグループ parent の中の「かたまり」（すぐ中のグループは丸ごと、直下の計器は 1 つずつ）。indices の中だけで作る。
+    /// 外側のグループ parent の中の「かたまり」（すぐ中のグループは丸ごと、直下のオブジェクトは 1 つずつ）。indices の中だけで作る。
     /// parent が null なら、いちばん外で見る。
     /// </summary>
     public List<List<int>> UnitsWithin(IEnumerable<int> indices, string? parent)
@@ -310,7 +310,7 @@ public sealed partial class PanelDocument
         return units;
     }
 
-    /// <summary>計器の位置（Location）をまとめて動かす。This など位置のないものは飛ばす。</summary>
+    /// <summary>オブジェクトの位置（Location）をまとめて動かす。This など位置のないものは飛ばす。</summary>
     public void Offset(IEnumerable<int> indices, double dx, double dy)
     {
         foreach (var i in indices.Distinct())

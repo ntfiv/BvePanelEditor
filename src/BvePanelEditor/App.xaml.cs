@@ -68,6 +68,7 @@ public partial class App : Application
         string? crashtest = null;
         string[]? listordertest = null;
         string[]? spacepantest = null;
+        string[]? ragtest = null;
         string[]? memtest = null;
         string[]? variationtest = null;
         string[]? variationimport = null;
@@ -99,6 +100,7 @@ public partial class App : Application
             else if (e.Args[i] == "--disabledtest" && i + 3 < e.Args.Length) { disabledtest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--listordertest" && i + 3 < e.Args.Length) { listordertest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--spacepantest" && i + 2 < e.Args.Length) { spacepantest = e.Args[(i + 1)..(i + 3)]; i += 2; }
+            else if (e.Args[i] == "--ragtest" && i + 2 < e.Args.Length) { ragtest = e.Args[(i + 1)..(i + 3)]; i += 2; }
             else if (e.Args[i] == "--memtest" && i + 3 < e.Args.Length) { memtest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--variationtest" && i + 3 < e.Args.Length) { variationtest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--variationimport" && i + 4 < e.Args.Length) { variationimport = e.Args[(i + 1)..]; i = e.Args.Length; }
@@ -154,6 +156,8 @@ public partial class App : Application
             w.Dispatcher.BeginInvoke(() => w.RunVariationTest(vt[0], vt[1], vt[2]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (memtest is { } mt)
             w.Dispatcher.BeginInvoke(() => w.RunMemTest(mt[0], mt[1], mt[2]), System.Windows.Threading.DispatcherPriority.ContextIdle);
+        if (ragtest is { } rgt)
+            w.Dispatcher.BeginInvoke(() => w.RunRagTest(rgt[0], rgt[1]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (spacepantest is { } spt)
             w.Dispatcher.BeginInvoke(() => w.RunSpacePanTest(spt[0], spt[1]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (listordertest is { } lot)

@@ -44,11 +44,11 @@ public static class MainPanel
 
     private static int LayerOf(PanelSection s) => (int)Math.Round(PanelValues.Double(s.Get("Layer"), 0));
 
-    /// <summary>ずらす量を決めるときに数える計器（Layer を書いてあるもの。中身のない計器などは数えない）。</summary>
+    /// <summary>ずらす量を決めるときに数えるオブジェクト（Layer を書いてあるもの。中身のないオブジェクトなどは数えない）。</summary>
     private static bool HasLayer(PanelSection s) => !string.IsNullOrWhiteSpace(s.Get("Layer"));
 
     /// <summary>
-    /// keep より下（レイヤーが floor 以下）に、ほかの計器があれば、それらを全部同じだけ上げて floor より上にする。
+    /// keep より下（レイヤーが floor 以下）に、ほかのオブジェクトがあれば、それらを全部同じだけ上げて floor より上にする。
     /// [This] と keep は動かさない。上げた量を返す。
     /// </summary>
     public static int RaiseAbove(PanelDocument doc, int floor, params PanelSection[] keep)
@@ -95,7 +95,7 @@ public static class MainPanel
     }
 
     /// <summary>
-    /// 今の [This] の画像をメインパネル（レイヤー 1）にする。ほかの計器がレイヤー 1 以下なら全部を上げる。
+    /// 今の [This] の画像をメインパネル（レイヤー 1）にする。ほかのオブジェクトがレイヤー 1 以下なら全部を上げる。
     /// [This] からは画像を外す。メインパネルの番号を返す（[This] に画像がなければ -1）。
     /// </summary>
     public static int FromThis(PanelDocument doc)

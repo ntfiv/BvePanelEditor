@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -31,7 +31,7 @@ public sealed class PropertyEditor
     public event Action? UngroupRequested;
     public event Action? DuplicateGroupRequested;
     public event Action? MakeGroupRequested;
-    /// <summary>複数の計器の同じキーをまとめて書き換えたい（キー、値。空なら行を消す）。</summary>
+    /// <summary>複数のオブジェクトの同じキーをまとめて書き換えたい（キー、値。空なら行を消す）。</summary>
     public event Action<string, string>? MultiCommit;
     /// <summary>整列したい。</summary>
     public event Action<AlignKind>? AlignRequested;
@@ -52,7 +52,7 @@ public sealed class PropertyEditor
         {
             Text = $"レイヤー（重なりの順）　今: {(lo == hi ? $"{lo}" : $"{lo}〜{hi}")}",
             Foreground = Brushes.DimGray, Margin = new Thickness(4, 10, 4, 2),
-            ToolTip = "数が大きいほど手前に描かれます。選んだ計器どうしの上下の順は変えずに動かします",
+            ToolTip = "数が大きいほど手前に描かれます。選んだオブジェクトどうしの上下の順は変えずに動かします",
         });
         var row = new WrapPanel { Margin = new Thickness(4, 0, 4, 4) };
         row.Children.Add(MakeButton("最背面へ", () => LayerRequested?.Invoke(LayerOp.Back)));
@@ -62,13 +62,46 @@ public sealed class PropertyEditor
         foreach (var b in row.Children.OfType<Button>())
             b.ToolTip = (string)b.Content switch
             {
-                "最背面へ" => "ほかのどの計器よりも奥へ（Ctrl+Shift+[）",
+                "最背面へ" => "ほかのどのオブジェクトよりも奥へ（Ctrl+Shift+[）",
                 "1 つ下げる" => "レイヤーを 1 つ小さく（Ctrl+[）",
                 "1 つ上げる" => "レイヤーを 1 つ大きく（Ctrl+]）",
-                _ => "ほかのどの計器よりも手前へ（Ctrl+Shift+]）",
+                _ => "ほかのどのオブジェクトよりも手前へ（Ctrl+Shift+]）",
             };
         _host.Children.Add(row);
+        // 選んだオブジェクトのレイヤーをそろえる（そろえる先は、最初に選んだオブジェクトのレイヤー・今使っているレイヤーから選ぶか、数を入れる）
+        if (withLayer.Count > 1)
+        {
+            int first = PrimaryLayer ?? layers[0];
+            var box = new ComboBox
+            {
+                IsEditable = true, Width = 64, Margin = new Thickness(0, 2, 4, 2), VerticalAlignment = VerticalAlignment.Center,
+                ItemsSource = layers.Append(first).Distinct().OrderByDescending(x => x).Select(x => x.ToString()).ToList(),
+                Text = first.ToString(),
+                ToolTip = "そろえる先のレイヤー。初めは最初に選んだオブジェクトのレイヤー。▼ で今使っているレイヤーから選ぶか、数を入れます（0 以上）",
+            };
+            var unify = MakeButton("このレイヤーにそろえる", () =>
+            {
+                if (int.TryParse(box.Text.Trim(), out var to) && to >= 0) UnifyLayerRequested?.Invoke(to);
+                else box.Text = first.ToString();
+            });
+            unify.ToolTip = "選んだオブジェクトのレイヤーを、左の欄のレイヤーにそろえます。重なっているオブジェクトの手前・奥が入れ替わるときは確認します";
+            var r2 = new WrapPanel { Margin = new Thickness(4, 0, 4, 4) };
+            r2.Children.Add(new TextBlock { Text = "そろえる先", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+            r2.Children.Add(box);
+            r2.Children.Add(unify);
+            _host.Children.Add(r2);
+            _host.Children.Add(new TextBlock
+            {
+                Text = $"最初に選んだオブジェクトのレイヤーは {first}", Foreground = Brushes.Gray, FontSize = 11, Margin = new Thickness(4, 0, 4, 4),
+            });
+        }
     }
+
+    /// <summary>「このレイヤーにそろえる」（そろえる先のレイヤー）。</summary>
+    public event Action<int>? UnifyLayerRequested;
+
+    /// <summary>主に選んでいる（最初に選んだ）オブジェクトのレイヤー。「そろえる先」の初めの値。</summary>
+    public int? PrimaryLayer { get; set; }
 
     /// <summary>[This] の「描かれている範囲から計算…」。</summary>
     public event Action? ViewLimitRequested;
@@ -169,7 +202,7 @@ public sealed class PropertyEditor
         _pointsPanel = null;
         if (_section == null)
         {
-            _host.Children.Add(new TextBlock { Text = "計器を選ぶと、ここで値を編集できます。", Foreground = Brushes.Gray, Margin = new Thickness(4), TextWrapping = TextWrapping.Wrap });
+            _host.Children.Add(new TextBlock { Text = "オブジェクトを選ぶと、ここで値を編集できます。", Foreground = Brushes.Gray, Margin = new Thickness(4), TextWrapping = TextWrapping.Wrap });
             return;
         }
         var s = _section;
@@ -215,7 +248,7 @@ public sealed class PropertyEditor
             if (MainPanelIndex < 0 && !ThisIsBlank && !string.IsNullOrWhiteSpace(s.Get("DaytimeImage")))
             {
                 var toMain = new Button { Content = "[This] の画像をメインパネルにする", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(0, 0, 6, 4),
-                    ToolTip = "[This] の画像を、常表示の表示灯（メインパネル・レイヤー 1）に移し、[This] は透明な画像にします。ほかの計器はメインパネルより上になるようにレイヤーを上げます" };
+                    ToolTip = "[This] の画像を、常表示の表示灯（メインパネル・レイヤー 1）に移し、[This] は透明な画像にします。ほかのオブジェクトはメインパネルより上になるようにレイヤーを上げます" };
                 toMain.Click += (_, _) => ThisToMainRequested?.Invoke();
                 mainButtons.Children.Add(toMain);
             }
@@ -264,7 +297,7 @@ public sealed class PropertyEditor
     /// <summary>グループごと選んでいるとき。</summary>
     public void ShowGroup(string name, int count, Point? topLeft, IReadOnlyList<PanelSection> sections)
     {
-        var sig = $"group|{name}|{count}";
+        var sig = $"group|{name}|{count}|{PrimaryLayer}";
         string loc = topLeft is { } p ? PanelValues.Point(p.X, p.Y) : "";
         _multiSections = sections;
         if (sig == _builtSignature && _groupLocationBox != null)
@@ -282,11 +315,11 @@ public sealed class PropertyEditor
         _hint = null;
         _pointsPanel = null;
 
-        _host.Children.Add(new TextBlock { Text = $"グループ（計器 {count} 個）", FontWeight = FontWeights.Bold, FontSize = 14, Margin = new Thickness(4, 4, 4, 6) });
+        _host.Children.Add(new TextBlock { Text = $"グループ（オブジェクト {count} 個）", FontWeight = FontWeights.Bold, FontSize = 14, Margin = new Thickness(4, 4, 4, 6) });
 
         var nameBox = AddSimpleRow("グループ名", name, "パネルファイルでは開始行「;===== グループ: 名前 =====」と終了行に書きます", t => { if (t.Length > 0 && t != name) GroupRenameCommit?.Invoke(t); });
         nameBox.FontWeight = FontWeights.SemiBold;
-        _groupLocationBox = AddSimpleRow("位置（左上）", loc, "グループの計器の Location のいちばん左上。書き換えると全部を同じだけ動かします",
+        _groupLocationBox = AddSimpleRow("位置（左上）", loc, "グループのオブジェクトの Location のいちばん左上。書き換えると全部を同じだけ動かします",
             t => { if (PanelValues.TryPoint(t, out var x, out var y)) GroupLocationCommit?.Invoke(x, y); });
 
         var buttons = new WrapPanel { Margin = new Thickness(4, 10, 4, 4) };
@@ -294,19 +327,19 @@ public sealed class PropertyEditor
         buttons.Children.Add(MakeButton("グループを複製", () => DuplicateGroupRequested?.Invoke()));
         _host.Children.Add(buttons);
         AddLayerButtons(sections);
-        AddAlignButtons("中の計器を整列");
+        AddAlignButtons("中のオブジェクトを整列");
         AddMultiRows(sections);
         _host.Children.Add(new TextBlock
         {
-            Text = "パネル画面でクリックするとグループ全体を選び、ドラッグ・矢印キーでまとめて動かせます（位置ロックの解除が必要）。中の 1 つだけを動かすときはダブルクリックするか、一覧でその計器を選んでください。",
+            Text = "パネル画面でクリックするとグループ全体を選び、ドラッグ・矢印キーでまとめて動かせます（位置ロックの解除が必要）。中の 1 つだけを動かすときはダブルクリックするか、一覧でそのオブジェクトを選んでください。",
             Foreground = Brushes.Gray, Margin = new Thickness(4, 8, 4, 4), TextWrapping = TextWrapping.Wrap,
         });
     }
 
-    /// <summary>グループでない複数の計器を選んでいるとき。</summary>
+    /// <summary>グループでない複数のオブジェクトを選んでいるとき。</summary>
     public void ShowMulti(int count, int groupable, IReadOnlyList<PanelSection> sections)
     {
-        var sig = $"multi|{count}|{groupable}|{string.Join(",", sections.Select(x => x.GetHashCode()))}";
+        var sig = $"multi|{count}|{groupable}|{PrimaryLayer}|{string.Join(",", sections.Select(x => x.GetHashCode()))}";
         _multiSections = sections;
         if (sig == _builtSignature) { UpdateMultiValues(); return; }
         _builtSignature = sig;
@@ -329,17 +362,17 @@ public sealed class PropertyEditor
         AddMultiRows(sections);
         _host.Children.Add(new TextBlock
         {
-            Text = "ドラッグ・矢印キーで選んだ計器をまとめて動かせます（位置ロックの解除が必要）。一覧では Ctrl／Shift＋クリック、パネル画面では Shift＋クリックか、何もない所からドラッグして囲むと選べます（Ctrl+A ですべて）。",
+            Text = "ドラッグ・矢印キーで選んだオブジェクトをまとめて動かせます（位置ロックの解除が必要）。一覧では Ctrl／Shift＋クリック、パネル画面では Shift＋クリックか、何もない所からドラッグして囲むと選べます（Ctrl+A ですべて）。",
             Foreground = Brushes.Gray, Margin = new Thickness(4, 8, 4, 4), TextWrapping = TextWrapping.Wrap,
         });
     }
 
-    // ================= 複数の計器の値・整列 =================
+    // ================= 複数のオブジェクトの値・整列 =================
 
     private IReadOnlyList<PanelSection> _multiSections = [];
     private readonly List<(string Key, TextBox Box, TextBlock Hint)> _multiRows = [];
 
-    /// <summary>位置と画像は計器ごとに違うので、まとめて編集する欄には出さない。</summary>
+    /// <summary>位置と画像はオブジェクトごとに違うので、まとめて編集する欄には出さない。</summary>
     private static readonly HashSet<string> NotShared = new(StringComparer.OrdinalIgnoreCase)
         { "Location", "Origin", "Center", "DaytimeImage", "NighttimeImage" };
 
@@ -364,7 +397,7 @@ public sealed class PropertyEditor
         _host.Children.Add(wrap);
     }
 
-    /// <summary>選んだ計器すべてに共通するキーの欄（値がそろっていなければ空欄で「ばらばら」）。</summary>
+    /// <summary>選んだオブジェクトすべてに共通するキーの欄（値がそろっていなければ空欄で「ばらばら」）。</summary>
     private void AddMultiRows(IReadOnlyList<PanelSection> sections)
     {
         _multiRows.Clear();
@@ -384,7 +417,7 @@ public sealed class PropertyEditor
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(112) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             const bool off = false;
-            var tip = $"{spec.Name}\n{spec.Help}\n選んだ計器すべてに同じ値を書きます。空にして確定すると、すべての計器からこのキーを消します";
+            var tip = $"{spec.Name}\n{spec.Help}\n選んだオブジェクトすべてに同じ値を書きます。空にして確定すると、すべてのオブジェクトからこのキーを消します";
             grid.Children.Add(new TextBlock { Text = spec.Label, VerticalAlignment = VerticalAlignment.Center, ToolTip = tip, Foreground = off ? Brushes.Gray : Brushes.Black });
             var box = new TextBox { VerticalContentAlignment = VerticalAlignment.Center, ToolTip = tip };
             var hint = new TextBlock { Text = "（ばらばら）", Foreground = Brushes.Gray, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
@@ -471,7 +504,7 @@ public sealed class PropertyEditor
         var grid = new Grid { Margin = new Thickness(4, 2, 4, 8) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(112) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var tip = "計器の名前。パネルファイルでは見出し [ ] のすぐ上のコメント行（;名前）として保存します。\n"
+        var tip = "オブジェクトの名前。パネルファイルでは見出し [ ] のすぐ上のコメント行（;名前）として保存します。\n"
                 + "見出し行の後ろに書いた名前（[PilotLamp]##名前）はその場所のまま書き換えます。空にすると名前の行を消します。";
         var label = new TextBlock { Text = "名前", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, ToolTip = tip };
         var box = new TextBox { Text = s.Title, VerticalContentAlignment = VerticalAlignment.Center, ToolTip = tip, FontWeight = FontWeights.SemiBold };

@@ -22,12 +22,12 @@ public partial class MainWindow
             await Task.Delay(500);
             var before = Grab();
             var text = Editor.Text;
-            // その点でいちばん上にある（クリックで選ばれる）計器を使う
+            // その点でいちばん上にある（クリックで選ばれる）オブジェクトを使う
             System.Windows.Point Mid(Rendering.RenderItem it) { var o = it.Outline(); return new(o.Average(q => q.X), o.Average(q => q.Y)); }
             var needle = _scene!.Items.Where(i => i.Kind == SectionKind.PilotLamp && !i.IsMainPanel).First(i => Canvas.HitForTest(Mid(i)) == i.Section);
             var at = Mid(needle);
             int ni = needle.Section;
-            log.Add($"     試す計器: #{ni + 1} {_doc!.Sections[ni].Title} {needle.Subject}");
+            log.Add($"     試すオブジェクト: #{ni + 1} {_doc!.Sections[ni].Title} {needle.Subject}");
             Check("非表示にする前はクリックで選べる", Canvas.HitForTest(at) == ni);
 
             ToggleHidden([ni]);
@@ -37,12 +37,12 @@ public partial class MainWindow
             int diff = 0;
             for (int k = 0; k < before.Px.Length; k += 4) if (before.Px[k] != after.Px[k] || before.Px[k + 1] != after.Px[k + 1]) diff++;
             Check("非表示にするとパネル画面に描かない", diff > 50);
-            Check("非表示の計器はクリックで選ばない", Canvas.HitForTest(at) != ni);
+            Check("非表示のオブジェクトはクリックで選ばない", Canvas.HitForTest(at) != ni);
             Check("ファイル（テキスト）には書かない", Editor.Text == text);
             var row = (ElementList.ItemsSource as IEnumerable<ElementRow>)!.First(r => r.Index == ni);
             Check("一覧の目のマークが非表示になり、行が薄くなる", row.Hidden && row.Eye == "" && row.RowOpacity < 1);
             SelectAllElements(null, null);
-            Check("すべて選択でも非表示の計器は選ばない", !_selSet.Contains(ni) && _selSet.Count > 0);
+            Check("すべて選択でも非表示のオブジェクトは選ばない", !_selSet.Contains(ni) && _selSet.Count > 0);
 
             // テキストを直して読み直しても、非表示のまま
             Editor.Document.Insert(Editor.Document.TextLength, "\r\n; メモ\r\n");

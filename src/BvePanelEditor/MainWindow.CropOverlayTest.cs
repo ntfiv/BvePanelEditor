@@ -245,7 +245,7 @@ public partial class MainWindow
             Check("画像の問題はない", !_scene!.Problems.Any(p => p.Message.Contains("画像")));
             Check("パネルに扉の切り抜き元と、扉から切り抜いた表示灯が入る", Editor.Text.Contains(";===== 切り抜き元 扉: ") && Editor.Text.Contains(";@切り抜き: 扉")
                 && secs.Count(s => s.CropSet == "扉") > 0 && secs.Where(s => s.CropSet == "扉").All(s => s.Get("NighttimeImage") is { Length: > 0 }));
-            log.Add($"     計器: {string.Join("、", secs.Take(4).Select(s => $"{s.Title}(L{s.Get("Layer")})"))} …　ほか、最後 {secs[^1].Title}(L{secs[^1].Get("Layer")})");
+            log.Add($"     オブジェクト: {string.Join("、", secs.Take(4).Select(s => $"{s.Title}(L{s.Get("Layer")})"))} …　ほか、最後 {secs[^1].Title}(L{secs[^1].Get("Layer")})");
 
             Check("保存できる", Save(_path));
             int count = _doc.Sections.Count;

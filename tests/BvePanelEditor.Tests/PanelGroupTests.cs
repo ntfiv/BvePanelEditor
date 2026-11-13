@@ -5,7 +5,7 @@ namespace BvePanelEditor.Tests;
 
 public class PanelGroupTests
 {
-    // 5 つの計器: [This] A B C D
+    // 5 つのオブジェクト: [This] A B C D
     const string Plain =
         "BveTs Instrument Panel 2.00\r\n\r\n[This]\r\nResolution = 1024\r\n\r\n" +
         ";A\r\n[PilotLamp]\r\nSubject = ats0\r\nLocation = 10, 10\r\n\r\n" +
@@ -135,12 +135,12 @@ public class PanelGroupTests
         Assert.Equal([2, 3, 4], back.Members("G1"));
         Assert.Equal("G1", back.UnitGroup(3, null));   // 外から見ると G1
         Assert.Equal("G2", back.UnitGroup(3, "G1"));   // G1 の中から見ると G2
-        Assert.Null(back.UnitGroup(2, "G1"));          // G1 の直下の計器
+        Assert.Null(back.UnitGroup(2, "G1"));          // G1 の直下のオブジェクト
 
-        // 内と外が同じ計器で始まる・終わる
+        // 内と外が同じオブジェクトで始まる・終わる
         var both = PanelDocument.Parse(Plain);
         both.MakeGroup([2, 3], "外");
-        both.MakeGroup([2, 3], "内"); // 外の計器を全部選んだので、外ごと「内」に入る（外を新しいグループで囲む）
+        both.MakeGroup([2, 3], "内"); // 外のオブジェクトを全部選んだので、外ごと「内」に入る（外を新しいグループで囲む）
         Assert.Equal("A,B[内/外],C[内/外],D", Paths(both));
         var t2 = both.Serialize();
         Assert.Contains(";===== グループ: 内 =====\r\n;===== グループ: 外 =====\r\n;B", t2);
@@ -159,14 +159,14 @@ public class PanelGroupTests
         var idx = doc.MakeGroup([2, 4], "中");
         Assert.Equal([2, 3], idx);
         Assert.Equal("A[外],B[外/中],D[外/中],C[外]", Paths(doc));
-        // グループの一部と外の計器を選ぶ → グループから一部が抜けるので知らせる
+        // グループの一部と外のオブジェクトを選ぶ → グループから一部が抜けるので知らせる
         var doc2 = PanelDocument.Parse(Plain);
         doc2.MakeGroup([2, 3], "G");
         Assert.Equal(["G"], doc2.GroupsSplitBy([3, 4]));
         doc2.MakeGroup([3, 4], "H");
         Assert.Equal("A,B[G],C[H],D[H]", Paths(doc2));
         Assert.Equal(doc2.Serialize(), PanelDocument.Parse(doc2.Serialize()).Serialize());
-        // グループを丸ごと選び、その外の計器と一緒にグループにする → グループごと入る
+        // グループを丸ごと選び、その外のオブジェクトと一緒にグループにする → グループごと入る
         var doc3 = PanelDocument.Parse(Plain);
         doc3.MakeGroup([2, 3], "G");
         doc3.MakeGroup([1, 2, 3], "W");
@@ -181,7 +181,7 @@ public class PanelGroupTests
         doc.MakeGroup([2, 3], "中");
         Assert.Equal("A[外],B[外/中],C[外/中],D", Paths(doc));
 
-        // 中の計器は中の中だけで動く
+        // 中のオブジェクトは中の中だけで動く
         Assert.Equal(3, doc.MoveSection(2, 1));
         Assert.Equal("A[外],C[外/中],B[外/中],D", Paths(doc));
         Assert.Equal(3, doc.MoveSection(3, 1));  // 中の最後からは出ない
@@ -218,7 +218,7 @@ public class PanelGroupTests
         var back = PanelDocument.Parse(doc.Serialize());
         Assert.Empty(back.GroupWarnings);
         Assert.Equal(Paths(doc), Paths(back));
-        // 名前を変えると、中の計器の外側の名前も変わる
+        // 名前を変えると、中のオブジェクトの外側の名前も変わる
         back.RenameGroup("外", "枠");
         Assert.Equal("A,B[枠],C[枠/中],B[外 のコピー],C[外 のコピー/中 のコピー],D", Paths(back));
         Assert.Equal(2, back.DeleteGroup("外 のコピー"));
@@ -283,7 +283,7 @@ public class PanelGroupTests
         doc.MakeGroup([2], "G");
         var back = PanelDocument.Parse(doc.Serialize());
         Assert.Equal("B", back.Sections[2].Title);
-        back.Sections[3].SetTitle(""); // 名前のない計器
+        back.Sections[3].SetTitle(""); // 名前のないオブジェクト
         back.MakeGroup([3], "H");
         var again = PanelDocument.Parse(back.Serialize());
         Assert.Equal("", again.Sections[3].Title); // 開始行は名前として読まない

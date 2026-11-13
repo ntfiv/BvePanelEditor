@@ -4,16 +4,16 @@ namespace BvePanelEditor.Core.Psd;
 public sealed class PsdUpdatePlan
 {
     public List<PsdOutputFile> Files = [];
-    /// <summary>位置が変わる計器（番号、新しい左上）。</summary>
+    /// <summary>位置が変わるオブジェクト（番号、新しい左上）。</summary>
     public List<(int Section, int X, int Y)> Moves = [];
     /// <summary>コマの高さが変わるデジタル数字（番号、新しい高さ）。</summary>
     public List<(int Section, int Interval)> Intervals = [];
     /// <summary>PSD に見つからないレイヤー。</summary>
     public List<string> Missing = [];
     public List<string> Warnings = [];
-    /// <summary>画像がパネルくんの書き出したものではない（手で差し替えた）ので、書き出しも移動もしない計器。</summary>
+    /// <summary>画像がパネルくんの書き出したものではない（手で差し替えた）ので、書き出しも移動もしないオブジェクト。</summary>
     public List<string> Skipped = [];
-    /// <summary>つながりのある計器の数。</summary>
+    /// <summary>つながりのあるオブジェクトの数。</summary>
     public int Linked;
 
     /// <summary>ほかの PSD の結果をまとめる。</summary>
@@ -32,7 +32,7 @@ public sealed class PsdUpdatePlan
 /// <summary>パネルに書いた PSD とのつながりから、画像を書き出し直す。</summary>
 public static class PsdUpdate
 {
-    /// <param name="sourceId">どの PSD の計器を更新するか（PanelSection.PsdSource）。</param>
+    /// <param name="sourceId">どの PSD のオブジェクトを更新するか（PanelSection.PsdSource）。</param>
     public static PsdUpdatePlan Plan(PanelDocument doc, string panelDir, PsdFile day, PsdFile? night, int sourceId = 1)
     {
         var plan = new PsdUpdatePlan();

@@ -103,7 +103,7 @@ public partial class MainWindow
                 log.Add($"     夜の PSD の同じ名前のレイヤー（#2 以降）: {dupNames} 個");
             }
 
-            // 複製した計器は PSD とつながらない
+            // 複製したオブジェクトは PSD とつながらない
             var linked = _doc.Sections.FindIndex(x => x.Kind == SectionKind.PilotLamp && x.PsdLayers.Count > 0);
             SelectSection(linked);
             OnDuplicate(null, null);

@@ -52,7 +52,7 @@ public partial class MainWindow
 
             // 2. パネル画面のクリック: 最初はいちばん外、ダブルクリックのたびに 1 つ内側へ
             Click(100);
-            Check("グループの外の計器はそのまま選ぶ", Sel() == "A");
+            Check("グループの外のオブジェクトはそのまま選ぶ", Sel() == "A");
             Click(300);
             Check("クリックはいちばん外のグループ（外）", Sel() == "G:外");
             Click(300, dbl: true);
@@ -64,12 +64,12 @@ public partial class MainWindow
             Click(200);
             Check("中の外の B をクリックすると、外の中に入ったまま B", Sel() == "B 中:外");
             Click(300);
-            Check("外の中で「中」の計器をクリックすると「中」ごと", Sel() == "G:中 中:外");
+            Check("外の中で「中」のオブジェクトをクリックすると「中」ごと", Sel() == "G:中 中:外");
             // 「中」に入った状態で、一覧から外の直下の B を選ぶと、外の中に入ったまま（中の枠は残さない）
             Click(300, dbl: true);
             Click(300, dbl: true);
             Canvas.Select(2);
-            Check("入れ子の外側の計器を選ぶと、それを含む外側のグループの中に入ったままにする", Canvas.EnteredGroup == "外");
+            Check("入れ子の外側のオブジェクトを選ぶと、それを含む外側のグループの中に入ったままにする", Canvas.EnteredGroup == "外");
             Click(500);
             Check("グループの外をクリックすると抜ける", Sel() == "E");
 
@@ -78,7 +78,7 @@ public partial class MainWindow
             SelectSection(Canvas.Selected, fromCanvas: true);
             Check("外を丸ごと囲むと外ごと選ぶ", Sel() == "G:外");
 
-            // 4. 一覧: 見出しは入れ子の深さだけ字下げ、計器も深さだけ字下げ
+            // 4. 一覧: 見出しは入れ子の深さだけ字下げ、オブジェクトも深さだけ字下げ
             var rows = Rows;
             string R(ElementRow r) => r.IsHeader ? $"▼{r.GroupName}@{r.HeaderMargin.Left:0}" : $"{_doc!.Sections[r.Index].Title}@{r.Indent.Left:0}";
             log.Add("     一覧: " + string.Join(" ", rows.Select(R)));
@@ -86,9 +86,9 @@ public partial class MainWindow
             // 外を折りたたむと、中の見出しも C・D も出ない
             _folded.Add("外");
             RebuildAll();
-            Check("外を折りたたむと、中の見出しも中の計器も隠れる", string.Join(" ", Rows.Select(R)) == $"{_doc.Sections[0].Title}@0 A@0 ▼外@0 E@0");
+            Check("外を折りたたむと、中の見出しも中のオブジェクトも隠れる", string.Join(" ", Rows.Select(R)) == $"{_doc.Sections[0].Title}@0 A@0 ▼外@0 E@0");
             ApplySelection(3, [3], null, SelectionSource.Other); // C を選ぶと開く
-            Check("折りたたんだ中の計器を選ぶと、外側から開く", !_folded.Contains("外") && Rows.Any(r => !r.IsHeader && r.Index == 3));
+            Check("折りたたんだ中のオブジェクトを選ぶと、外側から開く", !_folded.Contains("外") && Rows.Any(r => !r.IsHeader && r.Index == 3));
             SaveWindowPng(this, png);
 
             // 5. 並べ替え: 中は外の中だけで動く

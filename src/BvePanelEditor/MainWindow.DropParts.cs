@@ -37,7 +37,7 @@ public partial class MainWindow
         ImportImagesToPanel(images, at);
     }
 
-    /// <summary>画像を表示灯・デジタル数字として置く。at（パネルの座標）を中心に、2 枚目からは少しずつずらす。置いた計器の番号を返す。</summary>
+    /// <summary>画像を表示灯・デジタル数字として置く。at（パネルの座標）を中心に、2 枚目からは少しずつずらす。置いたオブジェクトの番号を返す。</summary>
     public List<int> PlaceImageParts(IReadOnlyList<string> images, SectionKind kind, Point? at)
     {
         if (_doc == null) return [];
@@ -46,6 +46,7 @@ public partial class MainWindow
         var c = at ?? Canvas.ViewCenterPanel;
         int layer = _doc.Sections.Where(s => s.Kind is SectionKind.PilotLamp or SectionKind.Needle or SectionKind.DigitalNumber or SectionKind.DigitalGauge)
             .Select(s => (int)Math.Round(PanelValues.Double(s.Get("Layer"), 0))).DefaultIfEmpty(0).Max() + 1;
+        var place = GetInsertPlace(); // 選んでいるオブジェクトのすぐ下（手前）に、同じレイヤーで
         var added = new List<int>();
         var copied = new List<string>();
         var notes = new List<string>();
@@ -82,9 +83,7 @@ public partial class MainWindow
                     if (night != null) sec.Set("NighttimeImage", night);
                 }
                 sec.Set("Layer", layer.ToString());
-                JoinViewVariation(sec);
-                _doc.Sections.Add(sec);
-                added.Add(_doc.Sections.Count - 1);
+                added.Add(InsertNewSection(sec, place, added.Count));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -102,7 +101,7 @@ public partial class MainWindow
         Message($"{label}を {added.Count} 個置きました。"
             + (copied.Count > 0 ? $"パネルのフォルダの外の画像 {copied.Count} 枚は、パネルのフォルダにコピーしました。" : "")
             + (notes.Count > 0 ? string.Join("。", notes) + "。" : "")
-            + "状態量やレイヤーは右の欄で直せます。追加した計器は、選んでいる間だけ位置ロック中でも動かせます（ほかを選ぶとロックに戻ります）");
+            + "状態量やレイヤーは右の欄で直せます。追加したオブジェクトは、選んでいる間だけ位置ロック中でも動かせます（ほかを選ぶとロックに戻ります）");
         return added;
     }
 

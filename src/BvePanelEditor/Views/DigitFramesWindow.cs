@@ -98,7 +98,7 @@ public sealed class DigitFramesWindow : Window
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
         nameRow.Children.Add(new TextBlock { Text = "名前", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
         nameRow.Children.Add(_name);
-        nameRow.Children.Add(new TextBlock { Text = "（計器の名前と、書き出す画像のファイル名）", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+        nameRow.Children.Add(new TextBlock { Text = "（オブジェクトの名前と、書き出す画像のファイル名）", Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
         bottom.Children.Add(nameRow);
         DockPanel.SetDock(bottom, Dock.Bottom);
         root.Children.Add(bottom);

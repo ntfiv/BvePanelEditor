@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -146,7 +146,8 @@ public static class InputDialog
 
 /// <summary>候補から 1 つ選ぶ小さなダイアログ。</summary>
 /// <summary>レイヤー（重なりの順）の動かし方。</summary>
-public enum LayerOp { Up, Down, Front, Back }
+/// <summary>レイヤーの操作。Unify は、選んだオブジェクトのレイヤーを主に選んでいるオブジェクトにそろえる。</summary>
+public enum LayerOp { Up, Down, Front, Back, Unify }
 
 public static class ChoiceDialog
 {

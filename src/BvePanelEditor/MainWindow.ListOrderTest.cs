@@ -3,7 +3,7 @@ using BvePanelEditor.Core;
 
 namespace BvePanelEditor;
 
-/// <summary>確認用: 計器一覧の並び順（--listordertest 作業フォルダ 画面.png 結果.txt）。設定ファイルには書かない。</summary>
+/// <summary>確認用: オブジェクト一覧の並び順（--listordertest 作業フォルダ 画面.png 結果.txt）。設定ファイルには書かない。</summary>
 public partial class MainWindow
 {
     public async void RunListOrderTest(string workDir, string png, string report)
@@ -51,7 +51,7 @@ public partial class MainWindow
             _folded.Add("G");
             RebuildAll();
             log.Add("     G を折りたたむ: " + string.Join(" ", Rows()));
-            Check("グループを折りたたむと中の計器を隠す", Rows().SequenceEqual(["D", "E", "[G]", "A", "This"]));
+            Check("グループを折りたたむと中のオブジェクトを隠す", Rows().SequenceEqual(["D", "E", "[G]", "A", "This"]));
             _folded.Remove("G");
             RebuildAll();
             UpdateLayout();

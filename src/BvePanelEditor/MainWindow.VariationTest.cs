@@ -15,7 +15,7 @@ public partial class MainWindow
 {
     /// <summary>
     /// 確認用: 実物のパネルからマスターを作ってみる（--variationimport マスター 画面.png 結果.txt 名前=パネル ...）。
-    /// 取り込んだ結果（共通・一部だけの計器、知らせ）と、各バリエーションを書き出し直したときに元のファイルと同じかを書く。
+    /// 取り込んだ結果（共通・一部だけのオブジェクト、知らせ）と、各バリエーションを書き出し直したときに元のファイルと同じかを書く。
     /// </summary>
     public async void RunVariationImport(string master, string png, string report, string[] pairs)
     {
@@ -32,7 +32,7 @@ public partial class MainWindow
                 log.Add($"共通 {r.Common} 個・一部だけ {r.Partial} 個・ずれ {r.Mismatches.Count} 件");
                 foreach (var n in r.Notes) log.Add("知らせ: " + n);
                 foreach (var m in r.Mismatches) log.Add("書き出し直すと違う: " + m);
-                log.Add("--- 計器（共通でないもの）");
+                log.Add("--- オブジェクト（共通でないもの）");
                 for (int i = 0; i < _doc!.Sections.Count; i++)
                     if (_doc.Sections[i].VariationCond is { } c) log.Add($"#{i} {(_doc.Sections[i].Title.Length > 0 ? _doc.Sections[i].Title : _doc.Sections[i].HeaderRaw)} {{{c}}}");
                 log.Add("--- 書き出し直したものと元のファイル");
@@ -44,7 +44,7 @@ public partial class MainWindow
                     File.WriteAllText(Path.ChangeExtension(report, $".{name}.back.txt"), back);
                     File.WriteAllText(Path.ChangeExtension(report, $".{name}.orig.txt"), orig);
                     int diff = orig.Split('\n').Zip(back.Split('\n')).Count(t => t.First != t.Second) + Math.Abs(orig.Split('\n').Length - back.Split('\n').Length);
-                    log.Add($"{name}: {(orig == back ? "1 字も違わない" : $"違う行 {diff} 行（計器・値・並びは {(r.Mismatches.Contains(name) ? "違う" : "同じ")}）")}");
+                    log.Add($"{name}: {(orig == back ? "1 字も違わない" : $"違う行 {diff} 行（オブジェクト・値・並びは {(r.Mismatches.Contains(name) ? "違う" : "同じ")}）")}");
                 }
                 SetViewVariation(files[^1].Item1);
                 RightTabs.SelectedIndex = RightTabs.Items.Count - 1;
@@ -91,7 +91,7 @@ public partial class MainWindow
             _autoConfirm = _ => true;
             string Conds() => string.Join(",", _doc!.Sections.Skip(1).Select(s => s.Title + (s.VariationCond != null ? "{" + s.VariationCond + "}" : "")));
 
-            // 0. 計器の一覧の 1 行表示・問題の欄を畳む
+            // 0. オブジェクトの一覧の 1 行表示・問題の欄を畳む
             SetCompactList(true, save: false);
             Check("1 行表示では 2 行目を出さない", Rows.Where(r => !r.IsHeader && r.HasTitle).All(r => r.SecondaryVisibility == Visibility.Collapsed));
             SetCompactList(false, save: false);
@@ -144,16 +144,16 @@ public partial class MainWindow
             // 3. 右の欄のチェック: 「雨」をワンマンだけに
             ApplySelection(3, [3], null, SelectionSource.Other);
             var cb = _varChecks.Children.OfType<CheckBox>().First(c => (string)c.Content == "ツーマン");
-            Check("右の欄に、選んだ計器が入るバリエーションのチェックが出る", cb.IsChecked == true && _varChecks.Children.Count == 2);
+            Check("右の欄に、選んだオブジェクトが入るバリエーションのチェックが出る", cb.IsChecked == true && _varChecks.Children.Count == 2);
             cb.IsChecked = false;
             cb.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Check("チェックを外すとそのバリエーションから外れる", Conds() == "共通,ワンマン灯{ワンマン},雨{ワンマン}");
 
-            // 3'. グループの見出し: 中の計器が全部入っているバリエーションを出す
+            // 3'. グループの見出し: 中のオブジェクトが全部入っているバリエーションを出す
             _doc.MakeGroup([2, 3], "ワンマン機器");
             CommitModel();
             var gh = Rows.First(r => r.IsHeader && r.GroupName == "ワンマン機器");
-            Check("グループの中の計器が全部ワンマンに入っていれば、見出しに「ワンマン」と出す", gh.VariationText == "ワンマン" && gh.VariationTextVisibility == Visibility.Visible);
+            Check("グループの中のオブジェクトが全部ワンマンに入っていれば、見出しに「ワンマン」と出す", gh.VariationText == "ワンマン" && gh.VariationTextVisibility == Visibility.Visible);
             UpdateLayout();
             SaveWindowPng(this, Path.ChangeExtension(png, ".group.png"));
             _doc.SetMembership([3], "ツーマン", true);
@@ -165,7 +165,7 @@ public partial class MainWindow
             OnUndo(this, null!); OnUndo(this, null!); OnUndo(this, null!);
             Check("Ctrl+Z で戻せる", Conds() == "共通,ワンマン灯{ワンマン},雨{ワンマン}" && _doc.GroupNames().Count == 0);
 
-            // 4. バリエーションの表示中に複製した計器は、そのバリエーションだけに入る
+            // 4. バリエーションの表示中に複製したオブジェクトは、そのバリエーションだけに入る
             SetViewVariation("ツーマン");
             ApplySelection(1, [1], null, SelectionSource.Other);
             OnDuplicate(null, null);
@@ -187,8 +187,8 @@ public partial class MainWindow
             var one = File.ReadAllText(Path.Combine(masterDir, "panel_ワンマン.txt"));
             string Titles(string t) => string.Join(",", PanelDocument.Parse(t).Sections.Skip(1).Select(s => s.Title));
             log.Add($"     ツーマン: {Titles(two)}　ワンマン: {Titles(one)}");
-            Check("ツーマンには入る計器だけ", Titles(two) == "共通,ツーマン灯");
-            Check("ワンマンには入る計器だけ", Titles(one) == "共通,ワンマン灯,雨");
+            Check("ツーマンには入るオブジェクトだけ", Titles(two) == "共通,ツーマン灯");
+            Check("ワンマンには入るオブジェクトだけ", Titles(one) == "共通,ワンマン灯,雨");
             Check("書き出したパネルには印も一覧の行もない", !two.Contains("@group") && !two.Contains("@end") && !one.Contains("@バリエーション"));
 
             // 6. 出力先を別のフォルダにすると画像の場所を直す
@@ -214,7 +214,7 @@ public partial class MainWindow
             Check("マスターの行では名前・出力ファイル・削除は使えない（複製はできる）", !_varEdit.IsEnabled && _varDelete?.IsEnabled == false && _varDuplicate?.IsEnabled == true && SelectedVariation == null);
             OnDuplicateVariation();
             var allName = _doc.Variations[^1].Name;
-            Check("マスターを複製すると、すべての計器が入るバリエーションになる", allName == "すべて" && _doc.Sections.All(s => s.InVariation(allName)));
+            Check("マスターを複製すると、すべてのオブジェクトが入るバリエーションになる", allName == "すべて" && _doc.Sections.All(s => s.InVariation(allName)));
             OnUndo(this, null!);
             Check("Ctrl+Z で戻せる", !_doc.VariationNames.Contains("すべて"));
             int rainIdx = _doc.Sections.FindIndex(s => s.Title == "雨");
@@ -222,7 +222,7 @@ public partial class MainWindow
             OnAddVariation();
             var added = _doc.Variations[^1].Name;
             log.Add($"     表示状態から足した「{added}」: " + Conds());
-            Check("今の表示状態（ワンマンの計器から、隠した雨を除く）がバリエーションになる",
+            Check("今の表示状態（ワンマンのオブジェクトから、隠した雨を除く）がバリエーションになる",
                 _doc.Sections[rainIdx].InVariation("ワンマン") && !_doc.Sections[rainIdx].InVariation(added)
                 && _doc.Sections.First(s => s.Title == "ワンマン灯").InVariation(added) && !_doc.Sections.First(s => s.Title == "ツーマン灯").InVariation(added));
             OnUndo(this, null!);
@@ -232,15 +232,15 @@ public partial class MainWindow
             // 8. 複製・名前の変更・削除
             SelectVariationRow(1);
             OnDuplicateVariation();
-            Check("複製すると同じ計器が入る", _doc.VariationNames.SequenceEqual(["ツーマン", "ワンマン", "ワンマン_2"]) && Conds().Contains("雨{ワンマン, ワンマン_2}"));
+            Check("複製すると同じオブジェクトが入る", _doc.VariationNames.SequenceEqual(["ツーマン", "ワンマン", "ワンマン_2"]) && Conds().Contains("雨{ワンマン, ワンマン_2}"));
             _varName.Text = "ワンマン雨"; CommitVariationName();
             Check("名前を変えると条件も変わる", Conds().Contains("雨{ワンマン, ワンマン雨}"));
             SelectVariationRow(0);
-            ChoiceDialog.TestAnswer = (_, _) => 1; // そのバリエーションだけの計器は共通にする
+            ChoiceDialog.TestAnswer = (_, _) => 1; // そのバリエーションだけのオブジェクトは共通にする
             OnDeleteVariation();
             ChoiceDialog.TestAnswer = null;
             log.Add("     ツーマンを消したあと: " + Conds());
-            Check("消すと、そのバリエーションだけの計器を共通にできる", !_doc.VariationNames.Contains("ツーマン") && Conds().StartsWith("共通,ツーマン灯,"));
+            Check("消すと、そのバリエーションだけのオブジェクトを共通にできる", !_doc.VariationNames.Contains("ツーマン") && Conds().StartsWith("共通,ツーマン灯,"));
             OnUndo(this, null!);
             Check("Ctrl+Z で戻せる", _doc.VariationNames.Contains("ツーマン"));
 
@@ -271,8 +271,8 @@ public partial class MainWindow
                 !_doc.Sections[lampIdx].InVariation(_doc.Variations[1].Name) && !_doc.Sections[lampIdx].ViewHidden);
             OnUndo(this, null!);
             SetViewVariation(null);
-            // バリエーション編集モードでは、追加したばかりの計器も動かせない
-            Check("バリエーション編集モードでは、追加したばかりの計器も位置ロックのまま", Canvas.ForceLocked && Canvas.PositionLocked);
+            // バリエーション編集モードでは、追加したばかりのオブジェクトも動かせない
+            Check("バリエーション編集モードでは、追加したばかりのオブジェクトも位置ロックのまま", Canvas.ForceLocked && Canvas.PositionLocked);
 
             // 9. 一覧にない名前は問題の欄に出る
             _doc.Sections[1].VariationCond = "雨天";
@@ -305,7 +305,7 @@ public partial class MainWindow
             log.Add("     取り込み: " + Conds() + $"　知らせ: {string.Join(" ／ ", result?.Notes ?? [])}");
             Check("既存のパネルからマスターを作って開く", result != null && _path == Path.GetFullPath(master2) && _doc.VariationNames.SequenceEqual(["ツーマン", "ワンマン", "雨"]));
             Check("書き出し直すと元と同じ（確かめた結果）", result != null && result.Mismatches.Count == 0);
-            Check("共通・一部だけの計器に分かれる", Conds() == "共通,ツーマン灯{ツーマン},ワンマン灯{ワンマン, 雨},雨天用の灯{雨},雨{ワンマン, 雨}");
+            Check("共通・一部だけのオブジェクトに分かれる", Conds() == "共通,ツーマン灯{ツーマン},ワンマン灯{ワンマン, 雨},雨天用の灯{雨},雨{ワンマン, 雨}");
             Check("出力ファイルは元のパネル（マスターからの場所）", _doc.Variations[2].File == "rain\\panel.txt" && _doc.Variations[0].File == "master\\panel_ツーマン.txt");
             Check("画像の場所はマスターからのものに直す", _doc.Sections.First(s => s.Title == "雨天用の灯").Get("DaytimeImage") == "img\\c.png");
             var rain = PanelDocument.Parse(_doc.ExportVariation("雨", Path.GetDirectoryName(master2), Path.GetDirectoryName(src3)));

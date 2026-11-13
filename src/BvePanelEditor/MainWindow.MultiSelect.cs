@@ -13,7 +13,7 @@ public partial class MainWindow
 {
     private static bool IsInstrument(PanelSection s) => s.Kind is not (SectionKind.This or SectionKind.Unknown);
 
-    /// <summary>パネル本体（[This]・メインパネル）以外の計器をすべて選ぶ。</summary>
+    /// <summary>パネル本体（[This]・メインパネル）以外のオブジェクトをすべて選ぶ。</summary>
     private void SelectAllElements(object? sender, RoutedEventArgs? e)
     {
         if (_doc == null) return;
@@ -21,10 +21,10 @@ public partial class MainWindow
         var all = Enumerable.Range(0, _doc.Sections.Count).Where(i => IsInstrument(_doc.Sections[i]) && !_doc.Sections[i].IsMainPanel && !_doc.Sections[i].ViewHidden).ToList();
         if (all.Count == 0) return;
         ApplySelection(all[0], all, null, SelectionSource.Other);
-        Message($"計器 {all.Count} 個をすべて選びました");
+        Message($"オブジェクト {all.Count} 個をすべて選びました");
     }
 
-    /// <summary>選んだ計器に同じ値を書く（そのキーを持てない種類の計器は飛ばす）。</summary>
+    /// <summary>選んだオブジェクトに同じ値を書く（そのキーを持てない種類のオブジェクトは飛ばす）。</summary>
     private void OnMultiCommit(string key, string value)
     {
         if (_doc == null || _selSet.Count == 0) return;
@@ -38,7 +38,7 @@ public partial class MainWindow
             n++;
         }
         CommitModel();
-        Message(value.Length == 0 ? $"{n} 個の計器から {key} を消しました" : $"{n} 個の計器の {key} を「{value}」にしました");
+        Message(value.Length == 0 ? $"{n} 個のオブジェクトから {key} を消しました" : $"{n} 個のオブジェクトの {key} を「{value}」にしました");
     }
 
     private void OnAlignMenu(object sender, RoutedEventArgs e)
@@ -53,13 +53,13 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// 整列で一緒に動かすかたまり。グループを丸ごと選んでいれば（ほかの計器と一緒に選んだとき）そのグループで 1 つ。
-    /// グループ 1 つだけを選んでいるときは、中の計器を 1 つずつ揃える。
+    /// 整列で一緒に動かすかたまり。グループを丸ごと選んでいれば（ほかのオブジェクトと一緒に選んだとき）そのグループで 1 つ。
+    /// グループ 1 つだけを選んでいるときは、中のオブジェクトを 1 つずつ揃える。
     /// </summary>
     private List<List<int>> AlignUnits()
     {
         var set = _selSet.Where(i => IsInstrument(_doc!.Sections[i]) && _scene?.ItemFor(i) != null).ToList();
-        // グループ 1 つだけなら、そのすぐ中のかたまり（中のグループは丸ごと、直下の計器は 1 つずつ）を揃える
+        // グループ 1 つだけなら、そのすぐ中のかたまり（中のグループは丸ごと、直下のオブジェクトは 1 つずつ）を揃える
         if (_selGroup != null) return _doc!.UnitsWithin(set, _selGroup);
         var used = new HashSet<int>();
         var units = new List<List<int>>();
@@ -83,7 +83,7 @@ public partial class MainWindow
         bool distribute = kind is AlignKind.DistributeX or AlignKind.DistributeY;
         if (units.Count < (distribute ? 3 : 2))
         {
-            Message(distribute ? "等間隔に並べるには、計器（かたまり）を 3 つ以上選んでください" : "揃えるには、計器（かたまり）を 2 つ以上選んでください");
+            Message(distribute ? "等間隔に並べるには、オブジェクト（かたまり）を 3 つ以上選んでください" : "揃えるには、オブジェクト（かたまり）を 2 つ以上選んでください");
             return;
         }
         var bounds = units.Select(u => u.Select(i => BoundsOf(_scene.ItemFor(i)!)).Aggregate(Rect.Union)).ToList();

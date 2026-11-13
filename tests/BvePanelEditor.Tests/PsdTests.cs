@@ -225,7 +225,7 @@ public sealed class PsdTests : IDisposable
         Assert.Equal((128, 64), (baseImg.W, baseImg.H));
         Assert.Equal(["N0", "N1", "N2"], num.PsdLayers);
 
-        // グループの計器は続けて並ぶ
+        // グループのオブジェクトは続けて並ぶ
         var groups = r.Sections.Select(s => s.Group).ToList();
         int first = groups.IndexOf("表示灯"), last = groups.LastIndexOf("表示灯");
         Assert.Equal(groups.Count(g => g == "表示灯") - 1, last - first);
@@ -416,7 +416,7 @@ public sealed class PsdTests : IDisposable
         Assert.Equal(2, back.Sections[^1].PsdSource);
         Assert.Equal("monitor.psd", back.GetPsdSource(2)!.Day);
 
-        // 1 つ目の PSD の更新では、2 つ目の PSD の計器を触らない
+        // 1 つ目の PSD の更新では、2 つ目の PSD のオブジェクトを触らない
         var plan = PsdUpdate.Plan(back, _dir, spec.Day, spec.Night, 1);
         Assert.Equal(back.Sections.Count(s => s.PsdLayers.Count > 0 && s.PsdSource == 1), plan.Linked);
         spec.Day.Dispose(); spec.Night!.Dispose();

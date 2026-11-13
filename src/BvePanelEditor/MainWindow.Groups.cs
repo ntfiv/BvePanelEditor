@@ -22,7 +22,7 @@ public partial class MainWindow
 
     // ================= 選択 =================
 
-    /// <summary>番号のずれ・消えたグループを直す。グループごとの選択は名前から計器を取り直す。</summary>
+    /// <summary>番号のずれ・消えたグループを直す。グループごとの選択は名前からオブジェクトを取り直す。</summary>
     private void NormalizeSelection()
     {
         if (_doc == null) { _selected = -1; _selSet = []; _selGroup = null; return; }
@@ -56,7 +56,7 @@ public partial class MainWindow
 
         if (source != SelectionSource.Canvas)
         {
-            // 中に入ったグループの中を選んだときは（計器 1 つ、または中のグループ）、中に入ったままにする
+            // 中に入ったグループの中を選んだときは（オブジェクト 1 つ、または中のグループ）、中に入ったままにする
             Canvas.SetSelection(_selected, _selSet, _selGroup, EnteredFor(Canvas.EnteredGroup));
         }
         // 折りたたんだグループの中を選んだときは、そのグループ（と外側のグループ）を開いて一覧に出す
@@ -87,7 +87,7 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// 今の選択が、中に入ったグループ entered の中か（計器 1 つ、または中のグループを選んでいる）。中なら entered、そうでなければ null。
+    /// 今の選択が、中に入ったグループ entered の中か（オブジェクト 1 つ、または中のグループを選んでいる）。中なら entered、そうでなければ null。
     /// </summary>
     private string? EnteredFor(string? entered)
     {
@@ -100,6 +100,8 @@ public partial class MainWindow
     private void ShowSelectionDetails(bool scroll)
     {
         if (_doc == null) return;
+        // 「そろえる先」の初めの値: 主に選んでいる（最初に選んだ）オブジェクトのレイヤー
+        _props.PrimaryLayer = _selected >= 0 && _selected < _doc.Sections.Count && HasLayer(_doc.Sections[_selected]) ? LayerOf(_doc.Sections[_selected]) : null;
         if (_selGroup != null)
             _props.ShowGroup(_selGroup, _selSet.Count, TopLeftOf(_selSet), _selSet.Select(i => _doc.Sections[i]).ToList());
         else if (_selSet.Count > 1)
@@ -119,9 +121,10 @@ public partial class MainWindow
         UpdateHighlight();
         UpdateStateHighlight();
         RefreshVariationUi();
+        ShowRag();
     }
 
-    /// <summary>計器の Location のいちばん左上（位置のない計器は飛ばす）。</summary>
+    /// <summary>オブジェクトの Location のいちばん左上（位置のないオブジェクトは飛ばす）。</summary>
     private Point? TopLeftOf(IEnumerable<int> indices)
     {
         double x = double.MaxValue, y = double.MaxValue;
@@ -201,7 +204,7 @@ public partial class MainWindow
         var cands = _selSet.Where(i => _doc.Sections[i].Kind is not (SectionKind.This or SectionKind.Unknown)).Distinct().Order().ToList();
         if (cands.Count == 0)
         {
-            Message("グループにする計器を選んでください（一覧で Ctrl／Shift＋クリック、パネル画面で Shift＋クリック）");
+            Message("グループにするオブジェクトを選んでください（一覧で Ctrl／Shift＋クリック、パネル画面で Shift＋クリック）");
             return;
         }
         if (_selGroup != null && cands.Count == _doc.Members(_selGroup).Count)
@@ -210,7 +213,7 @@ public partial class MainWindow
             return;
         }
 
-        // グループにするとファイル内の並びが変わり、同じレイヤーで重なっている計器の手前・奥が入れ替わることがある
+        // グループにするとファイル内の並びが変わり、同じレイヤーで重なっているオブジェクトの手前・奥が入れ替わることがある
         var reordered = _doc.SectionsReorderedBy(cands);
         var conflicts = new List<string>();
         foreach (var r in reordered)
@@ -224,7 +227,7 @@ public partial class MainWindow
             }
         }
         if (conflicts.Count > 0 && !Confirm(
-                "グループにするため、ファイル内の並び順を変えます。\n次の計器は同じレイヤーで重なっているので、BVE での手前・奥が入れ替わります。\n\n"
+                "グループにするため、ファイル内の並び順を変えます。\n次のオブジェクトは同じレイヤーで重なっているので、BVE での手前・奥が入れ替わります。\n\n"
                 + string.Join("\n", conflicts.Take(8)) + (conflicts.Count > 8 ? $"\n…ほか {conflicts.Count - 8} 件" : "")
                 + "\n\n続けますか？"))
             return;
@@ -238,13 +241,13 @@ public partial class MainWindow
         Canvas.SetSelection(idx[0], idx, name, parent.LastOrDefault());
         ApplySelection(idx[0], idx, name, SelectionSource.Other);
         Message($"「{name}」にしました（{idx.Count} 個{(parent.Count > 0 ? $"。グループ「{parent[^1]}」の中" : "")}）"
-            + (reordered.Count > 0 ? $"。間にあった計器 {reordered.Count} 個をグループの後ろへ並べ替えました" : "")
-            + (fromOther.Count > 0 ? $"。グループ「{string.Join("」「", fromOther)}」から外れた計器があります" : "")
+            + (reordered.Count > 0 ? $"。間にあったオブジェクト {reordered.Count} 個をグループの後ろへ並べ替えました" : "")
+            + (fromOther.Count > 0 ? $"。グループ「{string.Join("」「", fromOther)}」から外れたオブジェクトがあります" : "")
             + "。名前を入力してください");
         Dispatcher.BeginInvoke(BeginRename, DispatcherPriority.Loaded);
     }
 
-    /// <summary>今の選択のグループ（グループごと選んでいなければ、主に選んでいる計器のグループ）。</summary>
+    /// <summary>今の選択のグループ（グループごと選んでいなければ、主に選んでいるオブジェクトのグループ）。</summary>
     private string? CurrentGroup() =>
         _selGroup ?? (_doc != null && _selected >= 0 ? _doc.Sections[_selected].Group : null);
 
@@ -258,7 +261,7 @@ public partial class MainWindow
         _folded.Remove(g);
         CommitModel();
         ApplySelection(members[0], members, null, SelectionSource.Other);
-        Message($"グループ「{g}」を解除しました（計器はそのまま残っています）");
+        Message($"グループ「{g}」を解除しました（オブジェクトはそのまま残っています）");
     }
 
     private void OnRemoveFromGroup(object? sender, RoutedEventArgs? e)
@@ -267,7 +270,7 @@ public partial class MainWindow
         FlushReparse();
         if (_selGroup != null || _selSet.Count != 1 || _doc.Sections[_selected].Group is not { } g)
         {
-            Message("グループの中の計器を 1 つ選んでください（パネル画面ではダブルクリックで中に入る、一覧ではその行をクリック）");
+            Message("グループの中のオブジェクトを 1 つ選んでください（パネル画面ではダブルクリックで中に入る、一覧ではその行をクリック）");
             return;
         }
         int ni = _doc.RemoveFromGroup(_selected);
@@ -314,7 +317,7 @@ public partial class MainWindow
     {
         if (_doc == null) return;
         var targets = _selSet.Distinct().OrderDescending().ToList();
-        var what = _selGroup != null ? $"グループ「{_selGroup}」の計器 {targets.Count} 個" : $"選んでいる計器 {targets.Count} 個";
+        var what = _selGroup != null ? $"グループ「{_selGroup}」のオブジェクト {targets.Count} 個" : $"選んでいるオブジェクト {targets.Count} 個";
         if (targets.Any(i => _doc.Sections[i].Kind == SectionKind.This)) what += "（パネル本体 [This] を含む）";
         if (!Confirm($"{what}を削除しますか？\n（Ctrl+Z で元に戻せます）")) return;
         foreach (var i in targets) _doc.Sections.RemoveAt(i);

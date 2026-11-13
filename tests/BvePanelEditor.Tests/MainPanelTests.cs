@@ -72,7 +72,7 @@ public sealed class MainPanelTests
         Assert.Equal(((string?)null, (string?)null), (doc.This.Get("DaytimeImage"), doc.This.Get("NighttimeImage")));
         Assert.Equal("500, 300", doc.This.Get("Center"));    // 座標はそのまま
         Assert.Equal(("000000", (string?)null), (main.Get("TransparentColor"), doc.This.Get("TransparentColor"))); // 透過色も移す
-        // ほかの計器は全部同じだけ上げて、メインパネルより上に（1→2、3→4）
+        // ほかのオブジェクトは全部同じだけ上げて、メインパネルより上に（1→2、3→4）
         Assert.Equal(("2", "4"), (Layer(doc, 2), Layer(doc, 3)));
         // 「本体」の組は表示灯のつながりにする（透明な [This] を切り抜き元から更新で上書きしないように）
         Assert.DoesNotContain(doc.CropSets, c => c.Name == CropSetNames.Base);
@@ -90,7 +90,7 @@ public sealed class MainPanelTests
     [Fact]
     public void MakeMainMovesThisImageToTheBottom()
     {
-        // よくある既存パネルの形: [This] は背景、メインパネルにする表示灯はレイヤー 2、いちばん下の計器はレイヤー 1
+        // よくある既存パネルの形: [This] は背景、メインパネルにする表示灯はレイヤー 2、いちばん下のオブジェクトはレイヤー 1
         var doc = PanelDocument.Parse(Panel.Replace("Layer = 1", "Layer = 2") + "\r\n[PilotLamp]\r\nSubject = true\r\nLocation = 0, 0\r\nDaytimeImage = gs.png\r\nLayer = 1\r\n");
         int moved = MainPanel.MakeMain(doc, 1, true);
         Assert.True(doc.Sections[2].IsMainPanel); // 背景は [This] のすぐ後ろ、メインパネルはその次

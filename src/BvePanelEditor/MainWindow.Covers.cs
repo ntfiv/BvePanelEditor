@@ -134,7 +134,7 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>蓋を書き出し、常表示の表示灯として針のすぐ上に置く。置いた計器の番号を返す（できなければ -1）。</summary>
+    /// <summary>蓋を書き出し、常表示の表示灯として針のすぐ上に置く。置いたオブジェクトの番号を返す（できなければ -1）。</summary>
     public int PlaceCover(CoverResult r, List<int> targets)
     {
         if (_doc == null || PanelDir == null) return -1;
@@ -199,7 +199,7 @@ public partial class MainWindow
         if (src.LinkSet != null && doc.CropSets.FirstOrDefault(c => c.Name == src.LinkSet) is { } linked)
         {
             if (linked.Name != CropSetNames.Base) return linked.Name;
-            // 「本体」を計器が指すと、切り抜き元から更新で [This] を作り直さなくなる（本体を表示灯として置いた扱いになる）ので、同じ中身の組を別の名前で使う
+            // 「本体」をオブジェクトが指すと、切り抜き元から更新で [This] を作り直さなくなる（本体を表示灯として置いた扱いになる）ので、同じ中身の組を別の名前で使う
             static bool Same(List<string>? a, List<string>? b) => a == null ? b == null : b != null && a.SequenceEqual(b);
             var copy = doc.CropSets.FirstOrDefault(c => c.Name != CropSetNames.Base && c.Day == linked.Day && c.Night == linked.Night
                 && Same(c.DayLayers, linked.DayLayers) && Same(c.NightLayers, linked.NightLayers));

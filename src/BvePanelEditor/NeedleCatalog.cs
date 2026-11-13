@@ -163,7 +163,7 @@ public static class NeedleCatalog
         ";     名前 = 一覧に出す名前（組なら、置くときにこの名前でグループにします）",
         ";     説明 = 選んだときに出す説明（なくてもよい）",
         "; ・[針] は、その行で置く針。2 つ以上書くと組になり、同じ位置に書いた順に重ねて置きます（あとに書いたものが上）",
-        ";     名前 = 針の名前（パネルファイルの計器の名前になります）",
+        ";     名前 = 針の名前（パネルファイルのオブジェクトの名前になります）",
         ";     DaytimeImage・NighttimeImage = 画像。exe の needles フォルダからの場所（E217 の針は ..\\needle_E217\\…）か、フルパス（夜はなくてもよい）",
         ";     Origin・Radius・InitialAngle・LastAngle・Minimum・Maximum・Subject・NaturalFreq・DampingRatio は",
         ";     BVE のパネルファイルの [Needle] と同じ（NaturalFreq・DampingRatio は 0 か書かなければ、キーを書きません）",

@@ -57,7 +57,7 @@ public partial class MainWindow
         finally { spec.Day.Dispose(); spec.Night?.Dispose(); }
     }
 
-    /// <summary>読み込みの指定から PNG を書き出し、パネルに計器を足す。</summary>
+    /// <summary>読み込みの指定から PNG を書き出し、パネルにオブジェクトを足す。</summary>
     private bool ApplyPsdImport(PsdImportSpec spec, string? newPanelPath, bool interactive)
     {
         PsdImportResult result;
@@ -155,7 +155,7 @@ public partial class MainWindow
             foreach (var s in result.Sections)
                 for (int k = 0; k < s.Groups.Count; k++) if (s.Groups[k] == g) s.Groups[k] = n;
         }
-        // どの PSD から作ったかを覚える。今までと同じ昼の PSD ならその番号、別の PSD なら新しい番号（前の計器のつながりは変えない）
+        // どの PSD から作ったかを覚える。今までと同じ昼の PSD ならその番号、別の PSD なら新しい番号（前のオブジェクトのつながりは変えない）
         var source = doc.PsdSources.FirstOrDefault(src => src.Day.Length > 0 && SamePath(Path.Combine(spec.PanelDir, src.Day), spec.Day.FilePath));
         if (source == null)
         {
@@ -167,7 +167,7 @@ public partial class MainWindow
         if (baseTarget != null) baseTarget.PsdSource = source.Id;
         int start = doc.Sections.Count;
         doc.Sections.AddRange(result.Sections);
-        // 新しいパネルのメインパネル（レイヤー 1）より、読み込んだ計器を上にする
+        // 新しいパネルのメインパネル（レイヤー 1）より、読み込んだオブジェクトを上にする
         if (newPanelPath != null && doc.MainPanel is { } nm) MainPanel.RaiseAbove(doc, MainPanel.Layer, nm);
 
         CommitModel();
@@ -185,7 +185,7 @@ public partial class MainWindow
         int nums = result.Sections.Count(s => s.Kind == SectionKind.DigitalNumber);
         int noSubject = result.Sections.Count(s => string.IsNullOrEmpty(s.Get("Subject")));
         Message($"PSD から読み込みました（{(result.Base != null ? "ベース・" : "")}表示灯 {lamps} 個・数字 {nums} 個、画像 {result.Files.Count} 枚）"
-            + (noSubject > 0 ? $"。Subject が空の計器 {noSubject} 個は右の欄で設定してください" : "")
+            + (noSubject > 0 ? $"。Subject が空のオブジェクト {noSubject} 個は右の欄で設定してください" : "")
             + (newPanelPath != null ? "。パネルファイルはまだ保存していません（Ctrl+S）" : ""));
         if (interactive && result.Warnings.Count > 0)
             MessageBox.Show(this, "読み込みましたが、次の点に注意してください。\n\n" + string.Join("\n", result.Warnings.Distinct().Take(15).Select(w => "・" + w))

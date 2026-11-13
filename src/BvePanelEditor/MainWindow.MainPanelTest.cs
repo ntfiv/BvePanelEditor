@@ -54,7 +54,7 @@ public partial class MainWindow
                 && !Directory.EnumerateFiles(PanelDir!, "this_blank_*").Any());
             var others = doc.Sections.Where(s => s.Kind is not (SectionKind.This or SectionKind.Unknown) && !s.IsMainPanel).Select(s => (int)PanelValues.Double(s.Get("Layer"), 0)).ToList();
             log.Add($"     レイヤー: 前 {string.Join(",", layersBefore)} → 後 {string.Join(",", others)}");
-            Check("ほかの計器はメインパネルより上（同じだけ上げる）", others.All(l => l >= 2) && others.Zip(layersBefore).Select(t => t.First - t.Second).Distinct().Count() == 1);
+            Check("ほかのオブジェクトはメインパネルより上（同じだけ上げる）", others.All(l => l >= 2) && others.Zip(layersBefore).Select(t => t.First - t.Second).Distinct().Count() == 1);
             Check("透過色もメインパネルに移す", main?.Get("TransparentColor") == "000000" && doc.This.Get("TransparentColor") == null);
 
             SelectForStartup(-1); // 選んだ枠を描かずに比べる
@@ -77,10 +77,10 @@ public partial class MainWindow
             log.Add($"     表示範囲（後）: {vlAfter?.Split('\n')[0]}");
             Check("表示範囲の計算はメインパネルの画像から（前と同じ結果）", vlAfter != null && vlAfter == vlBefore);
 
-            // パネル画面のクリック: メインパネルは選ばず、計器は選べる
+            // パネル画面のクリック: メインパネルは選ばず、オブジェクトは選べる
             var needle = _scene!.Items.First(i => i.Kind == SectionKind.Needle);
             Check("メインパネルの上をクリックしても選ばない（[This] を選ぶ）", Canvas.HitForTest(new Point(200, 2600)) == -1);
-            Check("計器はクリックで選べる", Canvas.HitForTest(needle.Location) is var h && h >= 0 && !doc.Sections[h].IsMainPanel);
+            Check("オブジェクトはクリックで選べる", Canvas.HitForTest(needle.Location) is var h && h >= 0 && !doc.Sections[h].IsMainPanel);
             SelectAllElements(null, null);
             Check("すべて選択でもメインパネルは選ばない", !_selSet.Contains(doc.Sections.IndexOf(main!)));
 

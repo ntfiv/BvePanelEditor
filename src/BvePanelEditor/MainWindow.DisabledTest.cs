@@ -5,7 +5,7 @@ using BvePanelEditor.Core.Psd;
 namespace BvePanelEditor;
 
 /// <summary>
-/// 確認用: コメントアウトして無効にした計器（--disabledtest 作業フォルダ 画面.png 結果.txt）。
+/// 確認用: コメントアウトして無効にしたオブジェクト（--disabledtest 作業フォルダ 画面.png 結果.txt）。
 /// 作業フォルダに、同梱の E217 の針で「有効な針」と「コメントアウトした針」のパネルを作って開く。
 /// </summary>
 public partial class MainWindow
@@ -36,7 +36,7 @@ public partial class MainWindow
             Check("コメントアウトした針も一覧に出る（3 つ）", _doc!.Sections.Count == 3 && _doc.Sections[2].Disabled && _doc.Sections[2].Title == "調整用の針");
             Check("コメントアウトした針はパネル画面に描かない", _scene!.ItemFor(2) == null && _scene.ItemFor(1) != null);
             var rows = (ElementList.ItemsSource as IEnumerable<ElementRow>)!.ToList();
-            Check("一覧ではコメントアウトした計器の背景が灰色", rows.First(r => r.Index == 2).Disabled && rows.First(r => r.Index == 1).Disabled == false
+            Check("一覧ではコメントアウトしたオブジェクトの背景が灰色", rows.First(r => r.Index == 2).Disabled && rows.First(r => r.Index == 1).Disabled == false
                 && rows.First(r => r.Index == 2).RowBackground != System.Windows.Media.Brushes.Transparent);
 
             // 有効な針をコメントアウトする
@@ -61,7 +61,7 @@ public partial class MainWindow
             _doc!.Sections[2].Set("Location", "390, 300");
             CommitModel();
             await Task.Delay(300);
-            Check("コメントアウトした計器の値を変えても「;」は付いたまま", Editor.Text.Contains(";Location = 390, 300") && !Editor.Text.Contains("\nLocation = 390"));
+            Check("コメントアウトしたオブジェクトの値を変えても「;」は付いたまま", Editor.Text.Contains(";Location = 390, 300") && !Editor.Text.Contains("\nLocation = 390"));
             UpdateLayout();
             await Task.Delay(400);
             SaveWindowPng(this, png);

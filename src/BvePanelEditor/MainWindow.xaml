@@ -37,13 +37,20 @@
                 <Separator />
                 <MenuItem Header="画像を読み込み直す" Click="OnReloadImages" InputGestureText="F5" />
                 <Separator />
+                <MenuItem Header="RealAnalogGauge の設定ファイルを選ぶ…" Click="OnPickRag"
+                          ToolTip="ATS プラグイン RealAnalogGauge の設定（DLL と同じ名前の ini）を選びます。車両ファイルから開いたときは自動で探します" />
+                <MenuItem x:Name="RagReloadMenu" Header="RealAnalogGauge の設定を読み直す" Click="OnReloadRag" IsEnabled="False" />
+                <Separator />
                 <MenuItem Header="終了(_X)" Click="OnExit" />
             </MenuItem>
             <MenuItem Header="編集(_E)">
                 <MenuItem Header="元に戻す(_U)" Command="ApplicationCommands.Undo" InputGestureText="Ctrl+Z" />
                 <MenuItem Header="やり直し(_R)" Command="ApplicationCommands.Redo" InputGestureText="Ctrl+Y" />
                 <Separator />
-                <MenuItem Header="計器を追加">
+                <MenuItem Header="オブジェクトを追加">
+                    <MenuItem Header="画像を読み込む（常点灯画像・DigitalNumber）…" Click="OnAddImages"
+                              ToolTip="画像・PSD を選ぶと、ドロップしたときと同じく、常点灯画像・DigitalNumber（コマ割済）・DigitalNumber（単コマ）のどれとして読み込むかを聞きます" />
+                    <Separator />
                     <MenuItem Header="表示灯 [PilotLamp]" Tag="PilotLamp" Click="OnAddElement" />
                     <MenuItem Header="指針 [Needle]" Tag="Needle" Click="OnAddElement" />
                     <MenuItem Header="指針（標準の針・角度を選んで）[Needle]…" Click="OnAddStandardNeedle" />
@@ -53,7 +60,7 @@
                     <MenuItem Header="円形ゲージ [DigitalGauge]" Tag="DigitalGauge" Click="OnAddElement" />
                 </MenuItem>
                 <MenuItem Header="すべて選択" Click="SelectAllElements" InputGestureText="Ctrl+A" />
-                <MenuItem Header="整列" ToolTip="選んだ計器の見た目の枠で揃えます（グループを丸ごと選んでいれば、そのグループは 1 つのかたまりとして動きます）">
+                <MenuItem Header="整列" ToolTip="選んだオブジェクトの見た目の枠で揃えます（グループを丸ごと選んでいれば、そのグループは 1 つのかたまりとして動きます）">
                     <MenuItem Header="左揃え" Tag="Left" Click="OnAlignMenu" />
                     <MenuItem Header="左右中央揃え" Tag="CenterX" Click="OnAlignMenu" />
                     <MenuItem Header="右揃え" Tag="Right" Click="OnAlignMenu" />
@@ -123,7 +130,7 @@
                 <ColumnDefinition Width="340" MinWidth="220" />
             </Grid.ColumnDefinitions>
 
-            <!-- 左: 計器の一覧と問題 -->
+            <!-- 左: オブジェクトの一覧と問題 -->
             <Grid Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -135,13 +142,13 @@
                 <DockPanel Grid.Row="0" Margin="4,4,4,2">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                         <CheckBox x:Name="CompactListCheck" Content="1 行" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" Click="OnCompactList"
-                                  ToolTip="計器を 1 行で表示します（名前だけ。名前がなければ種類と状態量）。たくさんの計器を一度に見られます" />
+                                  ToolTip="オブジェクトを 1 行で表示します（名前だけ。名前がなければ種類と状態量）。たくさんのオブジェクトを一度に見られます" />
                         <ToggleButton x:Name="OrderFileButton" Content="ファイル順" FontSize="11" Padding="6,1" IsChecked="True" Click="OnListOrderButton"
                                       ToolTip="一覧をパネルファイルに書いてある順に並べます" />
                         <ToggleButton x:Name="OrderLayerButton" Content="レイヤー順" FontSize="11" Padding="6,1" Margin="-1,0,0,0" Click="OnListOrderButton"
                                       ToolTip="一覧を手前（レイヤーが大きい）ものほど上に並べます（同じレイヤーならファイルの後ろのものが手前。グループはひとかたまりのまま）" />
                     </StackPanel>
-                    <TextBlock Text="計器" FontWeight="Bold" VerticalAlignment="Center" />
+                    <TextBlock Text="オブジェクト" FontWeight="Bold" VerticalAlignment="Center" />
                 </DockPanel>
                 <ListBox x:Name="ElementList" Grid.Row="1" Margin="4,0,4,0" SelectionChanged="OnListSelection"
                          HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -154,10 +161,10 @@
                             <MenuItem x:Name="ListMenuDuplicate" Header="複製" InputGestureText="Ctrl+D" Click="OnDuplicate" />
                             <MenuItem x:Name="ListMenuDelete" Header="削除" InputGestureText="Delete" Click="OnDelete" />
                             <MenuItem x:Name="ListMenuToggleHidden" Header="非表示にする" Click="OnToggleHiddenMenu" InputGestureText="Ctrl+H"
-                                      ToolTip="選んだ計器をパネルくんの画面で隠す・戻す（ファイルには書きません）" />
+                                      ToolTip="選んだオブジェクトをパネルくんの画面で隠す・戻す（ファイルには書きません）" />
                             <MenuItem x:Name="ListMenuShowAll" Header="すべて表示する" Click="OnShowAllMenu" />
                             <MenuItem x:Name="ListMenuToggleDisabled" Header="BVE でも非表示にする（コメントアウト）" Click="OnToggleDisabledMenu" InputGestureText="Ctrl+Shift+H"
-                                      ToolTip="選んだ計器の行の頭に「;」を付けて無効にします（BVE でも表示されません）。もう一度でコメントを外して戻します" />
+                                      ToolTip="選んだオブジェクトの行の頭に「;」を付けて無効にします（BVE でも表示されません）。もう一度でコメントを外して戻します" />
                             <MenuItem x:Name="ListMenuMakeMain" Header="メインパネルにする" Click="OnMakeMainPanel"
                                       ToolTip="この表示灯をパネルの土台（メインパネル）にします。[This] の画像は透明にして、表示には使いません" />
                             <MenuItem x:Name="ListMenuThisToMain" Header="[This] の画像をメインパネルにする" Click="OnThisToMainPanel"
@@ -187,7 +194,7 @@
                                            VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="OnEyeClick" ToolTip="{Binding EyeTip}" />
                                 <TextBlock Text="{Binding Fold}" Width="16" FontSize="11" Foreground="#C06000" Cursor="Hand"
                                            VerticalAlignment="Center" MouseLeftButtonDown="OnGroupFold" ToolTip="折りたたむ／開く" />
-                                <!-- 中の計器が全部入っているバリエーション（共通なら出さない） -->
+                                <!-- 中のオブジェクトが全部入っているバリエーション（共通なら出さない） -->
                                 <Border DockPanel.Dock="Right" Background="#E6EEFA" BorderBrush="#9DB8E0" BorderThickness="1" CornerRadius="2" Padding="3,0" Margin="4,0,4,0"
                                         VerticalAlignment="Center" Visibility="{Binding VariationTextVisibility}" MaxWidth="140"
                                         ToolTip="{Binding VariationTip}">
@@ -198,7 +205,7 @@
                                     <Run Text="{Binding GroupCount, Mode=OneWay}" Foreground="Gray" FontSize="11" />
                                 </TextBlock>
                             </DockPanel>
-                            <!-- 計器の行 -->
+                            <!-- オブジェクトの行 -->
                             <Grid Visibility="{Binding ItemVisibility}" Margin="{Binding Indent}" Background="{Binding RowBackground}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="18" />
@@ -226,7 +233,11 @@
                                         <TextBlock Text="{Binding VariationText}" Foreground="#1B5FC1" FontSize="10" TextTrimming="CharacterEllipsis" />
                                     </Border>
                                     <TextBlock Text="BVE 非表示" Foreground="DimGray" FontSize="10" Visibility="{Binding DisabledVisibility}" Margin="0,0,4,0" VerticalAlignment="Center"
-                                               ToolTip="コメントアウトして無効にした計器です（BVE でも表示されません）。右クリック→「BVE で表示する」で戻せます" />
+                                               ToolTip="コメントアウトして無効にしたオブジェクトです（BVE でも表示されません）。右クリック→「BVE で表示する」で戻せます" />
+                                    <Border Background="#2E7D4F" CornerRadius="2" Padding="2,0" Margin="0,0,4,0" VerticalAlignment="Center" Visibility="{Binding RagVisibility}"
+                                            ToolTip="{Binding RagTip}">
+                                        <TextBlock Text="RAG" Foreground="White" FontSize="9" FontWeight="Bold" />
+                                    </Border>
                                     <Border Background="#2A6FC9" CornerRadius="2" Padding="2,0" Margin="0,0,4,0" VerticalAlignment="Center" Visibility="{Binding BveExVisibility}"
                                             ToolTip="BveEX の状態量（ats256 以上）を使っています。BveEX 対応車両で動きます">
                                         <TextBlock Text="EX" Foreground="White" FontSize="9" FontWeight="Bold" />
@@ -239,13 +250,27 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <WrapPanel Grid.Row="2" Margin="4">
-                    <Button x:Name="AddButton" Content="＋ 追加 ▾" Padding="6,2" Margin="0,0,4,0" Click="OnAddButton" />
+                <StackPanel Grid.Row="2">
+                <WrapPanel Margin="4">
+                    <Button x:Name="AddButton" Content="＋ オブジェクトの追加 ▾" Padding="6,2" Margin="0,0,4,0" Click="OnAddButton" />
                     <Button Content="複製" Padding="6,2" Margin="0,0,4,0" Click="OnDuplicate" />
                     <Button Content="削除" Padding="6,2" Margin="0,0,4,0" Click="OnDelete" />
                     <Button x:Name="MoveUpButton" Content="↑" Padding="6,2" Margin="0,0,2,0" Click="OnMoveUp" ToolTip="ファイル内で前へ（同じレイヤーなら奥へ）" />
                     <Button x:Name="MoveDownButton" Content="↓" Padding="6,2" Click="OnMoveDown" ToolTip="ファイル内で後ろへ（同じレイヤーなら手前へ）" />
                 </WrapPanel>
+                <!-- 選んだオブジェクトのレイヤー・グループ（右の欄まで行かなくても操作できるように） -->
+                <WrapPanel Margin="4,0,4,4">
+                    <TextBlock Text="レイヤー" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <Button Content="▲" Padding="5,1" Margin="0,0,1,0" Click="OnLayerUp" ToolTip="選んだオブジェクトのレイヤーを 1 つ上げる（Ctrl+]）" />
+                    <Button Content="▼" Padding="5,1" Margin="0,0,1,0" Click="OnLayerDown" ToolTip="選んだオブジェクトのレイヤーを 1 つ下げる（Ctrl+[）" />
+                    <Button Content="最前" Padding="4,1" Margin="0,0,1,0" Click="OnLayerFront" ToolTip="ほかのどのオブジェクトよりも手前へ（Ctrl+Shift+]）" />
+                    <Button Content="最背" Padding="4,1" Margin="0,0,4,0" Click="OnLayerBack" ToolTip="ほかのどのオブジェクトよりも奥へ（Ctrl+Shift+[）" />
+                    <Button x:Name="UnifyLayerButton" Content="そろえる ▾" Padding="4,1" Margin="0,0,8,0" Click="OnUnifyLayerButton"
+                            ToolTip="選んだオブジェクトのレイヤーを 1 つにそろえます。そろえる先のレイヤーを選びます" />
+                    <Button Content="グループ化" Padding="4,1" Margin="0,0,1,0" Click="OnMakeGroup" ToolTip="選んだオブジェクトをグループにする（Ctrl+G）" />
+                    <Button Content="解除" Padding="4,1" Click="OnUngroup" ToolTip="選んでいるグループを解除する（Ctrl+Shift+G）" />
+                </WrapPanel>
+                </StackPanel>
                 <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" />
                 <DockPanel Grid.Row="4" Margin="4,0,4,4">
                     <DockPanel DockPanel.Dock="Top" Margin="0,2" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="OnProblemFold"
@@ -284,7 +309,7 @@
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8">
                     <ToggleButton x:Name="LockButton"
                                   IsChecked="True" Click="OnLockButton" Cursor="Hand" Focusable="False"
-                                  ToolTip="ロック中は、計器の位置・半径・中心をマウスや矢印キーで動かしません（選ぶ・拡大・表示の移動はできます）。Ctrl+L でも切り替えられます">
+                                  ToolTip="ロック中は、オブジェクトの位置・半径・中心をマウスや矢印キーで動かしません（選ぶ・拡大・表示の移動はできます）。Ctrl+L でも切り替えられます">
                         <ToggleButton.Template>
                             <ControlTemplate TargetType="ToggleButton">
                                 <Border x:Name="Bd" CornerRadius="4" Padding="8,4" BorderThickness="1"
@@ -330,13 +355,13 @@
                     <!-- バリエーション編集モード（右の欄のバリエーションのタブを開いている間。位置ロック・表示灯のボタンの代わり） -->
                     <Border x:Name="VariationModeBadge" Visibility="Collapsed" CornerRadius="4" Padding="8,4" BorderThickness="1"
                             Background="#E81B5FC1" BorderBrush="#FFB8D4FF" VerticalAlignment="Center"
-                            ToolTip="バリエーションのタブを開いている間は、計器の位置は動かしません（位置ロック）。一覧の目のマーク・右の欄のチェックで、入るバリエーションを決めます">
+                            ToolTip="バリエーションのタブを開いている間は、オブジェクトの位置は動かしません（位置ロック）。一覧の目のマーク・右の欄のチェックで、入るバリエーションを決めます">
                         <TextBlock x:Name="VariationModeText" Foreground="White" FontSize="12" FontWeight="SemiBold" Text="バリエーション編集モード" />
                     </Border>
                     <!-- バリエーションの表示の切り替え（バリエーションがあるときだけ出す） -->
                     <ComboBox x:Name="VariationViewBox" Margin="6,0,0,0" MinWidth="150" VerticalAlignment="Center" Visibility="Collapsed"
                               SelectionChanged="OnVariationViewBox" Focusable="False"
-                              ToolTip="表示するバリエーション。バリエーションを選ぶと、そのバリエーションに入る計器だけを描きます。その間、一覧の目のマークで、そのバリエーションに入れる・外すを切り替えられます" />
+                              ToolTip="表示するバリエーション。バリエーションを選ぶと、そのバリエーションに入るオブジェクトだけを描きます。その間、一覧の目のマークで、そのバリエーションに入れる・外すを切り替えられます" />
                     <Button x:Name="CoverButton" Margin="6,0,0,0" Visibility="Collapsed" Click="OnMakeCover" Cursor="Hand" Focusable="False"
                             ToolTip="選んだ指針の軸の蓋を、パネル本体の画像（か PSD のレイヤー）から切り抜いて針の上に置きます。針を文字盤の中心に合わせてから押してください">
                         <Button.Template>
@@ -372,7 +397,11 @@
             <TabControl x:Name="RightTabs" Grid.Column="4" Margin="0,4,4,4">
                 <TabItem Header="プロパティ">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="PropHost" />
+                        <StackPanel>
+                            <StackPanel x:Name="PropHost" />
+                            <!-- 指針を選んだとき: RealAnalogGauge（針の動きの表）の欄 -->
+                            <StackPanel x:Name="RagHost" />
+                        </StackPanel>
                     </ScrollViewer>
                 </TabItem>
                 <TabItem Header="動作プレビュー">
@@ -394,7 +423,7 @@
                             </WrapPanel>
                             <Separator Margin="0,6,0,2" />
                             <TextBlock x:Name="SelectedStateText" TextWrapping="Wrap" FontSize="11" Foreground="DimGray" Margin="0,0,0,4"
-                                       Text="計器を選ぶと、その値の行に色が付きます。パネル上で Ctrl を押しながら計器を上下にドラッグすると値を動かせます。" />
+                                       Text="オブジェクトを選ぶと、その値の行に色が付きます。パネル上で Ctrl を押しながらオブジェクトを上下にドラッグすると値を動かせます。" />
                         </StackPanel>
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel x:Name="StateHost" />

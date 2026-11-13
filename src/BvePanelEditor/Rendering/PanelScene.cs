@@ -7,7 +7,7 @@ using BvePanelEditor.Core.Psd;
 
 namespace BvePanelEditor.Rendering;
 
-/// <summary>描画する計器 1 つ（パネルファイルの 1 セクション）。</summary>
+/// <summary>描画するオブジェクト 1 つ（パネルファイルの 1 セクション）。</summary>
 public sealed class RenderItem
 {
     public int Section;
@@ -39,7 +39,7 @@ public sealed class RenderItem
     public double TiltX, TiltY;
     /// <summary>[This] の Resolution・Perspective（Tilt の遠近に使う）。</summary>
     public double TiltResolution, TiltPerspective = 1;
-    /// <summary>遠近の中心（[This] の Origin。なければ Center。どちらもなければ計器の位置）。</summary>
+    /// <summary>遠近の中心（[This] の Origin。なければ Center。どちらもなければオブジェクトの位置）。</summary>
     public Point? TiltCamera;
     private TiltProjection? _tilt;
     private Point _tiltAt;
@@ -190,7 +190,7 @@ public sealed class PanelScene
     public RenderItem? ItemFor(int section) => Items.FirstOrDefault(i => i.Section == section);
 
     /// <summary>
-    /// パネルの見本を作る。variation を指定すると、そのバリエーションに入らない計器は描かない（[This] もそのバリエーションのもの）。
+    /// パネルの見本を作る。variation を指定すると、そのバリエーションに入らないオブジェクトは描かない（[This] もそのバリエーションのもの）。
     /// </summary>
     public static PanelScene Build(PanelDocument doc, string? baseDir, ImageCache cache, PanelScene? previous, string? variation = null)
     {
@@ -207,9 +207,9 @@ public sealed class PanelScene
             var s = doc.Sections[i];
             var kind = s.Kind;
             void P(string msg) => scene.Problems.Add(new(i, msg));
-            // コメントアウトした計器は BVE でも表示されないので、描かず、問題も調べない
+            // コメントアウトしたオブジェクトは BVE でも表示されないので、描かず、問題も調べない
             if (s.Disabled) continue;
-            // 表示中のバリエーションに入らない計器（[This] は使わない、ほかは描かない）
+            // 表示中のバリエーションに入らないオブジェクト（[This] は使わない、ほかは描かない）
             bool outOfVariation = variation != null && !s.InVariation(variation);
             if (outOfVariation && kind == SectionKind.This) continue;
 
