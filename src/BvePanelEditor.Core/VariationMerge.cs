@@ -139,7 +139,7 @@ public static class VariationMerge
         foreach (var g in items.Where(m => m.Sec.Kind != SectionKind.This).GroupBy(m => Key(m.Sec)))
         {
             var list = g.ToList();
-            if (list.Count >= 2 && list.Any(m => Partial(m.Members)))
+            if (list.Count >= 2 && list.Any(m => Partial(m.Members)) && list.Zip(list.Skip(1)).Any(p => p.Second.Pos - p.First.Pos <= 2))
                 found.Add(new NearMissNote(list[0].Pos,
                     $"『{Label(list[0].Sec)}』は内容が同じオブジェクトが {list.Count} つに分かれています",
                     "並び位置の違いで分かれています。元のパネル同士で並びをそろえてから取り込むと 1 つにまとめられます。1 つにまとめると、書き出しの並びはマスターの並びにそろいます"));
@@ -151,6 +151,10 @@ public static class VariationMerge
             if (list.Count < 2 || !list.Any(m => Partial(m.Members))) continue;
             var reps = list.GroupBy(m => Key(m.Sec)).Select(x => x.First()).ToList(); // 同じ中身同士は並びの話なので 1 つに数える
             if (reps.Count < 2) continue;
+            // 状態量（Subject）と画像が違うものは、別のオブジェクトとして作られているので知らせない
+            var identity = PanelSpec.For(reps[0].Sec.Kind).Where(k => k.Type is KeyType.Subject or KeyType.Image).Select(k => k.Name.ToLowerInvariant()).ToHashSet();
+            var repValues = reps.Select(r => ValuesOf(r.Sec)).ToList();
+            if (identity.Any(k => repValues.Select(v => v.TryGetValue(k, out var x) ? x.Norm : null).Distinct().Count() > 1)) continue;
             var (a, b) = (reps[0], reps[1]);
             var diffs = new List<string>();
             if (a.Sec.Disabled != b.Sec.Disabled) diffs.Add("片方は行頭の「;」で無効化されています");
