@@ -89,6 +89,12 @@ public partial class MainWindow
             a1 = Canvas.State["ats30"];
             RagTick(0.05);
             Check("自動で動かすのを止めると、揺れも止まって表の値のままになる", Canvas.State["ats30"] == a1 && a1 == Rag!.ForAts(30)!.PanelValue(30, 0, false));
+            // 減衰比 0 の針は揺れ続けるので、「針を止める」で今の値の角度に止める
+            item.NaturalFreq = 6.3; item.DampingRatio = 0;
+            item.Angle = item.TargetAngle(Subjects.Resolve(item.Subject, Canvas.State)) + 30;
+            item.AngularVelocity = 5; item.AngleReady = true;
+            Canvas.StopNeedles();
+            Check("「針を止める」で、針が今の値の角度で止まる", Math.Abs(item.Angle - item.TargetAngle(Subjects.Resolve(item.Subject, Canvas.State))) < 1e-9 && item.AngularVelocity == 0);
 
             // 右の欄: 表の編集
             SelectSection(speedo);

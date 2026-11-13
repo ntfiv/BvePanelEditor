@@ -881,6 +881,20 @@ public sealed class PanelCanvas : FrameworkElement
         dc.DrawText(ft, at + new Vector(2, 0));
     }
 
+    /// <summary>全部の針を、今の値の角度で止める（減衰比が 0 の針など、揺れ続ける針を強制的に止める）。</summary>
+    public void StopNeedles()
+    {
+        if (Scene == null) return;
+        foreach (var it in Scene.Items)
+        {
+            if (it.Kind != SectionKind.Needle) continue;
+            it.Angle = it.TargetAngle(ValueOf(it));
+            it.AngularVelocity = 0;
+            it.AngleReady = true;
+        }
+        InvalidateVisual();
+    }
+
     // ---- アニメーション ----
 
     private void OnFrame(object? sender, EventArgs e)
