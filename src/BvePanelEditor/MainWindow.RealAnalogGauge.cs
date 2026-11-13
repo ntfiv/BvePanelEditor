@@ -239,11 +239,13 @@ public partial class MainWindow
         return (Math.Min(0, lo), hi);
     }
 
-    /// <summary>動かす速さの倍率（表の範囲 140 の計器で 1。範囲が広い計器ほど速くして、全体を動かし終わる時間がそろうように）。</summary>
+    /// <summary>動かす速さの倍率（表の範囲 140 の計器で 1。範囲が広い計器ほど速くして、全体を動かし終わる時間がそろうように。圧力の計器はさらに 3 倍）。</summary>
     private static double RagSweepScale(RagGauge g)
     {
         var (min, max) = RagSweepRange(g);
-        return Math.Max(max - min, 1) / 140.0;
+        double scale = Math.Max(max - min, 1) / 140.0;
+        if (RagGauge.StateKey(g.Subject) is "bc" or "mr" or "sap" or "bp" or "er") scale *= 3; // 圧力の計器は速めに動かすほうが確かめやすい
+        return scale;
     }
 
     /// <summary>速さの候補の丸め（大きさに合わせて桁をそろえ、読みやすく）。</summary>
