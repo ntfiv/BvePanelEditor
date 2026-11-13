@@ -105,7 +105,7 @@ public static class NeedleCatalog
             var lines = File.ReadAllLines(ConfigFile).ToList();
             if (Upgrade(lines))
             {
-                try { File.WriteAllLines(ConfigFile, lines, new System.Text.UTF8Encoding(true)); }
+                try { AtomicFile.WriteAllLines(ConfigFile, lines, new System.Text.UTF8Encoding(true)); }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
             }
             var (list, warnings) = Parse(lines);
@@ -348,7 +348,7 @@ public static class NeedleCatalog
     public static void Save(IEnumerable<NeedlePreset> presets)
     {
         Directory.CreateDirectory(StoreDir);
-        File.WriteAllLines(ConfigFile, Format(presets), new System.Text.UTF8Encoding(true));
+        AtomicFile.WriteAllLines(ConfigFile, Format(presets), new System.Text.UTF8Encoding(true));
     }
 
     /// <summary>標準の針（一緒に配る free_needle の針）。回転の中心などは、作者の既存のパネルで使っている値。</summary>

@@ -84,6 +84,7 @@ public partial class MainWindow
         }
         RagReloadMenu.IsEnabled = _rag != null;
         _ragSignature = null;
+        _ragLocation = 0; // 設定を読み直したら、針の振動に使う走行距離も最初から
     }
 
     private void OnPickRag(object? sender, RoutedEventArgs? e)
