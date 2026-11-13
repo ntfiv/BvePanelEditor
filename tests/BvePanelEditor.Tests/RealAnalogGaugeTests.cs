@@ -109,6 +109,40 @@ public class RealAnalogGaugeTests
     }
 
     [Fact]
+    public void Counterpart_matches_by_name_and_copy_syncs_content()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ragcp_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var d1 = Path.Combine(root, "x86"); var d2 = Path.Combine(root, "x64");
+            Directory.CreateDirectory(d1); Directory.CreateDirectory(d2);
+            foreach (var d in new[] { d1, d2 })
+            {
+                File.WriteAllText(Path.Combine(d, "RealAnalogGauge.ini"), "[FileName]\r\nGauge0 = SpeedoMeter\r\n");
+                File.WriteAllText(Path.Combine(d, "SpeedoMeter.ini"), "[SubjectKey]\r\nSubject = kmph\r\n\r\n[PanelIndex]\r\nNeedle = 30\r\n");
+                File.WriteAllText(Path.Combine(d, "SpeedoMeter.csv"), SpeedCsv);
+            }
+            var c1 = RagConfig.Load(Path.Combine(d1, "RealAnalogGauge.ini"));
+            var c2 = RagConfig.Load(Path.Combine(d2, "RealAnalogGauge.ini"));
+            var g = c1.ForAts(30)!;
+            var cp = c2.Counterpart(g);
+            Assert.NotNull(cp);
+            Assert.True(g.SameContent(cp!));
+            Assert.Null(c2.Counterpart(new RagGauge { Name = "Ammeter", Slot = 1 }));
+            g.Points[2].Angle = -100;
+            Assert.False(g.SameContent(cp));                 // 片方だけ変えると食い違う
+            g.CopyContentTo(cp);
+            Assert.True(g.SameContent(cp));                  // 写せばそろう
+            cp!.Points[0].Angle = 999;
+            Assert.NotEqual(999, g.Points[0].Angle);         // 表は写し（同じ行を共有しない）
+            var shuffled = new RagGauge { Subject = "kmph", Needle = 30 };
+            shuffled.Points.AddRange(g.Points.AsEnumerable().Reverse());
+            Assert.True(g.SameContent(shuffled));            // 並びが違っても、並べ直せば同じ
+        }
+        finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+    }
+
+    [Fact]
     public void Load_and_locate_through_plugin_organizer()
     {
         var root = Path.Combine(Path.GetTempPath(), "rag_" + Guid.NewGuid().ToString("N"));

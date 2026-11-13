@@ -196,4 +196,96 @@ public partial class MainWindow
         if (_rag != null) foreach (var g in _rag.Gauges) g.Dirty = false;
         Close();
     }
+
+    /// <summary>
+    /// 確認用: RealAnalogGauge の設定が 2 つある車両（--ragmultitest 作業フォルダ 結果.txt）。
+    /// 32bit 用・64bit 用の両方を読み、表の書き込み・針の追加・針を外すが両方に効くこと、片方だけの車両では 1 つだけ読むことを確かめる。
+    /// </summary>
+    public async void RunRagMultiTest(string workDir, string report)
+    {
+        var log = new List<string>();
+        int fail = 0;
+        void Check(string name, bool ok) { log.Add($"{(ok ? "OK  " : "FAIL")} {name}"); if (!ok) fail++; }
+        try
+        {
+            if (Directory.Exists(workDir)) Directory.Delete(workDir, true);
+            var d32 = Path.Combine(workDir, "Ats32");
+            var d64 = Path.Combine(workDir, "Ats64");
+            var panelDir = Path.Combine(workDir, "Panel");
+            Directory.CreateDirectory(d32);
+            Directory.CreateDirectory(d64);
+            Directory.CreateDirectory(panelDir);
+            foreach (var d in new[] { d32, d64 })
+            {
+                File.WriteAllText(Path.Combine(d, "RealAnalogGauge.dll"), "");
+                File.WriteAllText(Path.Combine(d, "RealAnalogGauge.ini"), "[FileName]\r\nGauge0 = SpeedoMeter\r\n\r\n[DeveloperMode]\r\nEnabled = 0\r\n");
+                File.WriteAllText(Path.Combine(d, "SpeedoMeter.ini"), "[SubjectKey]\r\nSubject = kmph\r\n\r\n[PanelIndex]\r\nNeedle = 30\r\n");
+                File.WriteAllText(Path.Combine(d, "SpeedoMeter.csv"), "0,-121.5\r\n5,-115\r\n10,-110.5\r\n20,-95.5\r\n140,120\r\n");
+            }
+            var px = new byte[8 * 80 * 4];
+            for (int i = 0; i < px.Length; i += 4) { px[i] = 240; px[i + 1] = 240; px[i + 2] = 240; px[i + 3] = 255; }
+            File.WriteAllBytes(Path.Combine(panelDir, "needle.png"), Core.Psd.PngWriter.Encode(8, 80, px));
+            var panel = Path.Combine(panelDir, "panel.txt");
+            File.WriteAllText(panel, "BveTs Instrument Panel 2.00\r\n\r\n[This]\r\nResolution = 400\r\nLeft = 0\r\nTop = 0\r\nRight = 600\r\nBottom = 300\r\n\r\n"
+                + ";速度計\r\n[Needle]\r\nSubject = ats30\r\nLocation = 150, 150\r\nDaytimeImage = needle.png\r\nOrigin = 4, 76\r\nInitialAngle = -180\r\nLastAngle = 180\r\nMinimum = 0\r\nMaximum = 360000\r\n\r\n"
+                + ";圧力計\r\n[Needle]\r\nSubject = bc\r\nLocation = 400, 150\r\nDaytimeImage = needle.png\r\nOrigin = 4, 76\r\nInitialAngle = -120\r\nLastAngle = 120\r\nMinimum = 0\r\nMaximum = 600\r\n");
+            var vehicle = Path.Combine(workDir, "Vehicle.txt");
+            File.WriteAllText(vehicle, "BveTs Vehicle 2.00\r\nPanel = Panel\\panel.txt\r\nAts32 = Ats32\\RealAnalogGauge.dll\r\nAts64 = Ats64\\RealAnalogGauge.dll\r\n");
+
+            OpenPath(vehicle);
+            await Task.Delay(300);
+            Check("32bit 用と 64bit 用の両方を読む（主は Ats32 の方）", RagAll.Count == 2 && Rag != null && Rag.IniPath.StartsWith(d32, StringComparison.OrdinalIgnoreCase));
+            Check("問題の欄で、ほかの設定も読んだことを知らせる", ProblemList.Items.OfType<ProblemRow>().Any(r => r.Text.Contains("ほかに設定 1 個も読みました")));
+
+            // 片方だけ中身が違うと知らせる
+            RagAll[1].ForAts(30)!.Points[0].Angle = -100;
+            RebuildAll();
+            Check("片方と内容が違う針は、問題の欄で知らせる", ProblemList.Items.OfType<ProblemRow>().Any(r => r.Text.Contains("内容が") && r.Text.Contains("と違います")));
+            LoadRag(announce: false);
+            RebuildAll();
+            Check("読み直せば食い違いは消える", !ProblemList.Items.OfType<ProblemRow>().Any(r => r.Text.Contains("と違います")));
+
+            // 表を変えて保存すると、両方の csv に書く
+            int speedo = _doc!.Sections.FindIndex(x => x.Title == "速度計");
+            int press = _doc.Sections.FindIndex(x => x.Title == "圧力計");
+            var g30 = Rag!.ForAts(30)!;
+            g30.Points[2].Angle = -100;
+            RagEdited(g30, rebuildStates: true);
+            Save(_path);
+            Check("表を保存すると 32bit 用の csv に書く", File.ReadAllText(Path.Combine(d32, "SpeedoMeter.csv")).Contains("10,-100"));
+            Check("表を保存すると 64bit 用の csv にも同じ内容を書く", File.ReadAllText(Path.Combine(d64, "SpeedoMeter.csv")).Contains("10,-100"));
+            RebuildAll();
+            Check("書き込みのあとは食い違いの知らせが出ない", !ProblemList.Items.OfType<ProblemRow>().Any(r => r.Text.Contains("と違います")));
+
+            // 標準の針を RealAnalogGauge の針にすると、両方の親 ini に足す
+            _autoConfirm = _ => true;
+            _ragAsk = _ => "200";
+            Check("標準の針を RealAnalogGauge の針にできる", ConvertToRag(press));
+            Check("両方の親 ini に Gauge1 が入り、針ごとのファイルが両方のフォルダにできる",
+                Ini.Get(Ini.Parse(File.ReadAllText(Path.Combine(d32, "RealAnalogGauge.ini"))), "FileName", "Gauge1") != null
+                && Ini.Get(Ini.Parse(File.ReadAllText(Path.Combine(d64, "RealAnalogGauge.ini"))), "FileName", "Gauge1") != null
+                && File.Exists(Path.Combine(d32, "圧力計.csv")) && File.Exists(Path.Combine(d64, "圧力計.csv")));
+
+            // 標準の針に戻すと、両方の親 ini から外す
+            Check("RealAnalogGauge の針を標準の針に戻せる", ConvertFromRag(speedo));
+            Check("両方の親 ini から Gauge0 が外れる",
+                Ini.Get(Ini.Parse(File.ReadAllText(Path.Combine(d32, "RealAnalogGauge.ini"))), "FileName", "Gauge0") == null
+                && Ini.Get(Ini.Parse(File.ReadAllText(Path.Combine(d64, "RealAnalogGauge.ini"))), "FileName", "Gauge0") == null);
+            _autoConfirm = null;
+            _ragAsk = null;
+
+            // 片方だけの車両では 1 つだけ読む
+            var vehicle1 = Path.Combine(workDir, "VehicleSingle.txt");
+            File.WriteAllText(vehicle1, "BveTs Vehicle 2.00\r\nPanel = Panel\\panel.txt\r\nAts32 = Ats32\\RealAnalogGauge.dll\r\n");
+            OpenPath(vehicle1);
+            await Task.Delay(300);
+            Check("片方だけの車両では、設定は 1 つだけ読む", RagAll.Count == 1);
+        }
+        catch (Exception ex) { log.Add("EXCEPTION " + ex); fail++; }
+        log.Add(fail == 0 ? "ALL PASSED" : $"{fail} FAILED");
+        File.WriteAllLines(report, log);
+        _savedText = Editor.Text;
+        foreach (var cfg in RagAll) foreach (var g in cfg.Gauges) g.Dirty = false;
+        Close();
+    }
 }
