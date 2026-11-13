@@ -33,7 +33,7 @@ public partial class MainWindow
             about.Show();
             await Task.Delay(500);
             SaveWindowPng(about, Path.ChangeExtension(report, ".about.png"));
-            Check("バージョン情報は 0.3α", Views.AboutWindow.DisplayVersion == "0.3α" && File.Exists(Path.Combine(AppContext.BaseDirectory, "LICENSE.txt"))
+            Check("バージョン情報は 0.3.1α", Views.AboutWindow.DisplayVersion == "0.3.1α" && File.Exists(Path.Combine(AppContext.BaseDirectory, "LICENSE.txt"))
                 && File.Exists(Path.Combine(AppContext.BaseDirectory, "THIRD-PARTY-NOTICES.txt")));
             about.Close();
         }

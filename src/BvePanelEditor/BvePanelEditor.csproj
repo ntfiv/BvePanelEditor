@@ -10,8 +10,8 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>BvePanelEditor</RootNamespace>
     <AssemblyName>BvePanelEditor</AssemblyName>
-    <!-- 画面に出す版は Views/AboutWindow.cs の DisplayVersion（0.3α） -->
-    <Version>0.3.0-alpha</Version>
+    <!-- 画面に出す版は Views/AboutWindow.cs の DisplayVersion（0.3.1α） -->
+    <Version>0.3.1-alpha</Version>
     <Product>パネルくん</Product>
     <AssemblyTitle>パネルくん</AssemblyTitle>
     <Description>BVE Trainsim 5/6 運転台パネル編集ツール</Description>
