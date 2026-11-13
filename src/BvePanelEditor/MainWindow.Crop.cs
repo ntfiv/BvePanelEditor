@@ -176,6 +176,7 @@ public partial class MainWindow
             _folded.Clear();
             SetEditorText(_doc.Serialize(), clearUndo: true);
             _savedText = "";
+            LoadRag(announce: false); // 新しいパネルには前の車両の RealAnalogGauge 設定を持ち越さない
         }
         var doc = _doc!;
         var self = doc.This;
