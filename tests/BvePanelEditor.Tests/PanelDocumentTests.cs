@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using BvePanelEditor.Core;
 using Xunit;
 
@@ -217,5 +217,27 @@ public class PanelDocumentTests
         }
         Assert.True(failures.Count == 0, $"{count} 件中 {failures.Count} 件不一致:\n" + string.Join("\n", failures));
         Console.WriteLine($"{count} panels OK");
+    }
+
+    [Fact]
+    public void SetValueWithNewlineDoesNotBreakLines()
+    {
+        // 値に改行が入っても行が割れない（空白に置き換える。SetTitle と同じ扱い）
+        var doc = PanelDocument.Parse(Sample);
+        doc.Sections[1].Set("DaytimeImage", "a\nb.png");
+        var text = doc.Serialize();
+        Assert.Equal("a b.png", PanelDocument.Parse(text).Sections[1].Get("DaytimeImage"));
+        Assert.Equal(text, PanelDocument.Parse(text).Serialize()); // 書き出しが安定する
+        Assert.Equal(3, PanelDocument.Parse(text).Sections.Count);
+    }
+
+    [Fact]
+    public void SetNewKeyWithCrLfValueDoesNotBreakLines()
+    {
+        var doc = PanelDocument.Parse(Sample);
+        doc.Sections[1].Set("Comment", "x\r\ny\rz");
+        var text = doc.Serialize();
+        Assert.Equal("x  y z", PanelDocument.Parse(text).Sections[1].Get("Comment"));
+        Assert.Equal(text, PanelDocument.Parse(text).Serialize());
     }
 }
