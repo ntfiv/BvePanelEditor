@@ -11,7 +11,7 @@ namespace BvePanelEditor.Views;
 public sealed class AboutWindow : Window
 {
     /// <summary>画面に出す版。</summary>
-    public const string DisplayVersion = "0.2α";
+    public const string DisplayVersion = "0.3α";
 
     public AboutWindow(Window owner)
     {
