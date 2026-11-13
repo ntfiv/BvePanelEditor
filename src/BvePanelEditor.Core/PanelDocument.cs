@@ -76,9 +76,12 @@ public sealed class PanelLine
         return line;
     }
 
+    /// <summary>改行が入ると行が割れてしまうので、空白に置き換える（SetTitle と同じ扱い）。</summary>
+    private static string OneLine(string s) => s.Replace("\r", " ").Replace("\n", " ");
+
     public static PanelLine Create(string key, string value)
     {
-        var l = Parse($"{key} = {value}");
+        var l = Parse($"{OneLine(key)} = {OneLine(value)}");
         return l;
     }
 
@@ -87,7 +90,7 @@ public sealed class PanelLine
     public void SetValue(string value)
     {
         if (Kind != PanelLineKind.KeyValue) throw new InvalidOperationException("KeyValue 行ではありません");
-        Value = value.Trim();
+        Value = OneLine(value).Trim();
         Raw = _prefix + Value + _suffix;
     }
 
