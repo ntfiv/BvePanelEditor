@@ -138,7 +138,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
                     <RowDefinition x:Name="ProblemSplitterRow" Height="5" />
                     <RowDefinition x:Name="ProblemRowDef" Height="160" />
                 </Grid.RowDefinitions>
@@ -153,7 +152,31 @@
                     </StackPanel>
                     <TextBlock Text="オブジェクト" FontWeight="Bold" VerticalAlignment="Center" />
                 </DockPanel>
-                <ListBox x:Name="ElementList" Grid.Row="1" Margin="4,0,4,0" SelectionChanged="OnListSelection"
+
+
+                <DockPanel Grid.Row="1">
+                <StackPanel DockPanel.Dock="Bottom">
+                <WrapPanel Margin="4">
+                    <Button x:Name="AddButton" Content="＋ オブジェクトの追加 ▾" Padding="6,2" Margin="0,0,4,0" Click="OnAddButton" />
+                    <Button Content="複製" Padding="6,2" Margin="0,0,4,0" Click="OnDuplicate" />
+                    <Button Content="削除" Padding="6,2" Margin="0,0,4,0" Click="OnDelete" />
+                    <Button x:Name="MoveUpButton" Content="↑" Padding="6,2" Margin="0,0,2,0" Click="OnMoveUp" ToolTip="ファイル内で前へ（同じレイヤーなら奥へ）" />
+                    <Button x:Name="MoveDownButton" Content="↓" Padding="6,2" Click="OnMoveDown" ToolTip="ファイル内で後ろへ（同じレイヤーなら手前へ）" />
+                </WrapPanel>
+                <!-- 選んだオブジェクトのレイヤー・グループ（右の欄まで行かなくても操作できるように） -->
+                <WrapPanel Margin="4,0,4,4">
+                    <TextBlock Text="レイヤー" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <Button Content="▲" Padding="5,1" Margin="0,0,1,0" Click="OnLayerUp" ToolTip="選んだオブジェクトのレイヤーを 1 つ上げる（Ctrl+]）" />
+                    <Button Content="▼" Padding="5,1" Margin="0,0,1,0" Click="OnLayerDown" ToolTip="選んだオブジェクトのレイヤーを 1 つ下げる（Ctrl+[）" />
+                    <Button Content="最前" Padding="4,1" Margin="0,0,1,0" Click="OnLayerFront" ToolTip="ほかのどのオブジェクトよりも手前へ（Ctrl+Shift+]）" />
+                    <Button Content="最背" Padding="4,1" Margin="0,0,4,0" Click="OnLayerBack" ToolTip="ほかのどのオブジェクトよりも奥へ（Ctrl+Shift+[）" />
+                    <Button x:Name="UnifyLayerButton" Content="そろえる ▾" Padding="4,1" Margin="0,0,8,0" Click="OnUnifyLayerButton"
+                            ToolTip="選んだオブジェクトのレイヤーを 1 つにそろえます。そろえる先のレイヤーを選びます" />
+                    <Button Content="グループ化" Padding="4,1" Margin="0,0,1,0" Click="OnMakeGroup" ToolTip="選んだオブジェクトをグループにする（Ctrl+G）" />
+                    <Button Content="解除" Padding="4,1" Click="OnUngroup" ToolTip="選んでいるグループを解除する（Ctrl+Shift+G）" />
+                </WrapPanel>
+                </StackPanel>
+                <ListBox x:Name="ElementList" Margin="4,0,4,0" SelectionChanged="OnListSelection"
                          HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          SelectionMode="Extended"
                          KeyDown="OnListKeyDown" MouseDoubleClick="OnListDoubleClick"
@@ -253,31 +276,11 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <StackPanel Grid.Row="2">
-                <WrapPanel Margin="4">
-                    <Button x:Name="AddButton" Content="＋ オブジェクトの追加 ▾" Padding="6,2" Margin="0,0,4,0" Click="OnAddButton" />
-                    <Button Content="複製" Padding="6,2" Margin="0,0,4,0" Click="OnDuplicate" />
-                    <Button Content="削除" Padding="6,2" Margin="0,0,4,0" Click="OnDelete" />
-                    <Button x:Name="MoveUpButton" Content="↑" Padding="6,2" Margin="0,0,2,0" Click="OnMoveUp" ToolTip="ファイル内で前へ（同じレイヤーなら奥へ）" />
-                    <Button x:Name="MoveDownButton" Content="↓" Padding="6,2" Click="OnMoveDown" ToolTip="ファイル内で後ろへ（同じレイヤーなら手前へ）" />
-                </WrapPanel>
-                <!-- 選んだオブジェクトのレイヤー・グループ（右の欄まで行かなくても操作できるように） -->
-                <WrapPanel Margin="4,0,4,4">
-                    <TextBlock Text="レイヤー" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <Button Content="▲" Padding="5,1" Margin="0,0,1,0" Click="OnLayerUp" ToolTip="選んだオブジェクトのレイヤーを 1 つ上げる（Ctrl+]）" />
-                    <Button Content="▼" Padding="5,1" Margin="0,0,1,0" Click="OnLayerDown" ToolTip="選んだオブジェクトのレイヤーを 1 つ下げる（Ctrl+[）" />
-                    <Button Content="最前" Padding="4,1" Margin="0,0,1,0" Click="OnLayerFront" ToolTip="ほかのどのオブジェクトよりも手前へ（Ctrl+Shift+]）" />
-                    <Button Content="最背" Padding="4,1" Margin="0,0,4,0" Click="OnLayerBack" ToolTip="ほかのどのオブジェクトよりも奥へ（Ctrl+Shift+[）" />
-                    <Button x:Name="UnifyLayerButton" Content="そろえる ▾" Padding="4,1" Margin="0,0,8,0" Click="OnUnifyLayerButton"
-                            ToolTip="選んだオブジェクトのレイヤーを 1 つにそろえます。そろえる先のレイヤーを選びます" />
-                    <Button Content="グループ化" Padding="4,1" Margin="0,0,1,0" Click="OnMakeGroup" ToolTip="選んだオブジェクトをグループにする（Ctrl+G）" />
-                    <Button Content="解除" Padding="4,1" Click="OnUngroup" ToolTip="選んでいるグループを解除する（Ctrl+Shift+G）" />
-                </WrapPanel>
-                </StackPanel>
-                <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" />
-                <DockPanel Grid.Row="4" Margin="4,0,4,4">
-                    <DockPanel DockPanel.Dock="Top" Margin="0,2" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="OnProblemFold"
-                               ToolTip="クリックで問題の欄を畳む／開く">
+                </DockPanel>
+                <GridSplitter Grid.Row="2" HorizontalAlignment="Stretch" Background="#FFF0F0F0" Cursor="SizeNS" />
+                <DockPanel Grid.Row="3" Margin="4,0,4,4">
+                    <DockPanel DockPanel.Dock="Top" Margin="0,2" Background="Transparent" Cursor="Hand" PreviewMouseLeftButtonDown="OnProblemHeaderDown" MouseMove="OnProblemHeaderMove" MouseLeftButtonUp="OnProblemHeaderUp"
+                               ToolTip="クリックで問題の欄を畳む／開く、ドラッグで高さを変える">
                         <TextBlock x:Name="ProblemFold" Text="▼" Width="14" FontSize="10" Foreground="Gray" VerticalAlignment="Center" />
                         <TextBlock x:Name="ProblemIcon" Text="⚠" Foreground="#D08000" FontWeight="Bold" Margin="0,0,4,0" VerticalAlignment="Center" Visibility="Collapsed" />
                         <TextBlock x:Name="ProblemHeader" Text="問題" FontWeight="Bold" VerticalAlignment="Center" />
