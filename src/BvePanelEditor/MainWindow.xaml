@@ -99,6 +99,9 @@
                 <MenuItem x:Name="ShowTextMenu" Header="パネルファイルの内容を表示" IsCheckable="True" IsChecked="True" Click="OnToggleText" />
             </MenuItem>
             <MenuItem Header="ヘルプ(_H)">
+                <MenuItem Header="使い方を開く(_U)" Click="OnHelpDocs" />
+                <MenuItem Header="ショートカットキー(_K)" Click="OnShortcutList" />
+                <Separator />
                 <MenuItem Header="バージョン情報(_A)…" Click="OnAbout" />
             </MenuItem>
         </Menu>
@@ -117,7 +120,7 @@
             </StatusBarItem>
             <Separator />
             <StatusBarItem>
-                <TextBlock x:Name="MessageText" />
+                <TextBlock x:Name="MessageText" TextTrimming="CharacterEllipsis" />
             </StatusBarItem>
         </StatusBar>
 
@@ -171,7 +174,7 @@
                                       ToolTip="[This] の画像を、常表示の表示灯（メインパネル・レイヤー 1）に移し、[This] は透明な画像にします" />
                             <MenuItem x:Name="ListMenuUnsetMain" Header="メインパネルをやめる" Click="OnUnsetMainPanel"
                                       ToolTip="メインパネルの印を外します（表示灯はそのまま残ります）" />
-                            <MenuItem x:Name="ListMenuCover" Header="蓋を作る…" Click="OnMakeCover"
+                            <MenuItem x:Name="ListMenuCover" Header="指針の蓋を作る…" Click="OnMakeCover"
                                       ToolTip="選んだ指針の軸の蓋を、パネル本体の画像（か PSD のレイヤー）から切り抜いて針の上に置きます" />
                             <Separator />
                             <MenuItem x:Name="ListMenuLayerUp" Header="レイヤーを 1 つ上げる" InputGestureText="Ctrl+]" Click="OnLayerUp" />
