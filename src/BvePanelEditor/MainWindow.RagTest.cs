@@ -277,6 +277,7 @@ public partial class MainWindow
             // 片方だけの車両では 1 つだけ読む
             var vehicle1 = Path.Combine(workDir, "VehicleSingle.txt");
             File.WriteAllText(vehicle1, "BveTs Vehicle 2.00\r\nPanel = Panel\\panel.txt\r\nAts32 = Ats32\\RealAnalogGauge.dll\r\n");
+            _savedText = Editor.Text; // 戻した針の変更は保存しない（未保存の確認を出さない）
             OpenPath(vehicle1);
             await Task.Delay(300);
             Check("片方だけの車両では、設定は 1 つだけ読む", RagAll.Count == 1);
