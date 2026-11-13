@@ -20,6 +20,10 @@ namespace BvePanelEditor;
 public partial class MainWindow
 {
     private RagConfig? _rag;
+    /// <summary>読み込んだ設定全部（先頭が主＝ _rag。32bit 用・64bit 用など複数ある車両では、書き込みは全部の同じ針にそろえる）。</summary>
+    private readonly List<RagConfig> _ragAll = [];
+    /// <summary>主以外で、読み込みに失敗した設定ファイルと理由。</summary>
+    private readonly List<string> _ragLoadErrors = [];
     /// <summary>プレビューで走った距離（m。振動の計算に使う）。</summary>
     private double _ragLocation;
     private readonly HashSet<string> _ragBackedUp = new(StringComparer.OrdinalIgnoreCase);
@@ -42,45 +46,63 @@ public partial class MainWindow
     /// <summary>今の RealAnalogGauge の設定（確認用）。</summary>
     internal RagConfig? Rag => _rag;
 
+    /// <summary>読み込んだ設定全部（確認用。先頭が主）。</summary>
+    internal IReadOnlyList<RagConfig> RagAll => _ragAll;
+
+    /// <summary>どれかの設定に、まだ書いていない変更がある。</summary>
+    private bool AnyRagDirty => _ragAll.Any(c => c.Gauges.Any(g => g.Dirty));
+
     // ================= 設定を探す・読む =================
 
     /// <summary>
-    /// RealAnalogGauge の設定を読む。パネルファイルに場所が書いてあればそれ、なければ車両ファイルの ATS からたどって探す。
+    /// RealAnalogGauge の設定を読む。パネルファイルに場所が書いてあればその 1 つ、なければ車両ファイルの ATS からたどって探し、見つけたものを全部読む（先頭が主）。
     /// 表をパネルくんで変えてまだ書いていない針は、変えた内容のまま残す。
     /// </summary>
     private void LoadRag(bool announce)
     {
         var dirty = _rag?.Gauges.Where(g => g.Dirty).ToList() ?? [];
         _rag = null;
-        string? path = null;
+        _ragAll.Clear();
+        _ragLoadErrors.Clear();
+        var paths = new List<string>();
         string how = "";
         if (_doc?.RagIni is { Length: > 0 } rel)
         {
-            path = Path.IsPathRooted(rel) || _path == null ? rel : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(_path)!, rel));
+            // パネルファイルに場所が書いてあるときは、その 1 つだけ（手で選んだ設定も同じ）
+            paths.Add(Path.IsPathRooted(rel) || _path == null ? rel : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(_path)!, rel)));
             how = "パネルファイルに書いた場所";
         }
         else if (_vehicle != null)
         {
-            var found = RagLocator.Find(_vehicle.Path, [_vehicle.Ats32Path, _vehicle.Ats64Path]);
-            path = found.FirstOrDefault();
-            how = found.Count > 1 ? $"車両の ATS から見つけた {found.Count} 個のうち 1 つ目" : "車両の ATS から見つけた";
+            // 車両の ATS から見つけたものは全部読む（32bit 用・64bit 用など。片方だけの車両では 1 つだけ）
+            paths = RagLocator.Find(_vehicle.Path, [_vehicle.Ats32Path, _vehicle.Ats64Path]);
+            how = "車両の ATS から見つけた";
         }
-        if (path != null)
+        foreach (var p in paths)
         {
-            try
-            {
-                _rag = RagConfig.Load(path);
-                foreach (var d in dirty)
-                {
-                    int k = _rag.Gauges.FindIndex(g => g.IniPath.Equals(d.IniPath, StringComparison.OrdinalIgnoreCase));
-                    if (k >= 0) _rag.Gauges[k] = d;
-                }
-                if (announce) Message($"RealAnalogGauge の設定を読みました（{how}: {path}。針 {_rag.Gauges.Count} 本）");
-            }
+            try { _ragAll.Add(RagConfig.Load(p)); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
-                Message($"RealAnalogGauge の設定を読めませんでした: {ex.Message}");
+                if (paths.Count == 1) Message($"RealAnalogGauge の設定を読めませんでした: {ex.Message}");
+                else _ragLoadErrors.Add($"{p}: {ex.Message}");
             }
+        }
+        _rag = _ragAll.FirstOrDefault();
+        if (_rag != null)
+        {
+            foreach (var d in dirty)
+            {
+                int k = _rag.Gauges.FindIndex(g => g.IniPath.Equals(d.IniPath, StringComparison.OrdinalIgnoreCase));
+                if (k >= 0) _rag.Gauges[k] = d;
+                // ほかの設定の同じ針にも、変えた内容を写しておく（書き込むときにそろう）
+                foreach (var cfg in _ragAll.Skip(1))
+                    if (cfg.Counterpart(d) is { } cp && !cp.IniPath.Equals(d.IniPath, StringComparison.OrdinalIgnoreCase))
+                    { d.CopyContentTo(cp); cp.Dirty = true; }
+            }
+            if (announce)
+                Message(_ragAll.Count > 1
+                    ? $"RealAnalogGauge の設定を読みました（{how}: {_ragAll.Count} 個。針 {_rag.Gauges.Count} 本。書き込みは全部の設定にそろえます）"
+                    : $"RealAnalogGauge の設定を読みました（{how}: {_rag.IniPath}。針 {_rag.Gauges.Count} 本）");
         }
         RagReloadMenu.IsEnabled = _rag != null;
         _ragSignature = null;
@@ -117,10 +139,10 @@ public partial class MainWindow
 
     private void OnReloadRag(object? sender, RoutedEventArgs? e)
     {
-        if (_rag != null && _rag.Gauges.Any(g => g.Dirty)
+        if (AnyRagDirty
             && !Confirm("RealAnalogGauge の表をパネルくんで変えて、まだ書き込んでいません。\n読み直すと、その変更は消えます。読み直しますか？"))
             return;
-        if (_rag != null) foreach (var g in _rag.Gauges) g.Dirty = false;
+        foreach (var cfg in _ragAll) foreach (var g in cfg.Gauges) g.Dirty = false;
         LoadRag(announce: true);
         RebuildAll();
     }
@@ -251,14 +273,37 @@ public partial class MainWindow
     {
         var rows = new List<ProblemRow>();
         if (_rag == null || _doc == null) return rows;
+        bool multi = _ragAll.Count > 1;
         rows.Add(new ProblemRow
         {
             Section = -1, InfoMark = "RAG",
-            Text = $"RealAnalogGauge: 針 {_rag.Gauges.Count} 本（{Path.GetFileName(_rag.IniPath)}）",
+            Text = multi
+                ? $"RealAnalogGauge: 針 {_rag.Gauges.Count} 本（{Path.GetFileName(_rag.IniPath)}。ほかに設定 {_ragAll.Count - 1} 個も読みました。書き込みは全部にそろえます）"
+                : $"RealAnalogGauge: 針 {_rag.Gauges.Count} 本（{Path.GetFileName(_rag.IniPath)}）",
             TipText = $"RealAnalogGauge の設定: {_rag.IniPath}\n" + string.Join("\n", _rag.Gauges.Select(g =>
-                $"・{g.Label}: {g.Subject} → {(g.HasOutput ? $"ats{g.Needle}" : "（出力なし）")}、表 {g.Points.Count} 行" + (g.Period != 0 && g.Amplitude != 0 ? "、振動あり" : ""))),
+                $"・{g.Label}: {g.Subject} → {(g.HasOutput ? $"ats{g.Needle}" : "（出力なし）")}、表 {g.Points.Count} 行" + (g.Period != 0 && g.Amplitude != 0 ? "、振動あり" : "")))
+                + (multi ? "\nほかの設定:\n" + string.Join("\n", _ragAll.Skip(1).Select(c => $"・{c.IniPath}（針 {c.Gauges.Count} 本）")) : ""),
         });
         foreach (var n in _rag.Notes) rows.Add(new ProblemRow { Section = -1, Text = "RealAnalogGauge: " + n });
+        foreach (var cfg in _ragAll.Skip(1))
+        {
+            var fn = Path.GetFileName(cfg.IniPath);
+            foreach (var n in cfg.Notes) rows.Add(new ProblemRow { Section = -1, Text = $"RealAnalogGauge（{fn}）: " + n });
+            if (cfg.DeveloperMode)
+                rows.Add(new ProblemRow { Section = -1, Text = $"RealAnalogGauge: {fn} は開発者モードが有効です（公開するときは [DeveloperMode] Enabled = 0 に）" });
+            foreach (var g in _rag.Gauges)
+            {
+                var cp = cfg.Counterpart(g);
+                if (cp == null)
+                    rows.Add(new ProblemRow { Section = -1, Text = $"RealAnalogGauge: {g.Label} は {fn} にはありません（片方だけの針です）" });
+                else if (!g.SameContent(cp))
+                    rows.Add(new ProblemRow { Section = -1, Text = $"RealAnalogGauge: {g.Label} の内容が {fn} と違います（設定ファイルに書き込むと、こちらにそろいます）" });
+            }
+            foreach (var cg in cfg.Gauges)
+                if (_rag.Counterpart(cg) == null)
+                    rows.Add(new ProblemRow { Section = -1, Text = $"RealAnalogGauge: {fn} の {cg.Label} は、こちらの設定にはありません（片方だけの針です）" });
+        }
+        foreach (var e in _ragLoadErrors) rows.Add(new ProblemRow { Section = -1, Text = "RealAnalogGauge: 設定ファイルを読めませんでした（" + e + "）" });
         if (_rag.DeveloperMode)
             rows.Add(new ProblemRow { Section = -1, Text = "RealAnalogGauge: 開発者モードが有効です（公開するときは [DeveloperMode] Enabled = 0 に）" });
         foreach (var g in _rag.Gauges.Where(g => g.Dirty))
@@ -287,7 +332,7 @@ public partial class MainWindow
     // ================= 書き込み =================
 
     /// <summary>針ごとの ini と csv を書く（最初の 1 回だけ .bak を残す）。</summary>
-    private void WriteRagGauge(RagGauge g)
+    private void WriteRagGaugeFiles(RagGauge g)
     {
         g.Normalize();
         var iniText = File.Exists(g.IniPath) ? BveText.Read(g.IniPath).Text : RagConfig.NewGaugeIni(g.Subject, g.Needle);
@@ -296,15 +341,37 @@ public partial class MainWindow
         g.Dirty = false;
     }
 
+    /// <summary>
+    /// 針ごとの ini と csv を書き、ほかの設定に同じ針があれば、そちらにも同じ内容を書く（設定が複数ある車両で、片方だけ古くならないように）。
+    /// ほかに書いた設定ファイルの名前を返す。g が主の設定の針でないとき（作りたての針など）は、その針だけ書く。
+    /// </summary>
+    private List<string> WriteRagGauge(RagGauge g)
+    {
+        WriteRagGaugeFiles(g);
+        var others = new List<string>();
+        if (_rag == null || _ragAll.Count < 2 || !_rag.Gauges.Contains(g)) return others;
+        foreach (var cfg in _ragAll.Skip(1))
+        {
+            if (cfg.Counterpart(g) is not { } cp) continue;
+            if (cp.IniPath.Equals(g.IniPath, StringComparison.OrdinalIgnoreCase) && cp.CsvPath.Equals(g.CsvPath, StringComparison.OrdinalIgnoreCase))
+            { cp.Dirty = false; continue; } // 同じファイルを指している（両方の設定が同じフォルダにある）ので、書くのは 1 回でよい
+            g.CopyContentTo(cp);
+            WriteRagGaugeFiles(cp);
+            others.Add(Path.GetFileName(cfg.IniPath));
+        }
+        return others;
+    }
+
     /// <summary>変えた表を全部書く。書いたものの説明（なければ ""）。</summary>
     private string WriteDirtyRag()
     {
         if (_rag == null) return "";
         var dirty = _rag.Gauges.Where(g => g.Dirty).ToList();
         if (dirty.Count == 0) return "";
+        var others = new List<string>();
         try
         {
-            foreach (var g in dirty) WriteRagGauge(g);
+            foreach (var g in dirty) others.AddRange(WriteRagGauge(g));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -312,18 +379,20 @@ public partial class MainWindow
             return "";
         }
         _ragSignature = null;
-        return $"。RealAnalogGauge の表も書きました（{string.Join("、", dirty.Select(g => Path.GetFileName(g.CsvPath)))}）";
+        var text = $"。RealAnalogGauge の表も書きました（{string.Join("、", dirty.Select(g => Path.GetFileName(g.CsvPath)))}）";
+        if (others.Count > 0) text += $"。ほかの設定（{string.Join("、", others.Distinct())}）にも同じ内容を書きました";
+        return text;
     }
 
     private bool ConfirmRagDiscard()
     {
-        if (_rag == null || !_rag.Gauges.Any(g => g.Dirty)) return true;
+        if (!AnyRagDirty) return true;
         var r = _autoConfirm != null
             ? (_autoConfirm("RealAnalogGauge の表の変更を書き込みますか？") ? MessageBoxResult.Yes : MessageBoxResult.No)
             : MessageBox.Show(this, "RealAnalogGauge の表の変更を、まだ設定ファイルに書き込んでいません。書き込みますか？", "確認", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
         if (r == MessageBoxResult.Cancel) return false;
         if (r == MessageBoxResult.Yes) WriteDirtyRag();
-        else foreach (var g in _rag.Gauges) g.Dirty = false;
+        else foreach (var cfg in _ragAll) foreach (var g in cfg.Gauges) g.Dirty = false;
         return true;
     }
 
@@ -353,39 +422,63 @@ public partial class MainWindow
         var used = new HashSet<int>();
         foreach (var x in _doc.Sections)
             if (Subjects.IsAts(Subjects.BaseKey(x.Get("Subject") ?? "") ?? "", out var u)) used.Add(u);
-        foreach (var g in _rag.Gauges) if (g.Needle >= 0) used.Add(g.Needle);
+        foreach (var cfg in _ragAll) foreach (var g in cfg.Gauges) if (g.Needle >= 0) used.Add(g.Needle);
         int suggest = Enumerable.Range(0, 256).Reverse().FirstOrDefault(n => !used.Contains(n), 255);
         var ans = AskRag("RealAnalogGauge の針にする",
             "プラグインが針の角度を書く ats の番号（0〜255）を入れてください。\nほかの ATS プラグインが使っている番号と重ならないようにしてください（初めの値は、このパネルで使っていない番号です）。",
             suggest.ToString());
         if (ans == null) return false;
         if (!int.TryParse(ans.Trim(), out var ats) || ats is < 0 or > 255) { Message("ats の番号は 0〜255 の整数で入れてください"); return false; }
-        if (_rag.ForAts(ats) is { } other) { Message($"ats{ats} は RealAnalogGauge の {other.Label} が使っています。ほかの番号にしてください"); return false; }
+        foreach (var cfg in _ragAll)
+            if (cfg.ForAts(ats) is { } other) { Message($"ats{ats} は RealAnalogGauge の {other.Label}（{Path.GetFileName(cfg.IniPath)}）が使っています。ほかの番号にしてください"); return false; }
         if (used.Contains(ats) && !Confirm($"ats{ats} は、このパネルのほかのオブジェクトが使っています。この番号にしますか？")) return false;
 
-        var name = _rag.UniqueName(s.Title.Length > 0 ? s.Title : "Needle");
+        // 足す先は全部の設定（ほかの設定は、それぞれの空きスロットに。名前は主の名前を希望にしてそろえる）
+        var wish = _rag.UniqueName(s.Title.Length > 0 ? s.Title : "Needle");
+        var plans = new List<(RagConfig Cfg, int Slot, string Name)>();
+        var full = new List<RagConfig>();
+        foreach (var cfg in _ragAll)
+        {
+            int sl = cfg.FreeSlot();
+            if (sl < 0) { full.Add(cfg); continue; }
+            plans.Add((cfg, sl, cfg.UniqueName(wish)));
+        }
         var gauge = new RagGauge
         {
-            Name = name, Slot = slot, Subject = ragSubject, Needle = ats,
-            IniPath = Path.Combine(_rag.Dir, name + ".ini"), CsvPath = Path.Combine(_rag.Dir, name + ".csv"),
+            Name = plans[0].Name, Slot = plans[0].Slot, Subject = ragSubject, Needle = ats,
+            IniPath = Path.Combine(_rag.Dir, plans[0].Name + ".ini"), CsvPath = Path.Combine(_rag.Dir, plans[0].Name + ".csv"),
         };
         double min = item.Minimum, max = item.Maximum;
         if (Math.Abs(max - min) < 1e-12) max = min + 1;
         gauge.Points.Add(new RagPoint(min, item.InitialAngle));
         gauge.Points.Add(new RagPoint(max, item.LastAngle));
         gauge.Normalize();
+        var filesText = $"・{plans[0].Name}.ini（新しく作る。入力 {ragSubject} → ats{ats}）\n"
+            + $"・{plans[0].Name}.csv（新しく作る。今の Minimum {Fmt(min)}〜Maximum {Fmt(max)} と InitialAngle {Fmt(item.InitialAngle)}〜LastAngle {Fmt(item.LastAngle)} の 2 行。見た目は今と同じ）\n"
+            + $"・{Path.GetFileName(_rag.IniPath)}（Gauge{plans[0].Slot} = {plans[0].Name} を足す。最初だけ .bak を残す）\n"
+            + $"　場所: {_rag.Dir}\n";
+        foreach (var (cfg, sl, nm) in plans.Skip(1))
+            filesText += $"・{nm}.ini・{nm}.csv を作り、{Path.GetFileName(cfg.IniPath)} に Gauge{sl} = {nm} を足す（もう一方の設定）\n　場所: {cfg.Dir}\n";
+        foreach (var cfg in full)
+            filesText += $"・{Path.GetFileName(cfg.IniPath)} は針が 16 本いっぱいなので、足しません\n";
         if (!Confirm($"「{DisplayName(s)}」を RealAnalogGauge の針にします。次のファイルを書きます。\n\n"
-                + $"・{name}.ini（新しく作る。入力 {ragSubject} → ats{ats}）\n"
-                + $"・{name}.csv（新しく作る。今の Minimum {Fmt(min)}〜Maximum {Fmt(max)} と InitialAngle {Fmt(item.InitialAngle)}〜LastAngle {Fmt(item.LastAngle)} の 2 行。見た目は今と同じ）\n"
-                + $"・{Path.GetFileName(_rag.IniPath)}（Gauge{slot} = {name} を足す。最初だけ .bak を残す）\n"
-                + $"　場所: {_rag.Dir}\n\n"
+                + filesText + "\n"
                 + $"パネルの針は Subject = ats{ats}、InitialAngle -180・LastAngle 180・Minimum 0・Maximum 360000 にします。\n"
                 + "ファイルへの書き込みは Ctrl+Z では戻せません（パネルの変更は戻せます）。続けますか？"))
             return false;
         try
         {
-            WriteRagGauge(gauge);
-            RagConfig.WriteText(_rag.IniPath, RagConfig.SetSlotLine(BveText.Read(_rag.IniPath).Text, slot, name), _ragBackedUp);
+            foreach (var (cfg, sl, nm) in plans)
+            {
+                var ng = new RagGauge
+                {
+                    Name = nm, Slot = sl, Subject = ragSubject, Needle = ats,
+                    IniPath = Path.Combine(cfg.Dir, nm + ".ini"), CsvPath = Path.Combine(cfg.Dir, nm + ".csv"),
+                };
+                foreach (var pt in gauge.Points) ng.Points.Add(new RagPoint(pt.Value, pt.Angle));
+                WriteRagGaugeFiles(ng);
+                RagConfig.WriteText(cfg.IniPath, RagConfig.SetSlotLine(BveText.Read(cfg.IniPath).Text, sl, nm), _ragBackedUp);
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -401,7 +494,8 @@ public partial class MainWindow
         CommitModel();
         _props.Invalidate();
         ShowSelectionDetails(scroll: false);
-        Message($"「{DisplayName(s)}」を RealAnalogGauge の針（Gauge{slot}: {name}、ats{ats}）にしました。右の欄の表で角度を合わせられます");
+        Message($"「{DisplayName(s)}」を RealAnalogGauge の針（Gauge{plans[0].Slot}: {plans[0].Name}、ats{ats}）にしました。右の欄の表で角度を合わせられます"
+            + (full.Count > 0 ? $"。{string.Join("、", full.Select(c => Path.GetFileName(c.IniPath)))} は 16 本いっぱいなので、足していません" : ""));
         return true;
     }
 
@@ -425,13 +519,21 @@ public partial class MainWindow
         s.Set("InitialAngle", Fmt(fit.First.Angle));
         s.Set("LastAngle", Fmt(fit.Last.Angle));
         string removed = "";
-        if (g.Slot >= 0 && Confirm($"RealAnalogGauge の設定から Gauge{g.Slot}（{g.Name}）を外しますか？\n\n{Path.GetFileName(_rag.IniPath)} の「Gauge{g.Slot} = {g.Name}」の行を消します（{g.Name}.ini・.csv は残します）。\n「いいえ」なら、プラグインはこのまま ats{g.Needle} に書き続けます。"))
+        var targets = new List<(RagConfig Cfg, RagGauge G)>();
+        foreach (var cfg in _ragAll)
+            if (cfg.Counterpart(g) is { Slot: >= 0 } cp) targets.Add((cfg, cp));
+        if (targets.Count > 0 && Confirm($"RealAnalogGauge の設定から Gauge{g.Slot}（{g.Name}）を外しますか？\n\n"
+                + string.Join("\n", targets.Select(t => $"・{Path.GetFileName(t.Cfg.IniPath)} の「Gauge{t.G.Slot} = {t.G.Name}」の行を消します（{t.G.Name}.ini・.csv は残します）"))
+                + $"\n「いいえ」なら、プラグインはこのまま ats{g.Needle} に書き続けます。"))
         {
             try
             {
-                RagConfig.WriteText(_rag.IniPath, RagConfig.SetSlotLine(BveText.Read(_rag.IniPath).Text, g.Slot, null), _ragBackedUp);
-                g.Dirty = false;
-                removed = $"。Gauge{g.Slot} を設定から外しました";
+                foreach (var (cfg, cp) in targets)
+                {
+                    RagConfig.WriteText(cfg.IniPath, RagConfig.SetSlotLine(BveText.Read(cfg.IniPath).Text, cp.Slot, null), _ragBackedUp);
+                    cp.Dirty = false;
+                }
+                removed = targets.Count > 1 ? $"。Gauge{g.Slot} を全部の設定から外しました" : $"。Gauge{g.Slot} を設定から外しました";
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -457,7 +559,7 @@ public partial class MainWindow
         if (s?.Kind != SectionKind.Needle) s = null;
         RagGauge? g = null;
         if (s != null && _rag != null && Subjects.IsAts((s.Get("Subject") ?? "").Trim().ToLowerInvariant(), out var n)) g = _rag.ForAts(n);
-        var sig = s == null ? "" : $"{_selected}|{s.Get("Subject")}|{_rag?.IniPath}|{g?.IniPath}|{_rag?.Gauges.Count}";
+        var sig = s == null ? "" : $"{_selected}|{s.Get("Subject")}|{_rag?.IniPath}|{g?.IniPath}|{_rag?.Gauges.Count}|{_ragAll.Count}";
         if (sig == _ragSignature) return;
         _ragSignature = sig;
         StopRagPick();
@@ -654,11 +756,13 @@ public partial class MainWindow
         var files = new WrapPanel { Margin = new Thickness(4, 8, 4, 2) };
         files.Children.Add(SmallButton("設定ファイルに書き込む", () =>
         {
-            try { WriteRagGauge(g); }
+            List<string> others;
+            try { others = WriteRagGauge(g); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Warn($"書けませんでした:\n{ex.Message}"); return; }
             grid.Items.Refresh();
             RebuildAll();
-            Message($"{Path.GetFileName(g.IniPath)}・{Path.GetFileName(g.CsvPath)} に書き込みました（最初だけ .bak を残します）");
+            Message($"{Path.GetFileName(g.IniPath)}・{Path.GetFileName(g.CsvPath)} に書き込みました（最初だけ .bak を残します）"
+                + (others.Count > 0 ? $"。ほかの設定（{string.Join("、", others)}）にも同じ内容を書きました" : ""));
         }, "針ごとの ini（入力・振動）と csv（表）に書き込みます。パネルを保存したときも書き込みます"));
         files.Children.Add(SmallButton("標準の針に戻す…", () => ConvertFromRag(_selected),
             "表の最初と最後の行で、Minimum〜Maximum・InitialAngle〜LastAngle を決めます（途中のずれは失われます）"));

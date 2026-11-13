@@ -76,6 +76,39 @@ public sealed class RagGauge
         foreach (var (v, a) in map) Points.Add(new RagPoint(v, a));
     }
 
+    /// <summary>ほかの設定の同じ針へ、内容（入力・出力・振動・表）を写す（名前・スロット・置き場所は写さない）。32bit 用と 64bit 用など、設定が複数あるときにそろえる。</summary>
+    public void CopyContentTo(RagGauge other)
+    {
+        other.Subject = Subject;
+        other.Needle = Needle;
+        other.Period = Period;
+        other.Amplitude = Amplitude;
+        other.Threshold = Threshold;
+        other.EllipseDivision = EllipseDivision;
+        other.Points.Clear();
+        foreach (var p in Points) other.Points.Add(new RagPoint(p.Value, p.Angle));
+    }
+
+    /// <summary>入力・出力・振動・表が同じか（名前・スロット・置き場所は比べない。表は並べ直してから比べる）。</summary>
+    public bool SameContent(RagGauge other)
+    {
+        if (!Subject.Equals(other.Subject, StringComparison.OrdinalIgnoreCase) || Needle != other.Needle
+            || Period != other.Period || Amplitude != other.Amplitude || Threshold != other.Threshold
+            || EllipseDivision != other.EllipseDivision) return false;
+        var a = SortedPoints(); var b = other.SortedPoints();
+        if (a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+            if (a[i].Value != b[i].Value || a[i].Angle != b[i].Angle) return false;
+        return true;
+    }
+
+    private List<RagPoint> SortedPoints()
+    {
+        var map = new SortedDictionary<double, double>();
+        foreach (var p in Points) map[p.Value] = p.Angle;
+        return map.Select(kv => new RagPoint(kv.Key, kv.Value)).ToList();
+    }
+
     /// <summary>入力値から角度（プラグインの linearInterpolate と同じ。表が 2 行未満なら 0）。</summary>
     public double Interpolate(double x)
     {
@@ -254,6 +287,11 @@ public sealed class RagConfig
 
     /// <summary>ats 番号に出力する針（なければ null。2 本以上あれば後のもの＝プラグインで最後に書くもの）。</summary>
     public RagGauge? ForAts(int index) => Gauges.LastOrDefault(g => g.HasOutput && g.Needle == index);
+
+    /// <summary>ほかの設定の針 g と同じ針（親 ini に書いた名前が同じもの。親 ini に直接書いた針は、直接書いた針同士）。なければ null。</summary>
+    public RagGauge? Counterpart(RagGauge g) =>
+        g.Slot < 0 ? Gauges.FirstOrDefault(x => x.Slot < 0)
+                   : Gauges.FirstOrDefault(x => x.Slot >= 0 && x.Name.Equals(g.Name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>空いている GaugeN の N（なければ -1）。</summary>
     public int FreeSlot() => Array.FindIndex(Slots, s => s == null);
