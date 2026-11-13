@@ -54,8 +54,8 @@
                     <MenuItem Header="表示灯 [PilotLamp]" Tag="PilotLamp" Click="OnAddElement" />
                     <MenuItem Header="指針 [Needle]" Tag="Needle" Click="OnAddElement" />
                     <MenuItem Header="指針（標準の針・角度を選んで）[Needle]…" Click="OnAddStandardNeedle" />
-                    <MenuItem Header="指針の蓋（選んだ指針の上に）…" Click="OnMakeCover"
-                              ToolTip="パネル本体の画像（か PSD のレイヤー）から針の軸の蓋を切り抜いて、選んだ指針の上に置きます" />
+                    <MenuItem Header="指針のふた（選んだ指針の上に）…" Click="OnMakeCover"
+                              ToolTip="パネル本体の画像（か PSD のレイヤー）から針の軸のふたを切り抜いて、選んだ指針の上に置きます" />
                     <MenuItem Header="デジタル数字 [DigitalNumber]" Tag="DigitalNumber" Click="OnAddElement" />
                     <MenuItem Header="円形ゲージ [DigitalGauge]" Tag="DigitalGauge" Click="OnAddElement" />
                 </MenuItem>
@@ -99,6 +99,9 @@
                 <MenuItem x:Name="ShowTextMenu" Header="パネルファイルの内容を表示" IsCheckable="True" IsChecked="True" Click="OnToggleText" />
             </MenuItem>
             <MenuItem Header="ヘルプ(_H)">
+                <MenuItem Header="使い方を開く(_U)" Click="OnHelpDocs" />
+                <MenuItem Header="ショートカットキー(_K)" Click="OnShortcutList" />
+                <Separator />
                 <MenuItem Header="バージョン情報(_A)…" Click="OnAbout" />
             </MenuItem>
         </Menu>
@@ -117,7 +120,7 @@
             </StatusBarItem>
             <Separator />
             <StatusBarItem>
-                <TextBlock x:Name="MessageText" />
+                <TextBlock x:Name="MessageText" TextTrimming="CharacterEllipsis" />
             </StatusBarItem>
         </StatusBar>
 
@@ -171,8 +174,8 @@
                                       ToolTip="[This] の画像を、常表示の表示灯（メインパネル・レイヤー 1）に移し、[This] は透明な画像にします" />
                             <MenuItem x:Name="ListMenuUnsetMain" Header="メインパネルをやめる" Click="OnUnsetMainPanel"
                                       ToolTip="メインパネルの印を外します（表示灯はそのまま残ります）" />
-                            <MenuItem x:Name="ListMenuCover" Header="蓋を作る…" Click="OnMakeCover"
-                                      ToolTip="選んだ指針の軸の蓋を、パネル本体の画像（か PSD のレイヤー）から切り抜いて針の上に置きます" />
+                            <MenuItem x:Name="ListMenuCover" Header="指針のふたを作る…" Click="OnMakeCover"
+                                      ToolTip="選んだ指針の軸のふたを、パネル本体の画像（か PSD のレイヤー）から切り抜いて針の上に置きます" />
                             <Separator />
                             <MenuItem x:Name="ListMenuLayerUp" Header="レイヤーを 1 つ上げる" InputGestureText="Ctrl+]" Click="OnLayerUp" />
                             <MenuItem x:Name="ListMenuLayerDown" Header="レイヤーを 1 つ下げる" InputGestureText="Ctrl+[" Click="OnLayerDown" />
@@ -363,12 +366,12 @@
                               SelectionChanged="OnVariationViewBox" Focusable="False"
                               ToolTip="表示するバリエーション。バリエーションを選ぶと、そのバリエーションに入るオブジェクトだけを描きます。その間、一覧の目のマークで、そのバリエーションに入れる・外すを切り替えられます" />
                     <Button x:Name="CoverButton" Margin="6,0,0,0" Visibility="Collapsed" Click="OnMakeCover" Cursor="Hand" Focusable="False"
-                            ToolTip="選んだ指針の軸の蓋を、パネル本体の画像（か PSD のレイヤー）から切り抜いて針の上に置きます。針を文字盤の中心に合わせてから押してください">
+                            ToolTip="選んだ指針の軸のふたを、パネル本体の画像（か PSD のレイヤー）から切り抜いて針の上に置きます。針を文字盤の中心に合わせてから押してください">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="Bd" CornerRadius="4" Padding="8,4" BorderThickness="1"
                                         Background="#E8202024" BorderBrush="#8080E0FF">
-                                    <TextBlock Foreground="#FFA8ECFF" FontSize="12" Text="⭕ この針の蓋を作る…" />
+                                    <TextBlock Foreground="#FFA8ECFF" FontSize="12" Text="⭕ この針のふたを作る…" />
                                 </Border>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">

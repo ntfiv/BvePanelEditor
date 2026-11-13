@@ -9,10 +9,10 @@ using Microsoft.Win32;
 
 namespace BvePanelEditor;
 
-/// <summary>指針の蓋を作る（パネル本体の画像や PSD のレイヤーから、針の軸の蓋を切り抜いて針の上に置く）。</summary>
+/// <summary>指針のふたを作る（パネル本体の画像や PSD のレイヤーから、針の軸のふたを切り抜いて針の上に置く）。</summary>
 public partial class MainWindow
 {
-    /// <summary>今選んでいる指針と、それと同じ位置の指針（蓋をまとめてかぶせる）。指針を選んでいなければ空。</summary>
+    /// <summary>今選んでいる指針と、それと同じ位置の指針（ふたをまとめてかぶせる）。指針を選んでいなければ空。</summary>
     private List<int> CoverTargets()
     {
         if (_doc == null) return [];
@@ -29,7 +29,7 @@ public partial class MainWindow
         return at;
     }
 
-    /// <summary>左上の「蓋を作る」ボタンを、指針を選んでいるときだけ出す。</summary>
+    /// <summary>左上の「ふたを作る」ボタンを、指針を選んでいるときだけ出す。</summary>
     private void UpdateCoverButton()
     {
         CoverButton.Visibility = !_variationMode && CoverTargets().Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -40,8 +40,8 @@ public partial class MainWindow
         if (_doc == null) return;
         FlushReparse();
         var targets = CoverTargets();
-        if (targets.Count == 0) { Message("蓋を作る指針を選んでください"); return; }
-        if (PanelDir == null) { Warn("先にパネルファイルを保存してください（蓋の画像をパネルのフォルダに書き出すため）。"); return; }
+        if (targets.Count == 0) { Message("ふたを作る指針を選んでください"); return; }
+        if (PanelDir == null) { Warn("先にパネルファイルを保存してください（ふたの画像をパネルのフォルダに書き出すため）。"); return; }
         var sources = CoverSources(targets);
         if (sources.Count == 0) { Warn("針の下にある画像（[This] の画像や、常表示の表示灯）が見つかりません。"); return; }
         var needles = targets.Select(i => _scene?.ItemFor(i)).OfType<RenderItem>().ToList();
@@ -57,7 +57,7 @@ public partial class MainWindow
         return titles.Count > 0 ? CoverFileName($"cover_{string.Join("_", titles)}") : "cover";
     }
 
-    /// <summary>蓋の画像のファイル名（使えない文字を外し、スペースは「_」にする）。</summary>
+    /// <summary>ふたの画像のファイル名（使えない文字を外し、スペースは「_」にする）。</summary>
     public static string CoverFileName(string name) =>
         System.Text.RegularExpressions.Regex.Replace(PsdImport.SafeFileName(name.Trim()), @"[\s　]+", "_");
 
@@ -114,7 +114,7 @@ public partial class MainWindow
     {
         var known = _doc?.CropSets.Where(c => c.HasLayers).Select(c => FullOf(c.Day)).FirstOrDefault(File.Exists)
             ?? _doc?.PsdSources.Select(p => p.Day).Where(d => d.Length > 0).Select(FullOf).FirstOrDefault(File.Exists);
-        var dlg = new OpenFileDialog { Filter = "PSD (*.psd)|*.psd", Title = "蓋のレイヤーがある PSD を選ぶ" };
+        var dlg = new OpenFileDialog { Filter = "PSD (*.psd)|*.psd", Title = "ふたのレイヤーがある PSD を選ぶ" };
         if (known != null) { dlg.InitialDirectory = Path.GetDirectoryName(known); dlg.FileName = Path.GetFileName(known); }
         else if (PanelDir != null) dlg.InitialDirectory = PanelDir;
         if (dlg.ShowDialog(this) != true) return null;
@@ -123,7 +123,7 @@ public partial class MainWindow
 
     private CoverSource? PickCoverPsdLayers(string psd)
     {
-        var aw = new LayerAssignWindow(this, [psd], ["昼の画像", "夜の画像"], [new(false, false), new(true, false)], [psd, psd], [null, null], "指針の蓋");
+        var aw = new LayerAssignWindow(this, [psd], ["昼の画像", "夜の画像"], [new(false, false), new(true, false)], [psd, psd], [null, null], "指針のふた");
         if (aw.ShowDialog() != true || aw.Result?[0] is not { } day) return null;
         var night = aw.Result[1];
         return new CoverSource
@@ -134,7 +134,7 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>蓋を書き出し、常表示の表示灯として針のすぐ上に置く。置いたオブジェクトの番号を返す（できなければ -1）。</summary>
+    /// <summary>ふたを書き出し、常表示の表示灯として針のすぐ上に置く。置いたオブジェクトの番号を返す（できなければ -1）。</summary>
     public int PlaceCover(CoverResult r, List<int> targets)
     {
         if (_doc == null || PanelDir == null) return -1;
@@ -158,7 +158,7 @@ public partial class MainWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Warn($"蓋の画像を書き出せませんでした:\n{ex.Message}");
+            Warn($"ふたの画像を書き出せませんでした:\n{ex.Message}");
             return -1;
         }
 
@@ -186,12 +186,12 @@ public partial class MainWindow
         ApplySelection(at, [at], null, SelectionSource.Other);
         Canvas.AllowFreshEdit([at]);
         Canvas.Focus();
-        Message($"蓋「{r.Name}」を置きました（レイヤー {layer}・{PropertyEditor.RelativePath(PanelDir, dayFile)}）。"
+        Message($"ふた「{r.Name}」を置きました（レイヤー {layer}・{PropertyEditor.RelativePath(PanelDir, dayFile)}）。"
             + (note ?? "") + "選んでいる間は位置ロック中でも動かせます");
         return at;
     }
 
-    /// <summary>蓋の切り抜き元の組の名前。つなげないとき（パネルの左上に置いていない画像）は null と理由。</summary>
+    /// <summary>ふたの切り抜き元の組の名前。つなげないとき（パネルの左上に置いていない画像）は null と理由。</summary>
     private string? CoverLinkSet(CoverResult r, ref string? note)
     {
         var doc = _doc!;

@@ -166,7 +166,7 @@ public partial class MainWindow
             SelectSection(-1); // 何も選ばずに置く（ファイルの最後に足す）
             var pa = PlaceNeedles(prsA, new Point(center.X, center.Y + 300), "圧力計Ａ");
             Check("圧力計Ａの 2 本はグループ「圧力計Ａ」になり、グループごと選ぶ", pa.All(i => _doc.Sections[i].Group == "圧力計Ａ") && _selGroup == "圧力計Ａ");
-            Check("グループごと選んでいても「蓋を作る」が出る（2 本まとめて）", CoverButton.Visibility == Visibility.Visible && CoverTargets().Count == 2);
+            Check("グループごと選んでいても「ふたを作る」が出る（2 本まとめて）", CoverButton.Visibility == Visibility.Visible && CoverTargets().Count == 2);
             SelectSection(-1); // 何も選ばずに置く（ファイルの最後に足す）
             var tunedAt = PlaceNeedles([tuned], new Point(center.X - 300, center.Y + 300));
             // 速度計Ｃ・E217

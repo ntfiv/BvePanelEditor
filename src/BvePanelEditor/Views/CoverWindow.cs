@@ -12,7 +12,7 @@ using BvePanelEditor.Rendering;
 
 namespace BvePanelEditor.Views;
 
-/// <summary>蓋を切り抜く元（パネル本体の画像・表示灯の画像・PSD のレイヤー）。</summary>
+/// <summary>ふたを切り抜く元（パネル本体の画像・表示灯の画像・PSD のレイヤー）。</summary>
 public sealed class CoverSource
 {
     public required string Label;
@@ -47,11 +47,11 @@ public sealed class CoverSource
     }
 }
 
-/// <summary>蓋を作る画面の結果。形はパネルの座標。</summary>
+/// <summary>ふたを作る画面の結果。形はパネルの座標。</summary>
 public sealed record CoverResult(CoverSource Source, List<CropShape> Shapes, string Name);
 
 /// <summary>
-/// 指針の蓋を作る画面。パネル本体の画像（か PSD のレイヤー）から、針の軸の蓋を丸や多角形で切り抜く。
+/// 指針のふたを作る画面。パネル本体の画像（か PSD のレイヤー）から、針の軸のふたを丸や多角形で切り抜く。
 /// 丸は開いたときに軸のまわりの円を探して自動で置く。
 /// </summary>
 public sealed class CoverWindow : Window
@@ -63,9 +63,9 @@ public sealed class CoverWindow : Window
     private readonly ComboBox _sourceCombo = new() { Margin = new Thickness(0, 2, 0, 6) };
     private readonly RadioButton _day = new() { Content = "昼", IsChecked = true, Margin = new Thickness(0, 0, 12, 0) };
     private readonly RadioButton _night = new() { Content = "夜" };
-    private readonly CheckBox _showNeedle = new() { Content = "針を重ねて、蓋で隠れるか見る", IsChecked = true, Margin = new Thickness(0, 6, 0, 2) };
+    private readonly CheckBox _showNeedle = new() { Content = "針を重ねて、ふたで隠れるか見る", IsChecked = true, Margin = new Thickness(0, 6, 0, 2) };
     private readonly Slider _value = new() { Minimum = 0, Maximum = 1, Value = 0, Margin = new Thickness(0, 2, 0, 6), ToolTip = "針の値（最小〜最大）" };
-    private readonly Button _auto = new() { Content = "切り抜きの自動検出", ToolTip = "針の軸のまわりから蓋の丸を探して置きます。もう一度押すと、ほかに見つかった丸（文字盤の輪など）に順に切り替えます", Padding = new Thickness(6, 3, 6, 3), Margin = new Thickness(0, 2, 0, 2) };
+    private readonly Button _auto = new() { Content = "切り抜きの自動検出", ToolTip = "針の軸のまわりからふたの丸を探して置きます。もう一度押すと、ほかに見つかった丸（文字盤の輪など）に順に切り替えます", Padding = new Thickness(6, 3, 6, 3), Margin = new Thickness(0, 2, 0, 2) };
     private readonly Button _polygon = new() { Content = "多角形を描く", Padding = new Thickness(6, 3, 6, 3), Margin = new Thickness(0, 2, 0, 2) };
     private readonly Button _circle = new() { Content = "丸を足す", Padding = new Thickness(6, 3, 6, 3), Margin = new Thickness(0, 2, 0, 2) };
     private readonly Button _ellipse = new() { Content = "楕円を足す", Padding = new Thickness(6, 3, 6, 3), Margin = new Thickness(0, 2, 0, 2) };
@@ -82,12 +82,12 @@ public sealed class CoverWindow : Window
     public CoverResult? Result { get; private set; }
 
     /// <param name="sources">切り抜く元の候補（上から順に、針のすぐ下にあるもの）。</param>
-    /// <param name="needles">蓋をかぶせる針（同じ位置の針はまとめて）。</param>
+    /// <param name="needles">ふたをかぶせる針（同じ位置の針はまとめて）。</param>
     /// <param name="pickPsd">「PSD のレイヤーから選ぶ」を選んだとき、PSD とレイヤーを選ばせる（やめたら null）。</param>
     public CoverWindow(Window owner, List<CoverSource> sources, List<RenderItem> needles, string name, Func<CoverSource?>? pickPsd)
     {
         Owner = owner;
-        Title = "指針の蓋を作る";
+        Title = "指針のふたを作る";
         Width = 1100; Height = 760;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Yu Gothic UI");
@@ -126,7 +126,7 @@ public sealed class CoverWindow : Window
     {
         var root = new DockPanel();
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(8) };
-        var ok = new Button { Content = "蓋を置く", Padding = new Thickness(14, 4, 14, 4), IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+        var ok = new Button { Content = "ふたを置く", Padding = new Thickness(14, 4, 14, 4), IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
         ok.Click += (_, _) => Accept();
         var cancel = new Button { Content = "キャンセル", Padding = new Thickness(14, 4, 14, 4), IsCancel = true };
         buttons.Children.Add(ok);
@@ -250,7 +250,7 @@ public sealed class CoverWindow : Window
         if (_candidates.Count == 0)
         {
             if (!_canvas.Shapes.Any(s => s.IsCircle)) _canvas.SetCircle(CropShape.Circle(c.X, c.Y, Math.Round(MaxRadius * 0.4)));
-            _status.Text = "軸の蓋の丸が見つかりませんでした。針の中心に仮の丸を置いたので、大きさを合わせてください";
+            _status.Text = "軸のふたの丸が見つかりませんでした。針の中心に仮の丸を置いたので、大きさを合わせてください";
             UpdateButtons();
             return;
         }
@@ -312,7 +312,7 @@ public sealed class CoverWindow : Window
     public int CandidateCountForTest => _candidates.Count;
 }
 
-/// <summary>蓋を作る画面の絵: 切り抜く元の画像・針・形を描き、形を動かす。座標はパネルの座標。</summary>
+/// <summary>ふたを作る画面の絵: 切り抜く元の画像・針・形を描き、形を動かす。座標はパネルの座標。</summary>
 public sealed class CoverCanvas : FrameworkElement
 {
     private BitmapSource? _image;
@@ -466,7 +466,7 @@ public sealed class CoverCanvas : FrameworkElement
                 dc.DrawImage(bmp, new Rect(0, 0, bmp.PixelWidth, bmp.PixelHeight));
                 dc.Pop();
             }
-            // 蓋（切り抜いた結果）を針の上に
+            // ふた（切り抜いた結果）を針の上に
             if (_preview != null && !_previewRect.IsEmpty)
                 dc.DrawImage(_preview, new Rect(ToScreen(new Point(_previewRect.Left, _previewRect.Top)), new Size(_previewRect.Width * _zoom, _previewRect.Height * _zoom)));
         }

@@ -136,8 +136,8 @@ public partial class MainWindow
             { var ns = PanelSection.Create(SectionKind.PilotLamp); ns.Set("Layer", "9"); _selected = InsertNewSection(ns, GetInsertPlace(), 0); CommitModel(); SelectSection(_selected); } // 追加（メニュー・ドロップと同じ入れ方）
             Check("何も選んでいなければ、今までどおりファイルの最後に入る", _selected == _doc.Sections.Count - 1);
 
-            // レイヤーをそろえる: 「蓋」（L3・ファイルで前）と「針」（L1・ファイルで後ろ）が重なっていて、L2 の「遠く」にそろえると手前・奥が入れ替わる
-            var text3 = "BveTs Instrument Panel 2.00\r\n\r\n[This]\r\nResolution = 400\r\n\r\n;蓋\r\n[PilotLamp]\r\nSubject = true\r\nLocation = 100, 100\r\nDaytimeImage = lamp.png\r\nLayer = 3\r\n"
+            // レイヤーをそろえる: 「ふた」（L3・ファイルで前）と「針」（L1・ファイルで後ろ）が重なっていて、L2 の「遠く」にそろえると手前・奥が入れ替わる
+            var text3 = "BveTs Instrument Panel 2.00\r\n\r\n[This]\r\nResolution = 400\r\n\r\n;ふた\r\n[PilotLamp]\r\nSubject = true\r\nLocation = 100, 100\r\nDaytimeImage = lamp.png\r\nLayer = 3\r\n"
                 + "\r\n;針\r\n[PilotLamp]\r\nSubject = true\r\nLocation = 110, 110\r\nDaytimeImage = lamp.png\r\nLayer = 1\r\n"
                 + "\r\n;遠く\r\n[PilotLamp]\r\nSubject = true\r\nLocation = 300, 300\r\nDaytimeImage = lamp.png\r\nLayer = 2\r\n";
             File.WriteAllText(panel, text3);
@@ -148,7 +148,7 @@ public partial class MainWindow
             _autoConfirm = m => { asked = m; return false; };
             ChangeLayers(Views.LayerOp.Unify);
             log.Add("     そろえるときの確認: " + asked.Replace("\n", " ").Trim());
-            Check("重なっているオブジェクトの手前・奥が入れ替わるときは確認し、やめたら変えない", asked.Contains("蓋") && asked.Contains("針") && Editor.Text == File.ReadAllText(panel));
+            Check("重なっているオブジェクトの手前・奥が入れ替わるときは確認し、やめたら変えない", asked.Contains("ふた") && asked.Contains("針") && Editor.Text == File.ReadAllText(panel));
             _autoConfirm = _ => true;
             ChangeLayers(Views.LayerOp.Unify);
             Check("続けると、主に選んでいるオブジェクトのレイヤー（2）にそろう", _doc!.Sections.Skip(1).All(s => s.Get("Layer") == "2"));
@@ -156,7 +156,7 @@ public partial class MainWindow
             asked = "";
             ApplySelection(2, [2, 3], null, SelectionSource.Other);
             OnUndo(this, null!);
-            ApplySelection(1, [1, 3], null, SelectionSource.Other); // 蓋（L3）と遠く（L2）は重ならない
+            ApplySelection(1, [1, 3], null, SelectionSource.Other); // ふた（L3）と遠く（L2）は重ならない
             ChangeLayers(Views.LayerOp.Unify);
             Check("重ならないオブジェクトどうしなら確認せずにそろえる", asked == "" && _doc!.Sections[3].Get("Layer") == "3");
             // 任意のレイヤーにそろえる
@@ -191,6 +191,16 @@ public partial class MainWindow
             Check("動かせるときは、選んだオブジェクトの枠を黄色の実線にする", Canvas.SelectionPen.DashStyle.Dashes.Count == 0 && ((SolidColorBrush)Canvas.SelectionPen.Brush).Color == Color.FromRgb(0xFF, 0xD8, 0x40));
             UpdateLayout();
             SaveWindowPng(this, Path.ChangeExtension(report, ".unlocked.png"));
+
+            // ヘルプ → ショートカットキー
+            var sw = ShortcutWindowForTest();
+            sw.ShowActivated = false;
+            sw.Show();
+            await Task.Delay(300);
+            Check("ショートカットキーの一覧に、説明書の主な操作キーが入っている",
+                ShortcutLines.Any(l => l.StartsWith("Ctrl+G")) && ShortcutLines.Any(l => l.StartsWith("Ctrl+0")) && ShortcutLines.Any(l => l.StartsWith("Ctrl+A")));
+            SaveWindowPng(sw, Path.ChangeExtension(report, ".keys.png"));
+            sw.Close();
 
             // デジタル数字のテスト画面: 見え方の拡大
             var dpx = new byte[20 * 100 * 4];
