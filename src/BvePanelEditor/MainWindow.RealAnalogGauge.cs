@@ -37,6 +37,8 @@ public partial class MainWindow
     /// <summary>「ゆっくり動かす」: 動かしている入力のキー（止まっていれば null）・1 秒に動かす量・向き・往復するか・範囲。</summary>
     private string? _ragSweepKey;
     private double _ragSweepRate = 2, _ragSweepDir = 1, _ragSweepMin, _ragSweepMax;
+    /// <summary>動かす速さの倍率（候補の位置 0.5〜5。実際の速さは計器の表の範囲に合わせて StartRagSweep で決める）。</summary>
+    private double _ragSweepK = 2;
     private bool _ragSweepRoundTrip;
     private Slider? _ragSlider;
     private TextBlock? _ragValueText;
@@ -192,12 +194,15 @@ public partial class MainWindow
             if (stop) StopRagSweep();
         }
         SyncRagSlider();
-        _ragLocation += Math.Abs(Canvas.State.GetValueOrDefault("kmph")) / 3.6 * dt;
+        // 走った距離は「自動で動かす」の間だけ進める。止めたら振動も止まり、針は表の値のままになる
+        // （以前は速度の値が残っている限り進み続けたので、しきい値より遅い所で止めると揺れ続けた）
+        bool sweeping = _ragSweepKey != null;
+        if (sweeping) _ragLocation += Math.Abs(Canvas.State.GetValueOrDefault("kmph")) / 3.6 * dt;
         bool changed = false;
         foreach (var g in _rag.Gauges)
         {
             if (!g.HasOutput || RagGauge.StateKey(g.Subject) is not { } key) continue;
-            double v = g.PanelValue(Subjects.Resolve(key, Canvas.State), _ragLocation);
+            double v = g.PanelValue(Subjects.Resolve(key, Canvas.State), _ragLocation, sweeping);
             var ats = $"ats{g.Needle}";
             if (Canvas.State.GetValueOrDefault(ats, double.NaN) != v) { Canvas.State[ats] = v; changed = true; }
         }
@@ -213,6 +218,7 @@ public partial class MainWindow
         _ragSweepMin = min;
         _ragSweepMax = max;
         _ragSweepDir = 1;
+        _ragSweepRate = _ragSweepK * RagSweepScale(g);
         if (fromStart || Canvas.State.GetValueOrDefault(bk) >= max) _states.SetValue(bk, Math.Max(min, Math.Min(0, max)));
         if (_ragSweepButton != null) { _ragSweepButton.IsChecked = true; _ragSweepButton.Content = "■ 止める"; }
     }
@@ -232,6 +238,19 @@ public partial class MainWindow
         if (hi <= lo) hi = lo + 100;
         return (Math.Min(0, lo), hi);
     }
+
+    /// <summary>動かす速さの倍率（表の範囲 140 の計器で 1。範囲が広い計器ほど速くして、全体を動かし終わる時間がそろうように。圧力の計器はさらに 3 倍）。</summary>
+    private static double RagSweepScale(RagGauge g)
+    {
+        var (min, max) = RagSweepRange(g);
+        double scale = Math.Max(max - min, 1) / 140.0;
+        if (RagGauge.StateKey(g.Subject) is "bc" or "mr" or "sap" or "bp" or "er") scale *= 3; // 圧力の計器は速めに動かすほうが確かめやすい
+        return scale;
+    }
+
+    /// <summary>速さの候補の丸め（大きさに合わせて桁をそろえ、読みやすく）。</summary>
+    private static double RoundRate(double v) =>
+        v >= 100 ? Math.Round(v) : v >= 10 ? Math.Round(v, 1) : v >= 1 ? Math.Round(v, 2) : Math.Round(v, 3);
 
     /// <summary>動かす速さの単位（速度なら km/h/s、圧力なら kPa/s、電流なら A/s）。</summary>
     private static string RagRateUnit(string key) => key switch
@@ -253,7 +272,7 @@ public partial class MainWindow
         if (_ragValueText != null)
         {
             var g = CurrentRagGauge();
-            var ang = g != null ? g.OutputAngle(v, _ragLocation) : 0;
+            var ang = g != null ? g.OutputAngle(v, _ragLocation, _ragSweepKey != null) : 0;
             _ragValueText.Text = $"{v:0.0}（{ang:0.0} 度）";
         }
     }
@@ -653,16 +672,18 @@ public partial class MainWindow
             ctl.Children.Add(_ragSweepButton);
             ctl.Children.Add(new TextBlock { Text = "速さ", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 3, 0) });
             var unit = RagRateUnit(simBase);
+            var scale = RagSweepScale(g);
             var rate = new ComboBox
             {
                 Width = 64, IsEditable = true, MaxDropDownHeight = 260,
-                ItemsSource = Enumerable.Range(2, 19).Select(k => Fmt(k * 0.25)).ToList(), // 0.5〜5（0.25 刻み）
-                Text = Fmt(_ragSweepRate), ToolTip = $"動かす速さ（{unit}）。0.5〜5 から選ぶか、数を入れます",
+                ItemsSource = Enumerable.Range(2, 19).Select(k => Fmt(RoundRate(k * 0.25 * scale))).Distinct().ToList(), // 0.5〜5 倍（0.25 刻み）を、この計器の範囲に合わせた速さで
+                Text = Fmt(RoundRate(_ragSweepK * scale)), ToolTip = $"動かす速さ（{unit}）。候補は、この計器の表の範囲に合わせた速さです（範囲が広いほど速い）。数を入れることもできます",
             };
             void SetRate()
             {
-                if (double.TryParse(rate.Text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var r) && r > 0) _ragSweepRate = r;
-                else rate.Text = Fmt(_ragSweepRate);
+                if (double.TryParse(rate.Text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var r) && r > 0)
+                { _ragSweepRate = r; _ragSweepK = r / scale; }
+                else rate.Text = Fmt(RoundRate(_ragSweepK * scale));
             }
             rate.SelectionChanged += (_, _) => { if (rate.SelectedItem is string v) { rate.Text = v; SetRate(); } };
             rate.LostKeyboardFocus += (_, _) => SetRate();

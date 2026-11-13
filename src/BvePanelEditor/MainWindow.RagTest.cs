@@ -72,6 +72,8 @@ public partial class MainWindow
             var item = _scene!.ItemFor(speedo)!;
             Check("針は表のとおり -95.5 度を指す", Math.Abs(item.TargetAngle(Subjects.Resolve(item.Subject, Canvas.State)) - (-95.5)) < 0.01);
             _states.SetValue("kmph", 30);
+            StartRagSweep(Rag!.ForAts(30)!, fromStart: false);
+            _ragSweepRate = 0; // 値は止めたまま、走った距離だけ進める
             RagTick(0.05);
             double a1 = Canvas.State["ats30"];
             RagTick(0.05);
@@ -81,6 +83,12 @@ public partial class MainWindow
             a1 = Canvas.State["ats30"];
             RagTick(0.05);
             Check("しきい値より速いと振動しない", Canvas.State["ats30"] == a1);
+            StopRagSweep();
+            _states.SetValue("kmph", 30);
+            RagTick(0.05);
+            a1 = Canvas.State["ats30"];
+            RagTick(0.05);
+            Check("自動で動かすのを止めると、揺れも止まって表の値のままになる", Canvas.State["ats30"] == a1 && a1 == Rag!.ForAts(30)!.PanelValue(30, 0, false));
 
             // 右の欄: 表の編集
             SelectSection(speedo);

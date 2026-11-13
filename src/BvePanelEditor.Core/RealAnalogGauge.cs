@@ -142,6 +142,12 @@ public sealed class RagGauge
     /// <summary>入力値（と走った距離）から、ats に書く値（(角度 + 180) × 1000 を整数に。C の int への変換と同じく 0 の方へ切り捨て）。</summary>
     public double PanelValue(double input, double location) => Math.Truncate((OutputAngle(input, location) + 180) * 1000);
 
+    /// <summary>入力値から、針の角度。vibrate が false なら振動なし（表だけ）。</summary>
+    public double OutputAngle(double input, double location, bool vibrate) => vibrate ? OutputAngle(input, location) : Interpolate(input);
+
+    /// <summary>入力値から、ats に書く値。vibrate が false なら振動なし（表だけ）。</summary>
+    public double PanelValue(double input, double location, bool vibrate) => Math.Truncate((OutputAngle(input, location, vibrate) + 180) * 1000);
+
     /// <summary>プラグインの Subject を、パネルくんの状態量のキーに（panelN → atsN。soundN は null）。</summary>
     public static string? StateKey(string subject)
     {
