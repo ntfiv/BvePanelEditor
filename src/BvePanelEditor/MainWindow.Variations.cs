@@ -493,7 +493,7 @@ public partial class MainWindow
                 var enc = BveText.ResolveSaveEncoding(text, _info);
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 if (File.Exists(path) && _backedUp.Add(path)) File.Copy(path, path + ".bak", overwrite: true);
-                File.WriteAllBytes(path, BveText.Encode(text, enc, _info.HasBom));
+                AtomicFile.WriteAllBytes(path, BveText.Encode(text, enc, _info.HasBom));
                 written.Add(path);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -546,7 +546,7 @@ public partial class MainWindow
         if (File.Exists(masterPath) && !IsTestRun && !Confirm($"「{Path.GetFileName(masterPath)}」はもうあります。上書きしますか？")) return null;
         var masterText = result.Master.Serialize();
         var enc = BveText.ResolveSaveEncoding(masterText, info!);
-        try { File.WriteAllBytes(masterPath, BveText.Encode(masterText, enc, info!.HasBom)); }
+        try { AtomicFile.WriteAllBytes(masterPath, BveText.Encode(masterText, enc, info!.HasBom)); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Warn($"マスターパネルを保存できませんでした:\n{ex.Message}");
