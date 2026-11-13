@@ -40,6 +40,9 @@ public sealed class AboutWindow : Window
 
         root.Children.Add(new TextBlock { Text = "使っているライブラリ・同梱している素材", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 4) });
         root.Children.Add(Credit("AvalonEdit（テキスト欄）", "MIT License　Copyright (c) 2000-2023 AlphaSierraPapa for the SharpDevelop Team", "https://github.com/icsharpcode/AvalonEdit"));
+        root.Children.Add(Credit("RealAnalogGauge（BVE Workshop 作の ATS プラグイン）",
+            "動作プレビューで針の動きを再現する計算は、RealAnalogGauge のソースを参考に移植しています。MIT License　Copyright (c) 2015 BVE Workshop",
+            "https://bvews.jpn.org/materials/real-analog-gauge/"));
         root.Children.Add(Credit("標準の針（needles）", "作者の自作素材（CC0）", null));
         root.Children.Add(Credit("E217 の針（needle_E217）", "内房線製作チーム制作の E217 系に同梱のものを使用させていただいています", "https://bvets.net/uchibo/"));
         root.Children.Add(Credit("サンプル（sample）", "作者が過去に公開した車両の素材。動作確認用で、フリー素材ではなく MIT ライセンスの対象外です", null));

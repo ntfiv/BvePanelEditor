@@ -25,6 +25,39 @@
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 
+■ RealAnalogGauge（BVE Workshop 作の ATS プラグイン）
+  https://bvews.jpn.org/materials/real-analog-gauge/
+  ライセンス: MIT License
+
+  パネルくんの「RealAnalogGauge 対応」（動作プレビューで針の動きを再現する機能）は、
+  RealAnalogGauge のソースコードを参考にして、次の計算を C# に移植しています。
+  ・指示角度の補正（表の値の間を直線でつなぐ計算）
+  ・低速時の速度計の指針の振動
+  ・状態量の選び方（Subject）と、パネルに書く値の求め方
+  ・設定ファイル（ini・csv）の読み方
+  プラグイン本体（DLL）・設定ファイル・ソースコードは、パネルくんには同梱していません。
+  すばらしいプラグインを公開してくださった BVE Workshop さんに感謝します。
+
+  Copyright (c) 2015 BVE Workshop
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+  THE SOFTWARE.
+
 ■ 標準の針（needles フォルダ）
   作者の自作素材。CC0（自由に使えます）。詳しくは needles\Readme.txt。
 

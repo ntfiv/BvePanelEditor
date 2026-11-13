@@ -7,6 +7,11 @@ namespace BvePanelEditor.Core;
 /// <summary>
 /// RealAnalogGauge（BVE Workshop 作の ATS プラグイン。MIT ライセンス）の設定の読み書きと、プラグインと同じ計算。
 /// <para>
+/// 計算（Interpolate・Vibrate・PanelValue・StateKey）と設定ファイルの読み方は、RealAnalogGauge のソースコード
+/// （https://bvews.jpn.org/materials/real-analog-gauge/）を参考にして C# に移植したもの。
+/// Copyright (c) 2015 BVE Workshop. MIT License（全文はリポジトリ直下の THIRD-PARTY-NOTICES.txt）。
+/// </para>
+/// <para>
 /// プラグインの決まり（ソースの RealAnalogGauge.cpp・UnequalIntervalScale.cpp・NeedleVibration.cpp に合わせる）:
 /// <list type="bullet">
 /// <item>DLL と同じ名前の ini（親）の [FileName] Gauge0〜Gauge15 に、針ごとの設定の名前（拡張子なし、DLL のフォルダからの相対）を書く。</item>
