@@ -69,6 +69,16 @@ public class RealAnalogGaugeTests
     }
 
     [Fact]
+    public void PanelValue_without_vibration_uses_table_only()
+    {
+        var g = Gauge(SpeedCsv);
+        g.Period = 0.5; g.Amplitude = 10; g.Threshold = 52;
+        Assert.Equal(Math.Truncate((g.Interpolate(30) + 180) * 1000), g.PanelValue(30, 3, false)); // 距離によらず表だけ
+        Assert.NotEqual(g.PanelValue(30, 3, false), g.PanelValue(30, 3, true));                        // 振動ありならずれる
+        Assert.Equal(52000, g.PanelValue(-5, 3, false));                                                 // 負の入力は符号のまま（-128 度）
+    }
+
+    [Fact]
     public void LinearFit_reports_largest_error()
     {
         var fit = Gauge("0,-120\r\n50,10\r\n100,120\r\n").LinearFit();
