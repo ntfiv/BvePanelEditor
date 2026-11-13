@@ -5,7 +5,7 @@ using Xunit;
 
 namespace BvePanelEditor.Tests;
 
-/// <summary>指針の蓋: 切り抜く形（丸・多角形）と、蓋の丸を見つける。</summary>
+/// <summary>指針のふた: 切り抜く形（丸・多角形）と、ふたの丸を見つける。</summary>
 public sealed class CoverTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "panelkun_cover_" + Guid.NewGuid().ToString("N"));
@@ -15,7 +15,7 @@ public sealed class CoverTests : IDisposable
     private static PsdPixels Solid(int w, int h, byte v) => new(new PsdRect(0, 0, w, h), Enumerable.Repeat(v, w * h * 4).ToArray());
     private static byte Alpha(PsdPixels p, int x, int y) => p.Bgra[(y * p.Width + x) * 4 + 3];
 
-    /// <summary>灰色の板に、(cx, cy) 中心・半径 r の白い丸（蓋）と、その外に半径 ring の黒い輪を描く。</summary>
+    /// <summary>灰色の板に、(cx, cy) 中心・半径 r の白い丸（ふた）と、その外に半径 ring の黒い輪を描く。</summary>
     private static PsdPixels Dial(int w, int h, double cx, double cy, double r, double ring = 0)
     {
         var p = Solid(w, h, 128);
@@ -193,21 +193,21 @@ public sealed class CoverTests : IDisposable
     [Fact]
     public void UpdateKeepsTheShape()
     {
-        // 元の画像（パネルの左上に置く）から、丸で切り抜いた蓋
+        // 元の画像（パネルの左上に置く）から、丸で切り抜いたふた
         var src = Dial(100, 80, 50, 40, 10);
         var panel = Path.Combine(_dir, "panel.png");
         File.WriteAllBytes(panel, PngWriter.Encode(src));
         var shapes = new List<CropShape> { CropShape.Circle(10, 10, 10) };
         var cut = CropShape.Mask(RegionDetect.CropOf(src, new PsdRect(40, 30, 60, 50)), shapes);
         Directory.CreateDirectory(Path.Combine(_dir, "crop"));
-        File.WriteAllBytes(Path.Combine(_dir, "crop", "蓋.png"), PngWriter.EncodePow2(cut));
+        File.WriteAllBytes(Path.Combine(_dir, "crop", "ふた.png"), PngWriter.EncodePow2(cut));
 
         var doc = PanelDocument.CreateNew("panel.png", 100, 80);
         doc.CropSets.Add(new CropSet { Name = "元 panel", Day = "panel.png" });
         var sec = PanelSection.Create(SectionKind.PilotLamp);
         sec.Set("Subject", "true");
         sec.Set("Location", "40, 30");
-        sec.Set("DaytimeImage", Path.Combine("crop", "蓋.png"));
+        sec.Set("DaytimeImage", Path.Combine("crop", "ふた.png"));
         sec.CropSet = "元 panel";
         sec.CropShapes.AddRange(shapes);
         doc.Sections.Add(sec);

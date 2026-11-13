@@ -22,7 +22,7 @@ public partial class MainWindow
 
     /// <summary>
     /// 選んだオブジェクトのレイヤーを layer にそろえる（null なら主に選んでいるオブジェクトのレイヤー）。
-    /// 重なっているオブジェクト（選んでいないオブジェクトとの組も）の手前・奥が入れ替わるとき（指針と蓋、赤と黒の針など）は、一覧を出して確認する。
+    /// 重なっているオブジェクト（選んでいないオブジェクトとの組も）の手前・奥が入れ替わるとき（指針とふた、赤と黒の針など）は、一覧を出して確認する。
     /// </summary>
     public void UnifyLayers(IReadOnlyList<int> targets, int? layer)
     {

@@ -2,13 +2,13 @@ using BvePanelEditor.Core.Psd;
 
 namespace BvePanelEditor.Core;
 
-/// <summary>見つけた蓋の丸（パネルの画像の座標）。Score は縁の色の変わり方（0〜255）。</summary>
+/// <summary>見つけたふたの丸（パネルの画像の座標）。Score は縁の色の変わり方（0〜255）。</summary>
 public sealed record CoverCircleResult(double Cx, double Cy, double R, double Score);
 
 /// <summary>
-/// パネルの画像に描かれた、針の軸の蓋（丸）を見つける。
+/// パネルの画像に描かれた、針の軸のふた（丸）を見つける。
 /// 針の回転の中心のまわりで、中心を少しずつずらしながら半径ごとに円周の内と外の色の差を調べ、
-/// 円周の「ほぼ全部」で色が変わる（差の下から 1/4 の値が大きい）円を蓋の縁の候補とする。
+/// 円周の「ほぼ全部」で色が変わる（差の下から 1/4 の値が大きい）円をふたの縁の候補とする。
 /// </summary>
 public static class CoverCircle
 {
@@ -18,7 +18,7 @@ public static class CoverCircle
     public static CoverCircleResult? Detect(PsdPixels img, double cx, double cy, double maxR, int shift = 6, double minR = 4) =>
         DetectAll(img, cx, cy, maxR, shift, minR).FirstOrDefault();
 
-    /// <summary>蓋の縁の候補を、色の変わり方の強い順に返す（文字盤の輪なども候補になるので、画面で選び直せるようにする）。</summary>
+    /// <summary>ふたの縁の候補を、色の変わり方の強い順に返す（文字盤の輪なども候補になるので、画面で選び直せるようにする）。</summary>
     public static List<CoverCircleResult> DetectAll(PsdPixels img, double cx, double cy, double maxR, int shift = 6, double minR = 4, double minScore = 24)
     {
         if (img.Width == 0 || maxR < minR) return [];
