@@ -162,6 +162,49 @@ public sealed class VariationTests : IDisposable
     /// BVE_VARIATION_MASTERS（; 区切り）を設定したときだけ動く。「; @group」の印の付いたマスターを読み（読み取りのみ）、
     /// そのまま書くと元と同じになり、印の読み間違いがないことを確かめる。
     /// </summary>
+    static string LampAt(string name, string loc) =>
+        $"\r\n;{name}\r\n[PilotLamp]\r\nSubject = ats\r\nLocation = {loc}\r\nDaytimeImage = a.png\r\n";
+
+    [Fact]
+    public void NearMissValueDifferenceIsReported()
+    {
+        // 同じ名前・同じキーの顔ぶれで、値だけが違う: 分けたまま、違いを知らせる
+        var a = Path.Combine(_dir, "a.txt"); var b = Path.Combine(_dir, "b.txt");
+        File.WriteAllText(a, Head + LampAt("速度計", "0, 0"));
+        File.WriteAllText(b, Head + LampAt("速度計", "10, 0"));
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Equal(2, r.Master.Sections.Count(s => s.Title == "速度計")); // まとめ方は変えない
+        Assert.Contains(r.Notes, n => n.Contains("値の違い") && n.Contains("Location") && n.Contains("10, 0"));
+    }
+
+    [Fact]
+    public void NearMissOrderDifferenceIsReported()
+    {
+        // 中身は同じで、パネルの中での並びが入れ替わっている: 片方が 2 つに分かれ、並びの違いを知らせる
+        var a = Path.Combine(_dir, "a.txt"); var b = Path.Combine(_dir, "b.txt");
+        File.WriteAllText(a, Head + Lamp("X", "sx") + Lamp("Y", "sy"));
+        File.WriteAllText(b, Head + Lamp("Y", "sy") + Lamp("X", "sx"));
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.Contains(r.Notes, n => n.Contains("並び位置が違う"));
+    }
+
+    [Fact]
+    public void NearMissNotReportedForOrdinaryPanels()
+    {
+        // 名前のない別々の表示灯（よくある形）と、同じ表示灯が 2 つある場合では知らせない
+        var a = Path.Combine(_dir, "a.txt"); var b = Path.Combine(_dir, "b.txt");
+        const string untitled = "\r\n[PilotLamp]\r\nSubject = s1\r\nLocation = 0, 0\r\nDaytimeImage = a.png\r\n"
+            + "\r\n[PilotLamp]\r\nSubject = s2\r\nLocation = 9, 9\r\nDaytimeImage = b.png\r\n";
+        File.WriteAllText(a, Head + untitled);
+        File.WriteAllText(b, Head + untitled);
+        var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.DoesNotContain(r.Notes, n => n.Contains("分かれ"));
+        File.WriteAllText(a, Head + Lamp("同", "s") + Lamp("同", "s"));
+        File.WriteAllText(b, Head + Lamp("同", "s") + Lamp("同", "s"));
+        r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
+        Assert.DoesNotContain(r.Notes, n => n.Contains("分かれ"));
+    }
+
     [Fact]
     public void RealMastersRoundTrip()
     {
