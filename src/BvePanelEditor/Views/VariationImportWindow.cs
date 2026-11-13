@@ -52,7 +52,9 @@ public sealed partial class VariationImportWindow : Window
         {
             Text = "バリエーションごとに作ってあるパネルファイルを選ぶと、中身（見出しとキー・値）が同じオブジェクトを 1 つにまとめたマスターパネルを作ります。"
                 + "どのバリエーションに入るかは「; @group 名前」で書きます。元のパネルは書き換えません。"
-                + "別々のフォルダのパネルでも、画像の場所をマスターからのものに直して取り込みます。出力ファイルは元のパネルファイルにするので、書き出すと元の場所に作り直せます。",
+                + "別々のフォルダのパネルでも、画像の場所をマスターからのものに直して取り込みます。出力ファイルは元のパネルファイルにするので、書き出すと元の場所に作り直せます。"
+                + "先頭のパネルが「基準パネル」で、マスターの並び・1 行目・コメントとグループは基準パネルのものを使います。"
+                + "切り抜き元や PSD とのつながりも基準パネルのものだけが残るので、画像取り込み（切り抜き・PSD）から作ったパネルは先頭に置くと、そのつながりを引き継げます。",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8),
         };
         DockPanel.SetDock(top, Dock.Top);
@@ -86,7 +88,7 @@ public sealed partial class VariationImportWindow : Window
         add.Click += (_, _) => AddFilesDialog();
         DockPanel.SetDock(add, Dock.Right);
         listHead.Children.Add(add);
-        listHead.Children.Add(new TextBlock { Text = "取り込むパネル（バリエーション名 ／ ファイル）。1 つ目のパネルを土台にします", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        listHead.Children.Add(new TextBlock { Text = "取り込むパネル（バリエーション名 ／ ファイル）。先頭のパネルが基準パネルです", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         DockPanel.SetDock(listHead, Dock.Top);
         root.Children.Add(listHead);
         root.Children.Add(new ScrollViewer { Content = _rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, BorderBrush = Brushes.LightGray, BorderThickness = new Thickness(1) });
@@ -175,10 +177,24 @@ public sealed partial class VariationImportWindow : Window
             remove.Click += (_, _) => { _entries.Remove(e); RefreshRows(); };
             DockPanel.SetDock(remove, Dock.Right);
             row.Children.Add(remove);
+            if (i > 0)
+            {
+                var toBase = new Button { Content = "基準にする", Padding = new Thickness(6, 0, 6, 0), Margin = new Thickness(6, 1, 0, 1), ToolTip = "このパネルを基準パネル（先頭）にする" };
+                toBase.Click += (_, _) =>
+                {
+                    _entries.Remove(e);
+                    _entries.Insert(0, e);
+                    if (!_masterEdited) // 保存先の初期値は基準パネルから付ける
+                        _master.Text = Path.Combine(Path.GetDirectoryName(e.Path)!, $"_{Path.GetFileNameWithoutExtension(e.Path)}_master{Path.GetExtension(e.Path)}");
+                    RefreshRows();
+                };
+                DockPanel.SetDock(toBase, Dock.Right);
+                row.Children.Add(toBase);
+            }
             (e.Name.Parent as Panel)?.Children.Remove(e.Name);
             DockPanel.SetDock(e.Name, Dock.Left);
             row.Children.Add(e.Name);
-            row.Children.Add(new TextBlock { Text = (i == 0 ? "（土台）" : "") + e.Path, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = e.Path });
+            row.Children.Add(new TextBlock { Text = (i == 0 ? "（基準）" : "") + e.Path, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = i == 0 ? "基準パネル: 並び・1 行目・コメントとグループ、切り抜き元や PSD とのつながりは、このパネルのものを使います\n" + e.Path : e.Path });
             _rows.Children.Add(row);
         }
         if (_entries.Count == 0) _rows.Children.Add(new TextBlock { Text = "「パネルを足す…」で 2 つ以上のパネルファイルを選んでください", Foreground = Brushes.Gray, Margin = new Thickness(6) });

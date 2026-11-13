@@ -18,7 +18,7 @@ public sealed class VariationMergeResult
 
 /// <summary>
 /// 既存のバリエーション別パネルから、マスターパネルを作る。
-/// 中身（見出しと、キーと値の並び）が同じオブジェクトは 1 つにまとめ、入るバリエーションを条件にする。並びは 1 つ目のパネルを土台に、LCS で合わせる。
+/// 中身（見出しと、キーと値の並び）が同じオブジェクトは 1 つにまとめ、入るバリエーションを条件にする。並びは 1 つ目のパネル（基準パネル）に、LCS で合わせる。
 /// 画像の相対パスはマスターの場所からのものに直す。
 /// </summary>
 public static class VariationMerge
@@ -103,7 +103,7 @@ public static class VariationMerge
         bool commentDiff = false;
         bool unifiedDiff = false;
 
-        // 1 つ目を土台に、2 つ目から順に並びを合わせる
+        // 基準パネル（1 つ目）を基準に、2 つ目から順に並びを合わせる
         var merged = first.Sections.Select(s => (Sec: s, Members: new HashSet<int> { 0 })).ToList();
         for (int k = 1; k < docs.Count; k++)
         {
@@ -141,10 +141,10 @@ public static class VariationMerge
             }
             merged = next;
         }
-        if (commentDiff) notes.Add("バリエーションごとにコメントが違うオブジェクトがありました。マスターでは、先に取り込んだパネルのコメントを使います");
-        if (unifiedDiff) notes.Add("書き方だけが違うオブジェクトを 1 つにまとめました（書き出しでは、先に取り込んだパネルの書き方になります）");
+        if (commentDiff) notes.Add("バリエーションごとにコメントが違うオブジェクトがありました。マスターでは、基準パネルのコメントを使います");
+        if (unifiedDiff) notes.Add("書き方だけが違うオブジェクトを 1 つにまとめました（書き出しでは、基準パネルの書き方になります）");
 
-        var master = PanelDocument.Parse(sources[0].Text); // 1 行目・前置き・改行・切り抜き元などは 1 つ目のまま
+        var master = PanelDocument.Parse(sources[0].Text); // 1 行目・前置き・改行・切り抜き元などは基準パネル（1 つ目）のまま
         master.Sections.Clear();
         var names = sources.Select(s => s.Name).ToList();
         int common = 0, partial = 0;
@@ -165,7 +165,7 @@ public static class VariationMerge
             }
             master.Sections.Add(sec);
         }
-        if (otherGroups) notes.Add("2 つ目からのパネルだけにあるオブジェクトのグループは外しました（グループは 1 つ目のパネルのものだけを使います）");
+        if (otherGroups) notes.Add("2 つ目からのパネルだけにあるオブジェクトのグループは外しました（グループは基準パネルのものだけを使います）");
         if (otherMeta) notes.Add("2 つ目からのパネルだけにあるオブジェクトの、切り抜き元・PSD・メインパネルのつながりは外しました");
         // 並べ替えで続かなくなったグループは外す
         foreach (var g in master.GroupNames())
@@ -175,17 +175,17 @@ public static class VariationMerge
             foreach (var s in master.Sections) s.Groups.Remove(g);
             notes.Add($"グループ「{g}」は、間にほかのバリエーションのオブジェクトが入って続かなくなったので外しました");
         }
-        // 切り抜き元・PSD の場所は 1 つ目のパネルのフォルダからのもの。マスターが別のフォルダなら外す
+        // 切り抜き元・PSD の場所は基準パネルのフォルダからのもの。マスターが別のフォルダなら外す
         var firstDir = Path.GetDirectoryName(Path.GetFullPath(sources[0].Path))!;
         if (!string.Equals(firstDir.TrimEnd('\\'), masterDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) && (master.CropSets.Count > 0 || master.PsdSources.Count > 0))
         {
             master.CropSets.Clear();
             master.PsdSources.Clear();
             foreach (var s in master.Sections) { s.CropSet = null; s.PsdLayers.Clear(); s.CropShapes.Clear(); }
-            notes.Add("マスターを 1 つ目のパネルと別のフォルダに作るので、切り抜き元・PSD とのつながりは外しました");
+            notes.Add("マスターを基準パネルと別のフォルダに作るので、切り抜き元・PSD とのつながりは外しました");
         }
         if (docs.Skip(1).Any(d => d.HeaderLine.Trim() != first.HeaderLine.Trim()))
-            notes.Add($"1 行目（版・文字コード）が違うパネルがあります。マスターは 1 つ目の「{first.HeaderLine.Trim()}」にします");
+            notes.Add($"1 行目（版・文字コード）が違うパネルがあります。マスターは基準パネルの「{first.HeaderLine.Trim()}」にします");
         int thisCount = master.Sections.Count(s => s.Kind == SectionKind.This);
         if (thisCount > 1) notes.Add($"[This] がバリエーションによって違うので、[This] が {thisCount} 個あります（それぞれ入るバリエーションの条件付き）");
 
