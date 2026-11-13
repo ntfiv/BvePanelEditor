@@ -686,8 +686,10 @@ public partial class MainWindow : Window
             Text = p.Section >= 0 ? $"#{p.Section + 1} {DisplayName(_doc.Sections[p.Section])}: {p.Message}" : p.Message,
         }));
         var ragRows = RagProblemRows();
-        problemRows.InsertRange(0, ragRows.Where(r => r.InfoMark != null));
+        var ragInfo = ragRows.Where(r => r.InfoMark != null).ToList();
+        problemRows.InsertRange(0, ragInfo);
         problemRows.AddRange(ragRows.Where(r => r.InfoMark == null));
+        problemRows.InsertRange(ragInfo.Count, NearMissRows()); // 分かれたオブジェクトの知らせ（警告ではない）
         ProblemList.ItemsSource = problemRows;
         int warnCount = warnings.Count + (_info.HeaderEncoding != null ? 1 : 0) + ragRows.Count(r => r.InfoMark == null);
         ProblemHeader.Text = (warnCount == 0 ? "問題なし" : $"問題 {warnCount} 件（ダブルクリックで移動）") + (bveExSections.Count > 0 ? "・BveEX 対応オブジェクトあり" : "");

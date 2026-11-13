@@ -114,25 +114,38 @@ public static class VariationMerge
         return string.IsNullOrEmpty(hint) ? $"[{s.Name.Trim()}]" : $"[{s.Name.Trim()}]（{hint}）";
     }
 
+    /// <summary>分かれたオブジェクトの知らせ（載せるセクションの位置・短い文・詳しい文）。</summary>
+    public sealed record NearMissNote(int Section, string Text, string Detail);
+
     /// <summary>
-    /// 並び位置や値の違いで 1 つにまとめられなかったオブジェクトを、知らせで伝える（まとめ方は変えない）。
-    /// 書き出しの再現を優先して分けたままにするが、どこがどう違うかを見れば、元のパネルで直すかどうかを判断できる。
+    /// マスターの中で、並び位置や値の違いで分かれているオブジェクトを探す。
+    /// 各オブジェクトの入るバリエーションは条件（; @group）から求めるので、取り込み直後のマスターでも、手で作ったマスターでも同じように見つかる。
     /// </summary>
-    private static void AddNearMissNotes(List<(PanelSection Sec, HashSet<int> Members)> merged, IReadOnlyList<string> names, int total, List<string> notes)
+    public static List<NearMissNote> FindNearMisses(PanelDocument doc)
     {
-        var all = new HashSet<int>(Enumerable.Range(0, total));
+        var names = doc.VariationNames;
+        if (names.Count < 2) return [];
+        var items = doc.Sections.Select((s, i) => (Sec: s, Members: new HashSet<int>(Enumerable.Range(0, names.Count).Where(j => s.InVariation(names[j]))), Pos: i)).ToList();
+        return DetectNearMisses(items, names);
+    }
+
+    private static List<NearMissNote> DetectNearMisses(IReadOnlyList<(PanelSection Sec, HashSet<int> Members, int Pos)> items, IReadOnlyList<string> names)
+    {
+        var all = new HashSet<int>(Enumerable.Range(0, names.Count));
         bool Partial(HashSet<int> m) => !m.SetEquals(all);
         string MemberNames(HashSet<int> m) => string.Join("・", names.Where((_, i) => m.Contains(i)));
-        var found = new List<string>();
-        // 内容は同じで、パネルの中での並び位置が違うために分かれたもの
-        foreach (var g in merged.Where(m => m.Sec.Kind != SectionKind.This).GroupBy(m => Key(m.Sec)))
+        var found = new List<NearMissNote>();
+        // 内容は同じで、並び位置が違うために分かれたもの
+        foreach (var g in items.Where(m => m.Sec.Kind != SectionKind.This).GroupBy(m => Key(m.Sec)))
         {
             var list = g.ToList();
             if (list.Count >= 2 && list.Any(m => Partial(m.Members)))
-                found.Add($"『{Label(list[0].Sec)}』は内容が同じですが、パネルの中での並び位置が違うため {list.Count} つに分かれています。元のパネルで並びをそろえると 1 つにまとめられます");
+                found.Add(new NearMissNote(list[0].Pos,
+                    $"『{Label(list[0].Sec)}』は内容が同じオブジェクトが {list.Count} つに分かれています",
+                    "並び位置の違いで分かれています。元のパネル同士で並びをそろえてから取り込むと 1 つにまとめられます。1 つにまとめると、書き出しの並びはマスターの並びにそろいます"));
         }
         // 名前とキーの顔ぶれが同じで、値が違うために分かれたもの
-        foreach (var g in merged.Where(m => m.Sec.Kind != SectionKind.This && !string.IsNullOrWhiteSpace(m.Sec.Title)).GroupBy(m => ShapeKey(m.Sec)))
+        foreach (var g in items.Where(m => m.Sec.Kind != SectionKind.This && !string.IsNullOrWhiteSpace(m.Sec.Title)).GroupBy(m => ShapeKey(m.Sec)))
         {
             var list = g.ToList();
             if (list.Count < 2 || !list.Any(m => Partial(m.Members))) continue;
@@ -150,14 +163,11 @@ public static class VariationMerge
                 if (diffs.Count >= 4) break;
             }
             if (diffs.Count == 0) continue;
-            found.Add($"『{Label(a.Sec)}』は値の違いで {list.Count} つに分かれています（{string.Join("、", diffs)}）。1 つにまとめると片方の値で書き出され、見た目が変わる可能性があります。元のパネルで確認してください");
+            found.Add(new NearMissNote(a.Pos,
+                $"『{Label(a.Sec)}』は値の違いで {list.Count} つに分かれています",
+                $"{string.Join("、", diffs)}。1 つにまとめると片方の値で書き出され、見た目が変わる可能性があります。それぞれのオブジェクトを選んで値を確認してください"));
         }
-        if (found.Count > 6)
-        {
-            notes.AddRange(found.Take(6));
-            notes.Add($"ほかにも、並び位置や値の違いで分かれたオブジェクトが {found.Count - 6} 件あります");
-        }
-        else notes.AddRange(found);
+        return found;
     }
 
     public static VariationMergeResult Merge(IReadOnlyList<VariationSource> sources, string masterPath)
@@ -269,7 +279,6 @@ public static class VariationMerge
         foreach (var src in sources)
             master.Variations.Add(new PanelVariation { Name = src.Name, File = Path.GetRelativePath(masterDir, Path.GetFullPath(src.Path)) });
 
-        AddNearMissNotes(merged, names, sources.Count, notes);
         var result = new VariationMergeResult { Master = master, Common = common, Partial = partial };
         result.Notes.AddRange(notes);
         // 書き出し直して、元と同じ中身になるかを確かめる

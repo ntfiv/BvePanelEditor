@@ -168,24 +168,26 @@ public sealed class VariationTests : IDisposable
     [Fact]
     public void NearMissValueDifferenceIsReported()
     {
-        // 同じ名前・同じキーの顔ぶれで、値だけが違う: 分けたまま、違いを知らせる
+        // 同じ名前・同じキーの顔ぶれで、値だけが違う: 分けたまま、マスターから検出して知らせる（取り込みの知らせには混ぜない）
         var a = Path.Combine(_dir, "a.txt"); var b = Path.Combine(_dir, "b.txt");
         File.WriteAllText(a, Head + LampAt("速度計", "0, 0"));
         File.WriteAllText(b, Head + LampAt("速度計", "10, 0"));
         var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
         Assert.Equal(2, r.Master.Sections.Count(s => s.Title == "速度計")); // まとめ方は変えない
-        Assert.Contains(r.Notes, n => n.Contains("値の違い") && n.Contains("Location") && n.Contains("10, 0"));
+        Assert.DoesNotContain(r.Notes, n => n.Contains("分かれ"));
+        var near = VariationMerge.FindNearMisses(r.Master);
+        Assert.Contains(near, n => n.Text.Contains("値の違い") && n.Detail.Contains("Location") && n.Detail.Contains("10, 0"));
     }
 
     [Fact]
     public void NearMissOrderDifferenceIsReported()
     {
-        // 中身は同じで、パネルの中での並びが入れ替わっている: 片方が 2 つに分かれ、並びの違いを知らせる
+        // 中身は同じで、並びが入れ替わっている: 片方が 2 つに分かれ、マスターから検出できる
         var a = Path.Combine(_dir, "a.txt"); var b = Path.Combine(_dir, "b.txt");
         File.WriteAllText(a, Head + Lamp("X", "sx") + Lamp("Y", "sy"));
         File.WriteAllText(b, Head + Lamp("Y", "sy") + Lamp("X", "sx"));
         var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
-        Assert.Contains(r.Notes, n => n.Contains("並び位置が違う"));
+        Assert.Contains(VariationMerge.FindNearMisses(r.Master), n => n.Detail.Contains("並び位置"));
     }
 
     [Fact]
@@ -198,11 +200,24 @@ public sealed class VariationTests : IDisposable
         File.WriteAllText(a, Head + untitled);
         File.WriteAllText(b, Head + untitled);
         var r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
-        Assert.DoesNotContain(r.Notes, n => n.Contains("分かれ"));
+        Assert.Empty(VariationMerge.FindNearMisses(r.Master));
         File.WriteAllText(a, Head + Lamp("同", "s") + Lamp("同", "s"));
         File.WriteAllText(b, Head + Lamp("同", "s") + Lamp("同", "s"));
         r = VariationMerge.Merge([new("A", a, File.ReadAllText(a)), new("B", b, File.ReadAllText(b))], Path.Combine(_dir, "_m.txt"));
-        Assert.DoesNotContain(r.Notes, n => n.Contains("分かれ"));
+        Assert.Empty(VariationMerge.FindNearMisses(r.Master));
+        // バリエーションのない普通のパネルでは探さない
+        Assert.Empty(VariationMerge.FindNearMisses(PanelDocument.Parse(Head + Lamp("X", "sx"))));
+    }
+
+    [Fact]
+    public void NearMissFoundInHandMadeMaster()
+    {
+        // 手で書いたマスターでも、条件から入るバリエーションを求めて検出できる
+        var text = "BveTs Instrument Panel 2.00\r\n;@バリエーション: A = a.txt\r\n;@バリエーション: B = b.txt\r\n\r\n[This]\r\nResolution = 1024\r\n"
+            + "\r\n; @group A" + LampAt("速度計", "0, 0") + "; @end\r\n"
+            + "\r\n; @group B" + LampAt("速度計", "10, 0") + "; @end\r\n";
+        var near = VariationMerge.FindNearMisses(PanelDocument.Parse(text));
+        Assert.Contains(near, n => n.Text.Contains("値の違い") && n.Section > 0);
     }
 
     [Fact]

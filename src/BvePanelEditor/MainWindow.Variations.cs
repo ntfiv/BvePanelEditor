@@ -515,6 +515,14 @@ public partial class MainWindow
         ImportVariations(w.Sources, w.MasterPath);
     }
 
+    /// <summary>並び位置や値の違いで分かれたオブジェクトの知らせ行（警告ではない印つき）。</summary>
+    private List<ProblemRow> NearMissRows()
+    {
+        if (_doc == null) return [];
+        return VariationMerge.FindNearMisses(_doc)
+            .Select(n => new ProblemRow { Section = n.Section, InfoMark = "分かれ", Text = n.Text, TipText = n.Detail }).ToList();
+    }
+
     /// <summary>既存のパネルからマスターを作って保存し、開く。戻り値は取り込みの結果（失敗なら null）。</summary>
     public VariationMergeResult? ImportVariations(IReadOnlyList<(string Name, string Path)> files, string masterPath)
     {
@@ -558,6 +566,8 @@ public partial class MainWindow
         if (result.Mismatches.Count > 0) msg += $"\n\n書き出し直すと元と違うバリエーションがあります: {string.Join("、", result.Mismatches)}";
         else msg += "\n\n各バリエーションを書き出し直すと、元のパネルと同じオブジェクト・値・並びになることを確かめました。";
         if (result.Notes.Count > 0) msg += "\n\n" + string.Join("\n", result.Notes.Select(n => "・" + n));
+        var nearCount = VariationMerge.FindNearMisses(result.Master).Count;
+        if (nearCount > 0) msg += $"\n\n並び位置や値の違いで分かれたオブジェクトが {nearCount} 件あります。左下の「問題」に知らせとして載せました（ダブルクリックでそのオブジェクトに移動できます）。";
         if (!IsTestRun) MessageBox.Show(this, msg, "既存のパネルからマスターを作る", MessageBoxButton.OK, MessageBoxImage.Information);
         Message($"マスターパネルを作りました（共通 {result.Common} 個・一部だけ {result.Partial} 個）");
         RightTabs.SelectedIndex = RightTabs.Items.Count - 1;
