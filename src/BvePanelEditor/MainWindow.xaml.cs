@@ -296,35 +296,51 @@ public partial class MainWindow : Window
     private void OnNew(object sender, ExecutedRoutedEventArgs e)
     {
         if (!ConfirmDiscard()) return;
-        var open = new OpenFileDialog { AddToRecent = false, Title = "パネルのベース画像を選ぶ", Filter = "画像|*.png;*.bmp;*.jpg;*.jpeg;*.gif|すべて|*.*" };
-        if (open.ShowDialog(this) != true) return;
-        var img = _cache.Get(open.FileName, null, null);
-        if (img == null) { Warn("画像を読めませんでした。"); return; }
-        var save = new SaveFileDialog
-        {
-            Title = "パネルファイルの保存先", Filter = PanelFilters.Save, FileName = "panel.txt",
-            InitialDirectory = Path.GetDirectoryName(open.FileName),
-        };
-        if (save.ShowDialog(this) != true) return;
-        var dir = Path.GetDirectoryName(save.FileName)!;
-        // [This] には画像を書かず、選んだ画像はメインパネル（常表示の表示灯）にする
-        var (cw, ch) = ContentSize(open.FileName) ?? (img.PixelWidth, img.PixelHeight);
-        _doc = MainPanel.CreateNew(PropertyEditor.RelativePath(dir, open.FileName), null, cw, ch);
-        _path = save.FileName;
+        // 起動したときと同じ、まっさらな状態に戻す（パネルはまだ無い。作り方はこのあと画像・PSD の読み込みなどから選ぶ）
+        _doc = null;
+        _path = null;
         _info = TextFileInfo.NewUtf8();
         _vehicle = null;
         _selected = -1;
         _selSet = [];
         _selGroup = null;
+        _viewVariation = null;
+        _folded.Clear();
+        _cache.Clear();
+        _lastPsdWarnings = [];
+        Canvas.ClearFreshEdit();
+        CoverButton.Visibility = Visibility.Collapsed;
+        SetEditorText("", clearUndo: true);
+        _savedText = "";
+        LoadRag(announce: false); // 前の車両の RealAnalogGauge 設定を持ち越さない
+        RebuildAll();
+        SetLocked(true);
+        Message("新規パネルです。画像・PSD の読み込みや、オブジェクトの追加から始めてください");
+        UpdateTitle();
+    }
+
+    /// <summary>
+    /// パネルが無ければ、その場で新しいパネルを作る（「オブジェクトの追加」などをそのまま始められるように）。
+    /// 大きさは、パネルに大きさの情報がないときの既定（1024×768）。まだ保存はしない（Ctrl+S で保存先を聞く）。
+    /// </summary>
+    private void EnsurePanel()
+    {
+        if (_doc != null) return;
+        _doc = PanelDocument.CreateNew(null, 1024, 768);
+        _path = null;
+        _info = TextFileInfo.NewUtf8();
+        _vehicle = null;
+        _selected = -1;
+        _selSet = [];
+        _selGroup = null;
+        _viewVariation = null;
         _folded.Clear();
         var text = _doc.Serialize();
         SetEditorText(text, clearUndo: true);
-        _savedText = "";
-        LoadRag(announce: false); // 新しいパネルには前の車両の RealAnalogGauge 設定を持ち越さない
+        _savedText = text; // 作っただけでは「未保存」にしない（何か足したり変えたら、その時点で未保存になる）
+        LoadRag(announce: false); // 前の車両の RealAnalogGauge 設定を持ち越さない
         RebuildAll();
         SetLocked(true);
-        Dispatcher.BeginInvoke(() => { Canvas.FitAll(); SelectSection(0); }, DispatcherPriority.Loaded);
-        Message("新しいパネルを作りました。まだ保存していません（Ctrl+S で保存）");
         UpdateTitle();
     }
 
@@ -574,7 +590,18 @@ public partial class MainWindow : Window
     {
         if (_doc == null)
         {
+            // パネルが無い（起動直後・新規パネル）: 一覧・問題・右の欄も空にする
+            _scene = null;
             Canvas.Clear();
+            ElementList.ItemsSource = null;
+            ProblemList.ItemsSource = null;
+            ProblemHeader.Text = "問題なし";
+            ProblemHeader.Foreground = Brushes.SeaGreen;
+            ProblemIcon.Visibility = Visibility.Collapsed;
+            FormatText.Text = "";
+            CropUpdateMenu.IsEnabled = false;
+            _props.Show(null, -1);
+            _states.Update(null);
             return;
         }
         var baseDir = _path != null ? Path.GetDirectoryName(_path) : null;
@@ -981,7 +1008,8 @@ public partial class MainWindow : Window
 
     private void OnAddElement(object sender, RoutedEventArgs e)
     {
-        if (_doc == null || sender is not MenuItem { Tag: string tag } || !Enum.TryParse<SectionKind>(tag, out var kind)) return;
+        if (sender is not MenuItem { Tag: string tag } || !Enum.TryParse<SectionKind>(tag, out var kind)) return;
+        EnsurePanel();
         FlushReparse();
         var baseDir = _path != null ? Path.GetDirectoryName(_path) : null;
         var sec = PanelSection.Create(kind);

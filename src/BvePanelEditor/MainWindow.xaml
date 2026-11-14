@@ -22,7 +22,7 @@
     <DockPanel>
         <Menu DockPanel.Dock="Top" Padding="2">
             <MenuItem Header="ファイル(_F)">
-                <MenuItem Header="新規パネル(_N)…" Command="ApplicationCommands.New" InputGestureText="Ctrl+N" />
+                <MenuItem Header="新規パネル(_N)" Command="ApplicationCommands.New" InputGestureText="Ctrl+N" />
                 <MenuItem Header="開く(_O)…" Command="ApplicationCommands.Open" InputGestureText="Ctrl+O"
                           ToolTip="パネルファイル・車両ファイル・シナリオファイルを開けます" />
                 <MenuItem x:Name="RecentMenu" Header="最近使ったファイル(_R)" />

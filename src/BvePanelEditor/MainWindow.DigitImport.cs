@@ -25,7 +25,19 @@ public partial class MainWindow
     /// </summary>
     private void OnAddImages(object? sender, RoutedEventArgs? e)
     {
-        if (_doc == null) { Message("先にパネルファイルを開くか、新規パネルを作ってください"); return; }
+        EnsurePanel();
+        if (_path == null)
+        {
+            // 画像はパネルの保存先から見た場所で書くので、選ぶ前に保存先を決める（PSD の取り込みと同じ順番）
+            var save = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "パネルファイルの保存先（画像はこのフォルダから見た場所で書きます）",
+                Filter = PanelFilters.Save, FileName = "panel.txt",
+            };
+            if (save.ShowDialog(this) != true) return;
+            _path = save.FileName;
+            UpdateTitle();
+        }
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             AddToRecent = false, Multiselect = true, Title = "読み込む画像・PSD",
