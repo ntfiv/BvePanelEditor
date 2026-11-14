@@ -1,4 +1,4 @@
-<Window x:Class="BvePanelEditor.Views.PsdImportWindow"
+﻿<Window x:Class="BvePanelEditor.Views.PsdImportWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:v="clr-namespace:BvePanelEditor.Views"
@@ -90,10 +90,10 @@
                                 <TextBlock Text="{Binding Eye}" Style="{StaticResource RowText}" Foreground="Gray" ToolTip="PSD での表示／非表示" />
                                 <TextBlock Text="{Binding Name}" Style="{StaticResource RowText}" FontWeight="{Binding NameWeight}" />
                                 <TextBlock Text="{Binding NightMark}" Style="{StaticResource RowText}" Foreground="#5A7FB8" FontSize="11" />
-                                <TextBlock Text="{Binding Cautions}" Style="{StaticResource RowText}" Foreground="#D00000" FontSize="11"
-                                           ToolTip="Photoshop と見た目が変わります（近似で再現する・再現しない）。PSD対応.md の △・× のもの" />
                                 <TextBlock Text="{Binding Notes}" Style="{StaticResource RowText}" Foreground="#0050D0" FontSize="11"
-                                           ToolTip="そのまま再現できるもの（PSD対応.md の ○ のもの）" />
+                                           ToolTip="{Binding NoteDetail}" />
+                                <TextBlock Text="{Binding CautionTags}" Style="{StaticResource RowText}" Foreground="#D00000" FontSize="11"
+                                           ToolTip="{Binding CautionDetail}" />
                             </StackPanel>
                         </HierarchicalDataTemplate>
                     </TreeView.ItemTemplate>

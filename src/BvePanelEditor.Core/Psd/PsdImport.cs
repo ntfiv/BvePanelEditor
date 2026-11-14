@@ -258,7 +258,7 @@ public static class PsdImport
     {
         var n = new List<string>();
         if (l.Kind == PsdLayerKind.Adjustment && l.Adjustment != null)
-            n.Add($"調整レイヤー（{l.Adjustment.Name}。ベースに重ねるときだけ効きます）");
+            n.Add($"調整: {l.Adjustment.Name}");
         if (l.Kind == PsdLayerKind.Fill && l.SolidColor != null) n.Add("べた塗り");
         if (l.Kind == PsdLayerKind.Fill && l.Gradient != null) n.Add("グラデーション塗り");
         if (l.Kind == PsdLayerKind.Text) n.Add("文字");
@@ -274,48 +274,75 @@ public static class PsdImport
         return string.Join("・", n);
     }
 
+    /// <summary>青い注記のツールチップに出す補足。調整レイヤーは「ベースに重ねるときだけ効く」ことをここで伝える（行の文は短く保つ）。</summary>
+    public static string NoteDetail(PsdLayer l)
+    {
+        var s = "そのまま再現できるもの（PSD対応.md の ○ のもの）";
+        if (l.Kind == PsdLayerKind.Adjustment && l.Adjustment != null)
+            s = "調整レイヤーは、ベースに重ねるときだけ効きます\n" + s;
+        return s;
+    }
+
     /// <summary>
     /// Photoshop と見た目が変わるもの（PSD 対応表の △＝近似・× ＝再現しない）。取り込み画面で赤く出す。なければ空。
     /// フォルダの描画モードは、中身がわからないと決められないので <see cref="FolderCautions"/> で。
     /// </summary>
-    public static string Cautions(PsdLayer l)
+    public static string Cautions(PsdLayer l) => string.Join("・", CautionItems(l).Select(x => x.Text));
+
+    /// <summary><see cref="Cautions"/> の中身を △（近似）／×（再現しない）に分けたもの。行には短い印だけ出し、詳細はツールチップで見せる。</summary>
+    public static IReadOnlyList<PsdWarning> CautionItems(PsdLayer l)
     {
-        var n = new List<string>();
+        var n = new List<PsdWarning>();
         if (l.Kind == PsdLayerKind.Adjustment)
         {
-            if (l.Adjustment == null) n.Add($"調整レイヤー（{PsdAdjust.Label(l.SpecialKey ?? "")}）は使えません");
-            else if (l.Adjustment.Note is { Length: > 0 } note) n.Add(note);
+            if (l.Adjustment == null) n.Add(new PsdWarning(PsdWarningKind.Unsupported, $"調整レイヤー（{PsdAdjust.Label(l.SpecialKey ?? "")}）は使えません"));
+            else if (l.Adjustment.Note is { Length: > 0 } note) n.Add(new PsdWarning(PsdWarningKind.Approx, note));
         }
         if (l.Kind == PsdLayerKind.Fill && l.SolidColor == null)
         {
-            if (l.Gradient != null) n.Add("グラデーション塗りは近似です");
-            else n.Add(l.SpecialKey == "PtFl" ? "パターンの塗りつぶしは使えません" : "グラデーションの塗りつぶしは使えません");
+            if (l.Gradient != null) n.Add(new PsdWarning(PsdWarningKind.Approx, "グラデーション塗りは近似です"));
+            else n.Add(new PsdWarning(PsdWarningKind.Unsupported, l.SpecialKey == "PtFl" ? "パターンの塗りつぶしは使えません" : "グラデーションの塗りつぶしは使えません"));
         }
         if (l.HasEffects)
         {
-            if (l.IsFolder) n.Add("フォルダの効果は再現しません");
-            else if (l.Effects == null) n.Add("効果（読めない形式）は再現しません");
+            if (l.IsFolder) n.Add(new PsdWarning(PsdWarningKind.Unsupported, "フォルダの効果は再現しません"));
+            else if (l.Effects == null) n.Add(new PsdWarning(PsdWarningKind.Unsupported, "効果（読めない形式）は再現しません"));
             else
             {
-                if (l.Effects.Unsupported.Count > 0) n.Add($"{string.Join("・", l.Effects.Unsupported.Distinct())}は再現しません");
-                n.AddRange(l.Effects.Approximate);
+                if (l.Effects.Unsupported.Count > 0) n.Add(new PsdWarning(PsdWarningKind.Unsupported, $"{string.Join("・", l.Effects.Unsupported.Distinct())}は再現しません"));
+                n.AddRange(l.Effects.Approximate.Select(a => new PsdWarning(PsdWarningKind.Approx, a)));
             }
         }
-        if (!l.IsFolder && l.BlendMode == "diss" && l.Kind != PsdLayerKind.Adjustment) n.Add("ディザ合成は通常として重ねます");
-        return string.Join("・", n);
+        if (!l.IsFolder && l.BlendMode == "diss" && l.Kind != PsdLayerKind.Adjustment) n.Add(new PsdWarning(PsdWarningKind.Approx, "ディザ合成は通常として重ねます"));
+        return n;
     }
 
     /// <summary>フォルダの、Photoshop と見た目が変わるもの（描画モード・効果）。inside はフォルダの中のレイヤー（入れ子も）。</summary>
     public static string FolderCautions(PsdLayer folder, IEnumerable<PsdLayer> inside)
+        => string.Join("・", FolderCautionItems(folder, inside).Select(x => x.Text));
+
+    /// <summary><see cref="FolderCautions"/> の中身を △／× に分けたもの。</summary>
+    public static IReadOnlyList<PsdWarning> FolderCautionItems(PsdLayer folder, IEnumerable<PsdLayer> inside)
     {
-        var n = new List<string>();
-        var c = Cautions(folder);
-        if (c.Length > 0) n.Add(c);
+        var n = new List<PsdWarning>(CautionItems(folder));
         // PsdCompose の警告と同じ決まり: 「通過」以外は再現しない。「通常」は、中身に通常以外の描画モードがあるときだけ見た目が変わる
         if (folder.BlendMode != "pass" && (folder.BlendMode != "norm" || inside.Any(x => !PsdCompose.IsNormalBlend(x.BlendMode))))
-            n.Add($"フォルダの描画モード（{PsdCompose.BlendLabel(folder.BlendMode)}）は再現しません（中身をそのまま重ねます）");
-        return string.Join("・", n);
+            n.Add(new PsdWarning(PsdWarningKind.Unsupported, $"フォルダの描画モード（{PsdCompose.BlendLabel(folder.BlendMode)}）は再現しません（中身をそのまま重ねます）"));
+        return n;
     }
+
+    /// <summary>レイヤーの行に出す短い印。× があれば「×非対応」、△ があれば「△近似」。両方あれば両方並べる。なければ空。</summary>
+    public static string CautionTags(IEnumerable<PsdWarning> items)
+    {
+        var tags = new List<string>();
+        if (items.Any(x => x.Kind == PsdWarningKind.Unsupported)) tags.Add("×非対応");
+        if (items.Any(x => x.Kind == PsdWarningKind.Approx)) tags.Add("△近似");
+        return string.Join("・", tags);
+    }
+
+    /// <summary>行の印にマウスを乗せたときに出す詳細。1 件 1 行で、頭に △／× を付ける。</summary>
+    public static string CautionDetail(IEnumerable<PsdWarning> items)
+        => string.Join("\n", items.Select(x => (x.Kind == PsdWarningKind.Unsupported ? "× " : "△ ") + x.Text));
 
     // ================= 名前 =================
 

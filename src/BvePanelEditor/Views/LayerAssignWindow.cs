@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -279,15 +279,15 @@ public sealed class LayerAssignWindow : Window
                 FontWeight = l.IsFolder ? FontWeights.SemiBold : FontWeights.Normal,
                 ToolTip = l.Path,
             };
-            // 読み込み画面と同じ出し方: 見た目が変わるもの（△・×）は赤、そのまま再現できる注記（○）は青で、行に直接出す
+            // 読み込み画面と同じ出し方: そのまま再現できる注記（○）は青で先に、見た目が変わるものは赤い短い印（×非対応・△近似）だけを行に出し、詳細はツールチップで見せる
             var texts = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4 + depth * 16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             texts.Children.Add(label);
-            var cautions = l.IsFolder ? PsdImport.FolderCautions(l, PixelLayersOf(l)) : PsdImport.Cautions(l);
-            if (cautions.Length > 0)
-                texts.Children.Add(new TextBlock { Text = cautions, Foreground = CautionBrush, FontSize = 11, Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = "Photoshop と見た目が変わります（近似で再現する・再現しない）。PSD対応.md の △・× のもの" });
             var notes = l.IsFolder ? "" : PsdImport.Notes(l);
             if (notes.Length > 0)
-                texts.Children.Add(new TextBlock { Text = notes, Foreground = NoteBrush, FontSize = 11, Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = "そのまま再現できるもの（PSD対応.md の ○ のもの）" });
+                texts.Children.Add(new TextBlock { Text = notes, Foreground = NoteBrush, FontSize = 11, Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = PsdImport.NoteDetail(l) });
+            var cautionItems = l.IsFolder ? PsdImport.FolderCautionItems(l, PixelLayersOf(l)) : PsdImport.CautionItems(l);
+            if (cautionItems.Count > 0)
+                texts.Children.Add(new TextBlock { Text = PsdImport.CautionTags(cautionItems), Foreground = CautionBrush, FontSize = 11, Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = PsdImport.CautionDetail(cautionItems) });
             Grid.SetColumn(texts, _columns.Length);
             row.Children.Add(texts);
             _rows.Children.Add(row);
