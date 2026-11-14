@@ -158,10 +158,6 @@ public sealed class VariationTests : IDisposable
         Assert.Equal(File.ReadAllText(b), r.Master.ExportVariation("B", _dir, _dir));
     }
 
-    /// <summary>
-    /// BVE_VARIATION_MASTERS（; 区切り）を設定したときだけ動く。「; @group」の印の付いたマスターを読み（読み取りのみ）、
-    /// そのまま書くと元と同じになり、印の読み間違いがないことを確かめる。
-    /// </summary>
     static string LampAt(string name, string loc) =>
         $"\r\n;{name}\r\n[PilotLamp]\r\nSubject = ats\r\nLocation = {loc}\r\nDaytimeImage = a.png\r\n";
 
@@ -237,6 +233,10 @@ public sealed class VariationTests : IDisposable
         Assert.Contains(near, n => n.Text.Contains("値の違い") && n.Section > 0);
     }
 
+    /// <summary>
+    /// BVE_VARIATION_MASTERS（; 区切り）を設定したときだけ動く。「; @group」の印の付いたマスターを読み（読み取りのみ）、
+    /// そのまま書くと元と同じになり、印の読み間違いがないことを確かめる。
+    /// </summary>
     [Fact]
     public void RealMastersRoundTrip()
     {
