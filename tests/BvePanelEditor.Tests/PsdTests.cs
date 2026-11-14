@@ -29,6 +29,63 @@ public sealed class PsdTests : IDisposable
     }
 
     [Fact]
+    public void FindHandlesDuplicateNames()
+    {
+        var p = WritePsd("dup.psd", 64, 32,
+            TestLayer.FolderEnd(),
+            TestLayer.Solid("色", new PsdRect(0, 0, 8, 8), 10, 0, 0),
+            TestLayer.Solid("色", new PsdRect(8, 0, 16, 8), 20, 0, 0),
+            TestLayer.Solid("板", new PsdRect(0, 8, 8, 16), 1, 2, 3),
+            TestLayer.FolderStart("束"));
+        using var psd = PsdFile.Open(p);
+        var lower = psd.Layers[1]; // 束/色 #2（下）
+        var upper = psd.Layers[2]; // 束/色（上）
+        Assert.Equal("束/色 #2", lower.Path);
+        Assert.Equal("束/色", upper.Path);
+        Assert.Same(upper, psd.Find("束/色"));
+        Assert.Same(lower, psd.Find("束/色 #2"));
+        Assert.Same(upper, psd.Find("束/色 #9")); // ない番号でも、「#」を除いた名前のいちばん上
+        Assert.Equal([lower, upper], psd.FindAllSameName("束/色"));
+        Assert.Null(psd.Find("色")); // 名前だけでは 2 枚あって決められない
+        Assert.Same(psd.Layers[3], psd.Find("板")); // 名前だけで 1 枚に決まるものは探せる
+    }
+
+    [Fact]
+    public void RejectsTooLargeCanvas()
+    {
+        var p = WritePsd("big.psd", 8, 4, TestLayer.Solid("板", new PsdRect(0, 0, 8, 4), 1, 2, 3));
+        var data = File.ReadAllBytes(p);
+        data[20] = 0x75; data[21] = 0x31; // ヘッダの幅（18 バイト目から）を 30001 に書き換える
+        File.WriteAllBytes(p, data);
+        Assert.Throws<InvalidDataException>(() => PsdFile.Open(p));
+    }
+
+    [Fact]
+    public void MaskCacheCountsTowardLimit()
+    {
+        var full = new PsdRect(0, 0, 8, 4);
+        TestLayer Masked(string name, byte r)
+        {
+            var l = TestLayer.Solid(name, full, r, 0, 0);
+            l.MaskBounds = full;
+            l.Mask = new byte[32];
+            Array.Fill(l.Mask, (byte)255);
+            return l;
+        }
+        var p = WritePsd("mask.psd", 8, 4, Masked("甲", 10), Masked("乙", 20));
+        using var psd = PsdFile.Open(p);
+        psd.CacheLimitBytes = 40; // マスク 1 枚（32 バイト）だけ入る大きさ
+        var a = psd.Find("甲")!;
+        var b = psd.Find("乙")!;
+        Assert.NotNull(psd.GetMask(a));
+        Assert.Equal(32, psd.CacheBytes);
+        Assert.NotNull(psd.GetMask(b));
+        Assert.Equal(32, psd.CacheBytes); // 甲は捨てられ、乙だけが残る
+        Assert.NotNull(psd.GetMask(a)); // 読み直せる
+        Assert.Equal(32, psd.CacheBytes);
+    }
+
+    [Fact]
     public void PackBitsRoundTrip()
     {
         var src = new byte[] { 1, 1, 1, 1, 2, 3, 4, 4, 4, 5, 6, 6, 7 };
