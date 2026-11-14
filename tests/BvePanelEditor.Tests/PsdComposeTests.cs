@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using BvePanelEditor.Core.Psd;
 using Xunit;
 
@@ -198,7 +198,8 @@ public sealed class PsdComposeTests : IDisposable
         var l = psd.Find("露光量")!;
         Assert.Equal(PsdLayerKind.Adjustment, l.Kind);
         Assert.False(l.CanCompose);
-        Assert.Contains("露光量", PsdImport.Notes(l));
+        Assert.Contains("露光量", PsdImport.Cautions(l)); // 使えない調整レイヤーは赤い知らせの方
+        Assert.DoesNotContain("露光量", PsdImport.Notes(l));
         Assert.Equal((100, 100, 100, 255), At(All(psd), 0, 0));
     }
 

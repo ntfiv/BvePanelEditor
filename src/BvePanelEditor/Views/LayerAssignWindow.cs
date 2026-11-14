@@ -273,7 +273,7 @@ public sealed class LayerAssignWindow : Window
                 Margin = new Thickness(4 + depth * 16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
                 Foreground = !usable ? Brushes.Silver : l.EffectivelyHidden ? Brushes.Gray : Brushes.Black,
                 FontWeight = l.IsFolder ? FontWeights.SemiBold : FontWeights.Normal,
-                ToolTip = l.Path + (PsdImport.Notes(l) is { Length: > 0 } n ? "\n" + n : ""),
+                ToolTip = l.Path + (PsdImport.Notes(l) is { Length: > 0 } n ? "\n" + n : "") + (PsdImport.Cautions(l) is { Length: > 0 } c ? "\n※ " + c : ""),
             };
             Grid.SetColumn(label, _columns.Length);
             row.Children.Add(label);

@@ -253,20 +253,62 @@ public static class PsdImport
         return (long)r.Width * r.Height <= (long)canvas.Width * canvas.Height / 50 ? PsdRole.Lamp : PsdRole.None;
     }
 
-    /// <summary>レイヤーの注意書き（効果・描画モード・種類）。なければ空。</summary>
+    /// <summary>レイヤーの注意書き（効果・描画モード・種類）。なければ空。近似（△）・再現しない（×）ものは <see cref="Cautions"/> に分ける。</summary>
     public static string Notes(PsdLayer l)
     {
         var n = new List<string>();
-        if (l.Kind == PsdLayerKind.Adjustment)
-            n.Add(l.Adjustment != null ? $"調整レイヤー（{l.Adjustment.Name}。ベースに重ねるときだけ効きます）" : $"調整レイヤー（{PsdAdjust.Label(l.SpecialKey ?? "")}）は使えません");
-        if (l.Kind == PsdLayerKind.Fill)
-            n.Add(l.SolidColor != null ? "べた塗り" : "グラデーション・パターンの塗りつぶしは使えません");
+        if (l.Kind == PsdLayerKind.Adjustment && l.Adjustment != null)
+            n.Add($"調整レイヤー（{l.Adjustment.Name}。ベースに重ねるときだけ効きます）");
+        if (l.Kind == PsdLayerKind.Fill && l.SolidColor != null) n.Add("べた塗り");
         if (l.Kind == PsdLayerKind.Text) n.Add("文字");
         if (l.Kind == PsdLayerKind.Smart) n.Add("スマートオブジェクト");
-        if (l.HasEffects) n.Add(PsdEffects.Summary(l));
+        if (l.HasEffects && !l.IsFolder && l.Effects != null)
+        {
+            var names = l.Effects.Items.Select(e => PsdEffects.Label(e.Kind)).Distinct().ToList();
+            n.Add(names.Count > 0 ? "効果: " + string.Join("・", names) : "効果（すべてオフ）");
+        }
         if (!l.IsFolder && !PsdCompose.IsNormalBlend(l.BlendMode)) n.Add($"描画モード: {PsdCompose.BlendLabel(l.BlendMode)}");
         if (l.Clipped) n.Add("クリッピング");
         if (l.HasMask && !l.MaskDisabled) n.Add("マスク");
+        return string.Join("・", n);
+    }
+
+    /// <summary>
+    /// Photoshop と見た目が変わるもの（PSD 対応表の △＝近似・× ＝再現しない）。取り込み画面で赤く出す。なければ空。
+    /// フォルダの描画モードは、中身がわからないと決められないので <see cref="FolderCautions"/> で。
+    /// </summary>
+    public static string Cautions(PsdLayer l)
+    {
+        var n = new List<string>();
+        if (l.Kind == PsdLayerKind.Adjustment)
+        {
+            if (l.Adjustment == null) n.Add($"調整レイヤー（{PsdAdjust.Label(l.SpecialKey ?? "")}）は使えません");
+            else if (l.Adjustment.Note is { Length: > 0 } note) n.Add(note);
+        }
+        if (l.Kind == PsdLayerKind.Fill && l.SolidColor == null) n.Add("グラデーション・パターンの塗りつぶしは使えません");
+        if (l.HasEffects)
+        {
+            if (l.IsFolder) n.Add("フォルダの効果は再現しません");
+            else if (l.Effects == null) n.Add("効果（読めない形式）は再現しません");
+            else
+            {
+                if (l.Effects.Unsupported.Count > 0) n.Add($"{string.Join("・", l.Effects.Unsupported.Distinct())}は再現しません");
+                n.AddRange(l.Effects.Approximate);
+            }
+        }
+        if (!l.IsFolder && l.BlendMode == "diss" && l.Kind != PsdLayerKind.Adjustment) n.Add("ディザ合成は通常として重ねます");
+        return string.Join("・", n);
+    }
+
+    /// <summary>フォルダの、Photoshop と見た目が変わるもの（描画モード・効果）。inside はフォルダの中のレイヤー（入れ子も）。</summary>
+    public static string FolderCautions(PsdLayer folder, IEnumerable<PsdLayer> inside)
+    {
+        var n = new List<string>();
+        var c = Cautions(folder);
+        if (c.Length > 0) n.Add(c);
+        // PsdCompose の警告と同じ決まり: 「通過」以外は再現しない。「通常」は、中身に通常以外の描画モードがあるときだけ見た目が変わる
+        if (folder.BlendMode != "pass" && (folder.BlendMode != "norm" || inside.Any(x => !PsdCompose.IsNormalBlend(x.BlendMode))))
+            n.Add($"フォルダの描画モード（{PsdCompose.BlendLabel(folder.BlendMode)}）は再現しません（中身をそのまま重ねます）");
         return string.Join("・", n);
     }
 

@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using BvePanelEditor.Core.Psd;
 using Xunit;
 
@@ -210,6 +210,8 @@ public sealed class PsdEffectTests : IDisposable
         Assert.True(bottomEdge.R < 200, $"{bottomEdge}");
         Assert.Equal(0, At(img, 2, 2).A); // 外には何も出ない
         Assert.Contains("効果: ", PsdImport.Notes(l));
+        Assert.Contains("ベベル", PsdImport.Cautions(l)); // 近似（△）は赤い知らせに分ける
+        Assert.DoesNotContain("近似", PsdImport.Notes(l));
     }
 
     [Fact]

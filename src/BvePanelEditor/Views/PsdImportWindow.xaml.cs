@@ -116,6 +116,10 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
     public string Eye => IsFolder || Layer == null ? (Layer?.Hidden == true ? "○" : "") : Layer.Hidden ? "○" : "◉";
     public string NightMark => IsFolder || !NightLoaded ? "" : Day != null && Night != null ? "昼夜" : Day != null ? "昼だけ" : "夜だけ";
     public string Notes => Layer is { } l && !IsFolder ? PsdImport.Notes(l) : "";
+    /// <summary>Photoshop と見た目が変わるもの（近似・再現しない）。赤く出す。</summary>
+    public string Cautions => Layer is not { } l ? ""
+        : IsFolder ? PsdImport.FolderCautions(l, Leaves().Select(x => x.Layer).OfType<PsdLayer>())
+        : PsdImport.Cautions(l);
     public FontWeight NameWeight => IsFolder ? FontWeights.Bold : FontWeights.Normal;
 
     public IEnumerable<PsdLayerNode> Leaves()
@@ -379,10 +383,10 @@ public partial class PsdImportWindow : Window
         var leaves = Leaves.ToList();
         int bases = leaves.Count(l => l.Role == PsdRole.Base);
         int lamps = leaves.Count(l => l.Role == PsdRole.Lamp);
-        // 再現できない効果があるレイヤーだけ数える
-        int fx = leaves.Count(l => l.Role != PsdRole.None && l.Layer is { HasEffects: true } x && (x.Effects == null || x.Effects.Unsupported.Count > 0));
+        // 使うレイヤーのうち、Photoshop と見た目が変わるもの（赤い字の知らせがあるもの）を数える
+        int caution = leaves.Count(l => l.Role != PsdRole.None && l.Cautions.Length > 0);
         SummaryText.Text = $"ベース {bases} 枚を重ねる・表示灯 {lamps} 個・数字 {_frameOrder.Count} 個"
-            + (fx > 0 ? $"　※ 再現できないレイヤー効果のあるレイヤー {fx} 個（その効果なしで書き出します）" : "");
+            + (caution > 0 ? $"　※ Photoshop と見た目が変わるレイヤー {caution} 個（赤い字の知らせ）" : "");
         _previewTimer.Stop();
         _previewTimer.Start();
         DrawOverlay();
