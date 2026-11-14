@@ -190,19 +190,7 @@ public partial class MainWindow
             + (noSubject > 0 ? $"。Subject が空のオブジェクト {noSubject} 個は右の欄で設定してください" : "")
             + (newPanelPath != null ? "。パネルファイルはまだ保存していません（Ctrl+S）" : ""));
         if (interactive && result.Warnings.Count > 0)
-        {
-            var parts = new List<string> { "読み込みましたが、次の点に注意してください。" };
-            void Group(PsdWarningKind kind, string head)
-            {
-                var ws = result.Warnings.Where(w => w.Kind == kind).Select(w => w.Text).Distinct().ToList();
-                if (ws.Count == 0) return;
-                parts.Add(head + "\n" + string.Join("\n", ws.Take(15).Select(w => "・" + w))
-                    + (ws.Count > 15 ? $"\n…ほか {ws.Count - 15} 件" : ""));
-            }
-            Group(PsdWarningKind.Approx, "△ 近似して再現（Photoshop と見た目が少し変わります）");
-            Group(PsdWarningKind.Unsupported, "× 再現不可（その部分は出ません）");
-            MessageBox.Show(this, string.Join("\n\n", parts), "PSD から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
+            MessageBox.Show(this, PsdWarningMessage.Build("読み込みましたが、次の点に注意してください。", result.Warnings), "PSD から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
         return true;
     }
 

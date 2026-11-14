@@ -116,10 +116,18 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
     public string Eye => IsFolder || Layer == null ? (Layer?.Hidden == true ? "○" : "") : Layer.Hidden ? "○" : "◉";
     public string NightMark => IsFolder || !NightLoaded ? "" : Day != null && Night != null ? "昼夜" : Day != null ? "昼だけ" : "夜だけ";
     public string Notes => Layer is { } l && !IsFolder ? PsdImport.Notes(l) : "";
-    /// <summary>Photoshop と見た目が変わるもの（近似・再現しない）。赤く出す。</summary>
-    public string Cautions => Layer is not { } l ? ""
-        : IsFolder ? PsdImport.FolderCautions(l, Leaves().Select(x => x.Layer).OfType<PsdLayer>())
-        : PsdImport.Cautions(l);
+    /// <summary>青い注記のツールチップ（調整レイヤーの補足つき）。</summary>
+    public string NoteDetail => Layer is { } l && !IsFolder ? PsdImport.NoteDetail(l) : "";
+    /// <summary>Photoshop と見た目が変わるもの（△近似・×再現しない）。フォルダは中身から決まる分も含む。</summary>
+    public IReadOnlyList<PsdWarning> CautionItems => Layer is not { } l ? []
+        : IsFolder ? PsdImport.FolderCautionItems(l, Leaves().Select(x => x.Layer).OfType<PsdLayer>())
+        : PsdImport.CautionItems(l);
+    public string Cautions => string.Join("・", CautionItems.Select(x => x.Text));
+    /// <summary>注意（△・×）があるか。ある行は背景を薄く色づけて目立たせる。</summary>
+    public bool HasCautions => CautionItems.Count > 0;
+    /// <summary>行に出す短い印（×非対応・△近似）。詳細は <see cref="CautionDetail"/> をツールチップで出す。</summary>
+    public string CautionTags => PsdImport.CautionTags(CautionItems);
+    public string CautionDetail => PsdImport.CautionDetail(CautionItems);
     public FontWeight NameWeight => IsFolder ? FontWeights.Bold : FontWeights.Normal;
 
     public IEnumerable<PsdLayerNode> Leaves()

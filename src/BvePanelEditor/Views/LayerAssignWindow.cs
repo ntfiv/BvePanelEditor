@@ -36,6 +36,12 @@ public sealed class LayerAssignWindow : Window
     private readonly TextBlock _previewInfo = new() { Foreground = Brushes.DimGray, Margin = new Thickness(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _status = new() { Foreground = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
     private readonly List<(CheckBox Box, PsdLayer Layer, int Col)> _checks = [];
+
+    // 読み込み画面と同じ色（注意 = 赤、注記 = 青）
+    private static readonly Brush CautionBrush = new SolidColorBrush(Color.FromRgb(0xD0, 0x00, 0x00));
+    /// <summary>注意（△・×）のある行の背景（薄い赤）。</summary>
+    private static readonly Brush CautionRowBrush = new SolidColorBrush(Color.FromRgb(0xFD, 0xEC, 0xEC));
+    private static readonly Brush NoteBrush = new SolidColorBrush(Color.FromRgb(0x00, 0x50, 0xD0));
     private readonly List<RadioButton> _heads = [];
     private readonly DispatcherTimer _previewTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
 
@@ -270,13 +276,25 @@ public sealed class LayerAssignWindow : Window
             var label = new TextBlock
             {
                 Text = (l.IsFolder ? "▸ " : "") + l.Name + (l.EffectivelyHidden ? "（非表示）" : "") + (usable ? "" : "（重ねられません）"),
-                Margin = new Thickness(4 + depth * 16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
                 Foreground = !usable ? Brushes.Silver : l.EffectivelyHidden ? Brushes.Gray : Brushes.Black,
                 FontWeight = l.IsFolder ? FontWeights.SemiBold : FontWeights.Normal,
-                ToolTip = l.Path + (PsdImport.Notes(l) is { Length: > 0 } n ? "\n" + n : "") + (PsdImport.Cautions(l) is { Length: > 0 } c ? "\n※ " + c : ""),
+                ToolTip = l.Path,
             };
-            Grid.SetColumn(label, _columns.Length);
-            row.Children.Add(label);
+            // 読み込み画面と同じ出し方: そのまま再現できる注記（○）は青で先に、見た目が変わるものは赤い短い印（×非対応・△近似）だけを行に出し、詳細はツールチップで見せる
+            var texts = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4 + depth * 16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            texts.Children.Add(label);
+            var notes = l.IsFolder ? "" : PsdImport.Notes(l);
+            if (notes.Length > 0)
+                texts.Children.Add(new TextBlock { Text = notes, Foreground = NoteBrush, FontSize = 11, Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = PsdImport.NoteDetail(l) });
+            var cautionItems = l.IsFolder ? PsdImport.FolderCautionItems(l, PixelLayersOf(l)) : PsdImport.CautionItems(l);
+            if (cautionItems.Count > 0)
+            {
+                row.Background = CautionRowBrush; // 注意のある行は背景も薄く色づけて目立たせる
+                texts.Children.Add(new TextBlock { Text = PsdImport.CautionTags(cautionItems), Foreground = CautionBrush, FontSize = 11, Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = PsdImport.CautionDetail(cautionItems) });
+            }
+            Grid.SetColumn(texts, _columns.Length);
+            row.Children.Add(texts);
             _rows.Children.Add(row);
         }
         RefreshChecks();
@@ -306,7 +324,16 @@ public sealed class LayerAssignWindow : Window
         }
         _suppress = false;
         int total = Enumerable.Range(0, _columns.Length).Count(k => _colPsd[k] >= 0);
-        _status.Text = $"{total} / {_columns.Length} 欄に PSD を振り分けています。チェックのない欄は、今の画像のまま変えません。";
+        // 読み込み画面のまとめと同じく、使うレイヤーのうち見た目が変わるもの（赤い字の知らせがあるもの）を数える
+        int caution = 0;
+        for (int k = 0; k < _columns.Length; k++)
+        {
+            if (_colPsd[k] < 0 || _colLayers[k].Count == 0) continue;
+            var byPath = _psds[_colPsd[k]].ComposableLayers.ToDictionary(x => x.Path);
+            caution += _colLayers[k].Count(p => byPath.TryGetValue(p, out var x) && PsdImport.Cautions(x).Length > 0);
+        }
+        _status.Text = $"{total} / {_columns.Length} 欄に PSD を振り分けています。チェックのない欄は、今の画像のまま変えません。"
+            + (caution > 0 ? $"　※ Photoshop と見た目が変わるレイヤー {caution} 個（赤い字の知らせ）" : "");
     }
 
     private void OnCheck(PsdLayer layer, int col)
@@ -405,7 +432,7 @@ public sealed class LayerAssignWindow : Window
     private void OnOk()
     {
         var result = new LayerPick?[_columns.Length];
-        var warnings = new List<string>();
+        var warnings = new List<PsdWarning>();
         Mouse.OverrideCursor = Cursors.Wait;
         try
         {
@@ -416,7 +443,7 @@ public sealed class LayerAssignWindow : Window
                 var layers = psd.ComposableLayers.Where(l => _colLayers[k].Contains(l.Path)).OrderBy(l => l.Index).Select(l => l.Path).ToList();
                 var w = new List<PsdWarning>();
                 var px = CropLayers.Compose(psd, layers, w);
-                warnings.AddRange(w.Select(x => $"{_columns[k]}: {x.Text}"));
+                warnings.AddRange(w.Select(x => x with { Text = $"{_columns[k]}: {x.Text}" }));
                 result[k] = new LayerPick(psd.FilePath, layers, px);
             }
         }
@@ -428,7 +455,7 @@ public sealed class LayerAssignWindow : Window
         }
         finally { Mouse.OverrideCursor = null; }
         if (warnings.Count > 0)
-            MessageBox.Show(this, "次の点に注意してください。\n\n" + string.Join("\n", warnings.Distinct().Take(12).Select(x => "・" + x)), Title, MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, PsdWarningMessage.Build("次の点に注意してください。", warnings), Title, MessageBoxButton.OK, MessageBoxImage.Information);
         Result = result;
         DialogResult = true;
     }

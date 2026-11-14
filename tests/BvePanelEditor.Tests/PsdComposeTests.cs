@@ -446,6 +446,63 @@ public sealed class PsdComposeTests : IDisposable
     }
 
     [Fact]
+    public void CautionItemsClassifyKinds()
+    {
+        // グラデーション塗りは △（近似）: 行の印は「△近似」だけ、詳細はツールチップ用に残る
+        using var psd = Open(GradientLayer(GradientBlock()));
+        var g = psd.Find("グラデーション")!;
+        var items = PsdImport.CautionItems(g);
+        Assert.Single(items);
+        Assert.Equal(PsdWarningKind.Approx, items[0].Kind);
+        Assert.Equal("△近似", PsdImport.CautionTags(items));
+        Assert.Equal("△ グラデーション塗りは近似です", PsdImport.CautionDetail(items));
+        Assert.Contains("グラデーション塗りは近似です", PsdImport.Cautions(g)); // 従来の文字列も同じ中身
+
+        // 使えない調整レイヤーは ×（再現しない）
+        using var psd2 = Open(TestLayer.Solid("板", Full, 100, 100, 100), Adjustment("露光量", "expA", new byte[16]));
+        var items2 = PsdImport.CautionItems(psd2.Find("露光量")!);
+        Assert.Single(items2);
+        Assert.Equal(PsdWarningKind.Unsupported, items2[0].Kind);
+        Assert.Equal("×非対応", PsdImport.CautionTags(items2));
+
+        // 両方あるときは両方の印が並び、注意のないレイヤーは空
+        var both = new List<PsdWarning> { new(PsdWarningKind.Approx, "a"), new(PsdWarningKind.Unsupported, "b") };
+        Assert.Equal("×非対応・△近似", PsdImport.CautionTags(both));
+        Assert.Equal("", PsdImport.CautionTags([]));
+        Assert.Equal("", PsdImport.CautionDetail([]));
+    }
+
+    [Fact]
+    public void AdjustmentNoteIsShort()
+    {
+        // 調整レイヤーの青い注記は「調整: 名前」だけにし、補足（ベースに重ねるときだけ効く）はツールチップ側へ
+        var expa = Descriptor(("Exps", 1), ("Ofst", 0), ("Gmmo", 1));
+        using var psd = Open(TestLayer.Solid("板", Full, 50, 100, 200), Adjustment("露光量", "expA", expa));
+        var l = psd.Find("露光量")!;
+        Assert.Equal("調整: 露光量", PsdImport.Notes(l));
+        Assert.Contains("ベースに重ねるときだけ効きます", PsdImport.NoteDetail(l));
+        // 調整でないレイヤーのツールチップは従来どおり
+        var solid = psd.Find("板")!;
+        Assert.DoesNotContain("ベースに重ねるときだけ", PsdImport.NoteDetail(solid));
+    }
+
+    [Fact]
+    public void FolderCautionItemsBlendIsUnsupported()
+    {
+        var mul = TestLayer.FolderStart("乗算グループ"); mul.Blend = "mul ";
+        using var psd = Open(
+            TestLayer.Solid("板", Full, 200, 200, 200),
+            TestLayer.FolderEnd(),
+            TestLayer.Solid("赤", Full, 100, 100, 100),
+            mul);
+        var folder = psd.Find("乗算グループ")!;
+        var items = PsdImport.FolderCautionItems(folder, psd.Layers);
+        Assert.Contains(items, x => x.Kind == PsdWarningKind.Unsupported && x.Text.Contains("フォルダの描画モード（乗算）"));
+        Assert.Equal("×非対応", PsdImport.CautionTags(items));
+        Assert.Contains("× フォルダの描画モード", PsdImport.CautionDetail(items));
+    }
+
+    [Fact]
     public void SplineThroughPoints()
     {
         var lut = PsdAdjust.Spline([(0, 0), (128, 200), (255, 255)]);
