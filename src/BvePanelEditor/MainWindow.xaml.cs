@@ -335,8 +335,9 @@ public partial class MainWindow : Window
         _selGroup = null;
         _viewVariation = null;
         _folded.Clear();
-        SetEditorText(_doc.Serialize(), clearUndo: true);
-        _savedText = "";
+        var text = _doc.Serialize();
+        SetEditorText(text, clearUndo: true);
+        _savedText = text; // 作っただけでは「未保存」にしない（何か足したり変えたら、その時点で未保存になる）
         LoadRag(announce: false); // 前の車両の RealAnalogGauge 設定を持ち越さない
         RebuildAll();
         SetLocked(true);
