@@ -32,7 +32,9 @@ public sealed class PsdGradient
     /// <summary>
     /// 補間方法つきで色を返す（塗りつぶしレイヤー用）。区間の位置 f は中点でゆがめたあとの値。
     /// Smooth は、実ファイルでの実測に合う 2 次の曲線（f → 2f−f²）。Linear は線形の色空間、
-    /// Perceptual は OKLab 色空間で混ぜる。Classic は点ごとの 3 次補間（接線は前後の弦の平均）。
+    /// Perceptual は OKLab 色空間で、色も Classic と同じ 3 次補間（接線は前後の弦の平均）をする。
+    /// 不透明度は Linear が古典の 3 次曲線 H の H^(2/3)、Perceptual が H^2（どちらも実ファイルの実測）。
+    /// Classic は点ごとの 3 次補間（接線は前後の弦の平均）。
     /// </summary>
     public (float R, float G, float B, float A) AtInterpolated(float t, PsdGradientInterp mode)
     {
@@ -51,10 +53,10 @@ public sealed class PsdGradient
                         break;
                     }
                 case PsdGradientInterp.Linear:
-                    (r, g, b) = MixInSpace(c0, c1, f, linear: true);
+                    (r, g, b) = CubicInSpace(Colors, i, f, linear: true);
                     break;
                 case PsdGradientInterp.Perceptual:
-                    (r, g, b) = MixInSpace(c0, c1, f, linear: false);
+                    (r, g, b) = CubicInSpace(Colors, i, f, linear: false);
                     break;
                 default: // Classic
                     r = CubicChannel(Colors.Select(c => c.Color.R).ToList(), i, f);
@@ -71,6 +73,8 @@ public sealed class PsdGradient
             {
                 PsdGradientInterp.Smooth => Lerp(a0, a1, 2 * f - f * f),
                 PsdGradientInterp.Classic => CubicChannel(Alphas.Select(x => x.Opacity).ToList(), i, f),
+                PsdGradientInterp.Linear => AlphaPow(Alphas, i, f, 1.5f),
+                PsdGradientInterp.Perceptual => AlphaPow(Alphas, i, f, 0.5f),
                 _ => Lerp(a0, a1, f),
             };
         }
@@ -80,21 +84,37 @@ public sealed class PsdGradient
     private static float Lerp(float x, float y, float f) => x + (y - x) * f;
 
     /// <summary>Classic の 3 次補間。点 i の接線は、前後の弦（値の差）の平均。端では無い側を 0 とする。</summary>
-    private static float CubicChannel(IReadOnlyList<float> v, int i, float f)
+    private static float CubicChannel(IReadOnlyList<float> v, int i, float f, bool clamp = true)
     {
         if (v.Count == 1 || i >= v.Count - 1) return v[Math.Min(i, v.Count - 1)];
         float Chord(int k) => k >= 0 && k < v.Count - 1 ? v[k + 1] - v[k] : 0;
         float t0 = (Chord(i - 1) + Chord(i)) / 2, t1 = (Chord(i) + Chord(i + 1)) / 2;
         float f2 = f * f, f3 = f2 * f;
         float value = (2 * f3 - 3 * f2 + 1) * v[i] + (f3 - 2 * f2 + f) * t0 + (-2 * f3 + 3 * f2) * v[i + 1] + (f3 - f2) * t1;
-        return Math.Clamp(value, 0, 1);
+        return clamp ? Math.Clamp(value, 0, 1) : value;
     }
 
-    /// <summary>線形の色空間（linear: true）か OKLab（false）で 2 色を混ぜ、sRGB の符号化値に戻す。</summary>
-    private static (float R, float G, float B) MixInSpace((float R, float G, float B) c0, (float R, float G, float B) c1, float f, bool linear)
+    /// <summary>線形の色空間（linear: true）か OKLab（false）へ全点を移し、その空間で 3 次補間して戻す。</summary>
+    private static (float R, float G, float B) CubicInSpace(
+        List<(float Loc, float Mid, (float R, float G, float B) Color)> colors, int i, float f, bool linear)
     {
-        var x = ToSpace(c0, linear); var y = ToSpace(c1, linear);
-        return FromSpace((Lerp(x.Item1, y.Item1, f), Lerp(x.Item2, y.Item2, f), Lerp(x.Item3, y.Item3, f)), linear);
+        var sp = colors.Select(c => ToSpace(c.Color, linear)).ToList();
+        float x = CubicChannel(sp.Select(s => s.Item1).ToList(), i, f, clamp: false);
+        float y = CubicChannel(sp.Select(s => s.Item2).ToList(), i, f, clamp: false);
+        float z = CubicChannel(sp.Select(s => s.Item3).ToList(), i, f, clamp: false);
+        return FromSpace((x, y, z), linear);
+    }
+
+    /// <summary>
+    /// 不透明度を、古典の 3 次曲線 H をべき乗で変形した曲線で返す（実ファイルでの実測:
+    /// Linear は H^(2/3)、Perceptual は H^2）。点の値そのものは変えないよう、点の側を
+    /// q 乗してから補間し、結果を 1/q 乗で戻す（Linear: q=3/2、Perceptual: q=1/2）。
+    /// </summary>
+    private static float AlphaPow(List<(float Loc, float Mid, float Opacity)> alphas, int i, float f, float q)
+    {
+        var v = alphas.Select(x => MathF.Pow(Math.Clamp(x.Opacity, 0, 1), q)).ToList();
+        float h = CubicChannel(v, i, f);
+        return MathF.Pow(Math.Clamp(h, 0, 1), 1 / q);
     }
 
     private static (float, float, float) ToSpace((float R, float G, float B) c, bool linear)

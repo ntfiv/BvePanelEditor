@@ -315,19 +315,39 @@ public sealed class PsdComposeTests : IDisposable
     [Fact]
     public void LinearSpaceGradientColor()
     {
-        // リニア: 線形の色空間で混ぜるので、符号化値では明るめに出る
+        // リニア: 線形の色空間で 3 次補間するので、直線で混ぜるより暗めに出る
         using var psd = Open(GradientLayer(GradientBlock(interp: "linear")));
         var px = All(psd);
-        Assert.InRange(At(px, 1, 0).R, 110, 130); // f=0.1875 → 符号化で 0.47
+        Assert.InRange(At(px, 1, 0).R, 97, 112); // f=0.1875 → 線形で 0.140 → 符号化で 0.41
     }
 
     [Fact]
     public void PerceptualGradientColor()
     {
-        // 知覚的: OKLab で混ぜる。灰色の ramp では明度がそのまま位置になる
+        // 知覚的: OKLab で 3 次補間する。灰色の ramp では明度が曲線になる
         using var psd = Open(GradientLayer(GradientBlock(interp: "perceptual")));
         var px = All(psd);
-        Assert.InRange(At(px, 3, 0).R, 72, 92); // f=0.4375 → 線形で 0.084 → 符号化で 0.32
+        Assert.InRange(At(px, 3, 0).R, 72, 92); // f=0.4375 → 明度 0.422 → 線形で 0.075 → 符号化で 0.30
+    }
+
+    [Fact]
+    public void LinearGradientAlpha()
+    {
+        // リニアの不透明度は、古典の 3 次曲線 H の H^(2/3)（8300_Panel の実ファイルでの実測に合わせた）
+        using var psd = Open(GradientLayer(GradientBlock(alphaRamp: true, interp: "linear")));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).A, 222, 240); // f=0.1875 → H=0.860 → 0.904
+        Assert.InRange(At(px, 3, 0).A, 168, 186); // f=0.4375 → H=0.578 → 0.694
+    }
+
+    [Fact]
+    public void PerceptualGradientAlpha()
+    {
+        // 知覚的の不透明度は、古典の 3 次曲線 H の H^2（同上）
+        using var psd = Open(GradientLayer(GradientBlock(alphaRamp: true, interp: "perceptual")));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).A, 180, 197); // f=0.1875 → H=0.860 → 0.740
+        Assert.InRange(At(px, 3, 0).A, 77, 93);   // f=0.4375 → H=0.578 → 0.334
     }
 
     [Fact]
