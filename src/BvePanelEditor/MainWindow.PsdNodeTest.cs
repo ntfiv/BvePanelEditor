@@ -23,7 +23,8 @@ public partial class MainWindow
             var leaves = new List<PsdLayerNode>();
             for (int i = 0; i < 3; i++)
             {
-                var leaf = new PsdLayerNode { Name = $"葉{i}", Path = $"フォルダ/葉{i}", ParentNode = folder };
+                // Day がないと「使える葉」と見なされず、一括変更から外れてしまう
+                var leaf = new PsdLayerNode { Name = $"葉{i}", Path = $"フォルダ/葉{i}", ParentNode = folder, Day = new PsdLayer { Bounds = new PsdRect(0, 0, 4, 4) } };
                 leaf.Changed = () => changed++;
                 folder.Children.Add(leaf);
                 leaves.Add(leaf);
@@ -40,6 +41,18 @@ public partial class MainWindow
             folder.RoleValue = PsdRole.Number;
             Check("数字への一括変更（NumberSet の設定込み）でも Changed は 1 回だけ", changed == 1);
             Check("葉の NumberSet にフォルダ名が入る", leaves.All(l => l.NumberSet == "フォルダ"));
+
+            // 入れ子: 外のフォルダの役割を変えたら、中のフォルダの役割の表示も更新される
+            var outer = new PsdLayerNode { Name = "外", Path = "外", IsFolder = true };
+            var inner = new PsdLayerNode { Name = "内", Path = "外/内", IsFolder = true, ParentNode = outer };
+            outer.Children.Add(inner);
+            var deep = new PsdLayerNode { Name = "深い葉", Path = "外/内/深い葉", ParentNode = inner, Day = new PsdLayer { Bounds = new PsdRect(0, 0, 4, 4) } };
+            inner.Children.Add(deep);
+            int innerNotices = 0;
+            inner.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(PsdLayerNode.RoleValue)) innerNotices++; };
+            outer.RoleValue = PsdRole.Lamp;
+            Check("入れ子のフォルダの役割の表示も更新される", innerNotices > 0);
+            Check("入れ子の葉まで役割がそろう", Equals(inner.RoleValue, PsdRole.Lamp) && deep.Role == PsdRole.Lamp);
         }
         catch (Exception ex)
         {
