@@ -90,6 +90,7 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
             }
             finally { ChangeBatch--; }
             Raise(nameof(RoleValue));
+            foreach (var d in DescendantFolders()) d.RaiseRoleValue(); // 中のフォルダの役割表示も古いままにしない
             for (var p = ParentNode; p != null; p = p.ParentNode) p.RaiseRoleValue();
             Changed?.Invoke();
         }
@@ -122,6 +123,16 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
         if (!IsFolder) { yield return this; yield break; }
         foreach (var c in Children)
             foreach (var l in c.Leaves()) yield return l;
+    }
+
+    /// <summary>自分より中にあるフォルダ全部（入れ子も含む）。</summary>
+    private IEnumerable<PsdLayerNode> DescendantFolders()
+    {
+        foreach (var c in Children)
+        {
+            if (c.IsFolder) yield return c;
+            foreach (var d in c.DescendantFolders()) yield return d;
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
