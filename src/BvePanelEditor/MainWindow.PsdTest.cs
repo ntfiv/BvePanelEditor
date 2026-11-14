@@ -86,7 +86,7 @@ public partial class MainWindow
                 Check("つながりのコメントが入る", Editor.Text.Contains(";===== PSD 昼:") && Editor.Text.Contains(";@PSDレイヤー:"));
                 Check("問題一覧に Subject の空きが出る", _scene!.Problems.Any(p => p.Message.Contains("Subject")));
                 Check("画像が読めない・ない問題はない", !_scene.Problems.Any(p => p.Message.Contains("画像")));
-                log.Add($"     注意 {_lastPsdWarnings.Count} 件: " + string.Join(" / ", _lastPsdWarnings.Take(5)));
+                log.Add($"     注意 {_lastPsdWarnings.Count} 件: " + string.Join(" / ", _lastPsdWarnings.Take(5).Select(w => w.Text)));
             }
 
             Check("保存できる", Save(_path));

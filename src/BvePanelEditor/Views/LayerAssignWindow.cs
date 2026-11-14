@@ -414,9 +414,9 @@ public sealed class LayerAssignWindow : Window
                 if (_colPsd[k] < 0 || _colLayers[k].Count == 0) continue;
                 var psd = _psds[_colPsd[k]];
                 var layers = psd.ComposableLayers.Where(l => _colLayers[k].Contains(l.Path)).OrderBy(l => l.Index).Select(l => l.Path).ToList();
-                var w = new List<string>();
+                var w = new List<PsdWarning>();
                 var px = CropLayers.Compose(psd, layers, w);
-                warnings.AddRange(w.Select(x => $"{_columns[k]}: {x}"));
+                warnings.AddRange(w.Select(x => $"{_columns[k]}: {x.Text}"));
                 result[k] = new LayerPick(psd.FilePath, layers, px);
             }
         }

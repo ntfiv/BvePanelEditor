@@ -439,15 +439,15 @@ public static class PsdEffects
         return m == 0 || b.IsEmpty ? b : new PsdRect(b.Left - m, b.Top - m, b.Right + m, b.Bottom + m);
     }
 
-    /// <summary>レイヤー効果について、重ねる・書き出すときの注意（再現しないもの・近似のもの）。</summary>
-    public static IEnumerable<string> Warnings(PsdLayer l)
+    /// <summary>レイヤー効果について、重ねる・書き出すときの注意（再現しないもの＝×・近似のもの＝△に分けて返す）。</summary>
+    public static IEnumerable<PsdWarning> Warnings(PsdLayer l)
     {
         if (!l.HasEffects) yield break;
-        if (l.IsFolder) { yield return $"「{l.Path}」はフォルダのレイヤー効果なので再現しません。Photoshop でラスタライズしてください"; yield break; }
-        if (l.Effects == null) { yield return $"「{l.Path}」のレイヤー効果は読めない形式なので再現しません。Photoshop でラスタライズしてください"; yield break; }
+        if (l.IsFolder) { yield return new PsdWarning(PsdWarningKind.Unsupported, $"「{l.Path}」はフォルダのレイヤー効果なので再現しません。Photoshop でラスタライズしてください"); yield break; }
+        if (l.Effects == null) { yield return new PsdWarning(PsdWarningKind.Unsupported, $"「{l.Path}」のレイヤー効果は読めない形式なので再現しません。Photoshop でラスタライズしてください"); yield break; }
         if (l.Effects.Unsupported.Count > 0)
-            yield return $"「{l.Path}」の{string.Join("・", l.Effects.Unsupported.Distinct())}は再現しません。Photoshop でラスタライズしてください";
-        foreach (var a in l.Effects.Approximate) yield return $"「{l.Path}」: {a}";
+            yield return new PsdWarning(PsdWarningKind.Unsupported, $"「{l.Path}」の{string.Join("・", l.Effects.Unsupported.Distinct())}は再現しません。Photoshop でラスタライズしてください");
+        foreach (var a in l.Effects.Approximate) yield return new PsdWarning(PsdWarningKind.Approx, $"「{l.Path}」: {a}");
     }
 
     /// <summary>一覧に出す短い説明（使っている効果）。</summary>

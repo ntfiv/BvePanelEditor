@@ -27,17 +27,17 @@ public static class CropUpdate
                         catch (Exception e) when (e is IOException or InvalidDataException or NotSupportedException or UnauthorizedAccessException)
                         {
                             psd = null;
-                            plan.Warnings.Add($"PSD「{Path.GetFileName(full)}」を読めません: {e.Message}");
+                            plan.Warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"PSD「{Path.GetFileName(full)}」を読めません: {e.Message}"));
                         }
                         psds[full] = psd;
                     }
                     if (psd != null)
                     {
                         var missing = new List<string>();
-                        var warn = new List<string>();
+                        var warn = new List<PsdWarning>();
                         img = CropLayers.Compose(psd, layers, warn, missing);
-                        foreach (var m in missing) plan.Warnings.Add($"{label}: レイヤー「{m}」が「{Path.GetFileName(full)}」にありません");
-                        foreach (var w in warn) plan.Warnings.Add($"{Path.GetFileName(full)}: {w}");
+                        foreach (var m in missing) plan.Warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"{label}: レイヤー「{m}」が「{Path.GetFileName(full)}」にありません"));
+                        foreach (var w in warn) plan.Warnings.Add(new PsdWarning(w.Kind, $"{Path.GetFileName(full)}: {w.Text}"));
                     }
                 }
                 cache[key] = img;
@@ -51,7 +51,7 @@ public static class CropUpdate
                 var path = main == null ? null : Full(night ? main.Get("NighttimeImage") ?? main.Get("DaytimeImage") : main.Get("DaytimeImage"));
                 PsdPixels? under = null;
                 if (path != null && !cache.TryGetValue(path, out under)) cache[path] = under = load(path);
-                if (under == null) { plan.Warnings.Add($"{label}: メインパネルの画像が読めないので、重ねずに切り抜きました"); return src; }
+                if (under == null) { plan.Warnings.Add(new PsdWarning(PsdWarningKind.Approx, $"{label}: メインパネルの画像が読めないので、重ねずに切り抜きました")); return src; }
                 PanelValues.TryPoint(main!.Get("Location"), out var mx, out var my);
                 return CropCompose.Over(under, src, (int)mx, (int)my);
             }
@@ -100,7 +100,7 @@ public static class CropUpdate
                     if (src == null) { plan.Missing.Add($"{label}: 切り抜き元の画像「{source}」がありません"); continue; }
                     if (set.OverMain) src = OverMain(src, night, label);
                     var rect = new PsdRect((int)lx, (int)ly, (int)lx + w, (int)ly + h);
-                    if (rect.Intersect(src.Bounds) != rect) plan.Warnings.Add($"{label}: 範囲が切り抜き元の画像からはみ出しています（はみ出した所は透明になります）");
+                    if (rect.Intersect(src.Bounds) != rect) plan.Warnings.Add(new PsdWarning(PsdWarningKind.Approx, $"{label}: 範囲が切り抜き元の画像からはみ出しています（はみ出した所は透明になります）"));
                     // 形（丸・多角形）があれば、形の外を透明にする
                     plan.Files.Add(new(image, PngWriter.EncodePow2(CropShape.Mask(RegionDetect.CropOf(src, rect), s.CropShapes))));
                 }

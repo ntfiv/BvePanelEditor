@@ -10,7 +10,7 @@ public sealed class PsdUpdatePlan
     public List<(int Section, int Interval)> Intervals = [];
     /// <summary>PSD に見つからないレイヤー。</summary>
     public List<string> Missing = [];
-    public List<string> Warnings = [];
+    public List<PsdWarning> Warnings = [];
     /// <summary>画像がパネルくんの書き出したものではない（手で差し替えた）ので、書き出しも移動もしないオブジェクト。</summary>
     public List<string> Skipped = [];
     /// <summary>つながりのあるオブジェクトの数。</summary>
@@ -89,7 +89,7 @@ public static class PsdUpdate
                         break;
                     }
                 default:
-                    plan.Warnings.Add($"{label}: {PanelSpec.KindLabel(s.Kind)}は PSD からの更新に対応していません");
+                    plan.Warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"{label}: {PanelSpec.KindLabel(s.Kind)}は PSD からの更新に対応していません"));
                     break;
             }
         }

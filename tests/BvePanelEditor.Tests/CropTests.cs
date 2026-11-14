@@ -199,7 +199,7 @@ public sealed class CropTests : IDisposable
         // 範囲が元画像からはみ出すと知らせる
         doc.Sections[2].Set("Location", "95, 10");
         var plan3 = CropUpdate.Plan(doc, _dir, p => images.GetValueOrDefault(Path.GetFullPath(p)));
-        Assert.Contains(plan3.Warnings, w => w.Contains("はみ出し"));
+        Assert.Contains(plan3.Warnings, w => w.Text.Contains("はみ出し"));
     }
 
     private static byte[] StripText(byte[] png)

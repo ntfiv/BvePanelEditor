@@ -226,7 +226,7 @@ public sealed class DigitFramesWindow : Window
         using var nightPsd = nightPath != null ? PsdFile.Open(nightPath) : null;
         var layers = DigitStrip.FrameOrder(DigitStrip.FrameLayers(psd));
         if (layers.Count == 0) { errors.Add($"「{Path.GetFileName(path)}」にコマにできるレイヤーがありません"); return []; }
-        var warn = new List<string>();
+        var warn = new List<PsdWarning>();
         var num = PsdImport.RenderNumber(psd, nightPsd, layers.Select(l => l.Path).ToList(), warn);
         int fh = num != null ? num.Day.Height / layers.Count : 0;
         if (nightPsd != null) _notes.Add($"夜の PSD「{Path.GetFileName(nightPath)}」の同じ名前のレイヤーを夜のコマにしました");

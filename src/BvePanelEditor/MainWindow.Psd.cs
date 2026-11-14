@@ -13,7 +13,7 @@ namespace BvePanelEditor;
 public partial class MainWindow
 {
     /// <summary>直近の読み込み・更新の注意書き（通し確認用）。</summary>
-    private List<string> _lastPsdWarnings = [];
+    private List<PsdWarning> _lastPsdWarnings = [];
 
     private string? PanelDir => _path != null ? Path.GetDirectoryName(_path) : null;
 
@@ -190,8 +190,19 @@ public partial class MainWindow
             + (noSubject > 0 ? $"。Subject が空のオブジェクト {noSubject} 個は右の欄で設定してください" : "")
             + (newPanelPath != null ? "。パネルファイルはまだ保存していません（Ctrl+S）" : ""));
         if (interactive && result.Warnings.Count > 0)
-            MessageBox.Show(this, "読み込みましたが、次の点に注意してください。\n\n" + string.Join("\n", result.Warnings.Distinct().Take(15).Select(w => "・" + w))
-                + (result.Warnings.Count > 15 ? $"\n…ほか {result.Warnings.Count - 15} 件" : ""), "PSD から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
+        {
+            var parts = new List<string> { "読み込みましたが、次の点に注意してください。" };
+            void Group(PsdWarningKind kind, string head)
+            {
+                var ws = result.Warnings.Where(w => w.Kind == kind).Select(w => w.Text).Distinct().ToList();
+                if (ws.Count == 0) return;
+                parts.Add(head + "\n" + string.Join("\n", ws.Take(15).Select(w => "・" + w))
+                    + (ws.Count > 15 ? $"\n…ほか {ws.Count - 15} 件" : ""));
+            }
+            Group(PsdWarningKind.Approx, "△ 近似して再現（Photoshop と見た目が少し変わります）");
+            Group(PsdWarningKind.Unsupported, "× 再現不可（その部分は出ません）");
+            MessageBox.Show(this, string.Join("\n\n", parts), "PSD から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
         return true;
     }
 

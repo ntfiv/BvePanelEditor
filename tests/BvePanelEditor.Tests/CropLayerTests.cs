@@ -245,7 +245,7 @@ public sealed class CropLayerTests : IDisposable
         // レイヤーがなくなったら知らせる
         doc.CropSets[1].DayLayers = ["板", "消えた"];
         var plan3 = CropUpdate.Plan(doc, _dir, _ => null);
-        Assert.Contains(plan3.Warnings, w => w.Contains("消えた"));
+        Assert.Contains(plan3.Warnings, w => w.Text.Contains("消えた"));
     }
 
     private static byte[] StripText(byte[] png)

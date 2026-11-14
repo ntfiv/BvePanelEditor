@@ -87,7 +87,7 @@ public partial class MainWindow
             var lampBytes = File.ReadAllBytes(lampImg);
             var plan = RunCropUpdate(interactive: false);
             log.Add($"     更新: 画像 {plan?.Files.Count} 枚、飛ばした {plan?.Skipped.Count}、切り出せない {plan?.Missing.Count}、注意 {plan?.Warnings.Count}");
-            foreach (var x in plan?.Warnings.Take(5) ?? []) log.Add("       注意: " + x);
+            foreach (var x in plan?.Warnings.Take(5) ?? []) log.Add("       注意: " + x.Text);
             Check("切り抜き元（PSD）から更新できる", plan != null && plan.Missing.Count == 0 && plan.Skipped.Count == 0
                 && plan.Files.Count == _doc.Sections.Count(s => s.CropSet != null) * 2); // メインパネルも表示灯として（[This] は透明なので作り直さない）
             Check("すぐ更新してもパネル・本体・表示灯は変わらない", Editor.Text == t

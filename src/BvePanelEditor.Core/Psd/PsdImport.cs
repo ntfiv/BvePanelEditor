@@ -44,7 +44,7 @@ public sealed class PsdImportResult
     public PsdBaseResult? Base;
     /// <summary>パネルに足すオブジェクト（表示灯・数字）。グループのオブジェクトは連続して並んでいる。</summary>
     public List<PanelSection> Sections = [];
-    public List<string> Warnings = [];
+    public List<PsdWarning> Warnings = [];
 }
 
 /// <summary>PSD のレイヤーからパネルの部品（PNG とセクション）を作る。</summary>
@@ -157,13 +157,13 @@ public static class PsdImport
     /// <param name="allSameName">
     /// true なら、同じ名前（「#2」を除く）のレイヤーを全部重ねる。夜の PSD のように、昼で選んだ名前から探すときに使う。
     /// </param>
-    public static PsdPixels? ComposeBase(PsdFile psd, IEnumerable<string> paths, List<string> warnings, string label, bool allSameName = false)
+    public static PsdPixels? ComposeBase(PsdFile psd, IEnumerable<string> paths, List<PsdWarning> warnings, string label, bool allSameName = false)
     {
         var layers = new List<PsdLayer>();
         foreach (var p in paths)
         {
             var found = allSameName ? psd.FindAllSameName(p) : psd.Find(p) is { } f ? [f] : new List<PsdLayer>();
-            if (found.Count == 0) { if (label == "昼") warnings.Add($"ベースのレイヤー「{p}」が{label}の PSD にありません"); continue; }
+            if (found.Count == 0) { if (label == "昼") warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"ベースのレイヤー「{p}」が{label}の PSD にありません")); continue; }
             foreach (var l in found)
             {
                 if (l.IsFolder) layers.AddRange(psd.ComposableLayers.Where(x => IsInside(x, l)));
@@ -171,9 +171,9 @@ public static class PsdImport
             }
         }
         if (layers.Count == 0) return null;
-        var w = new List<string>();
+        var w = new List<PsdWarning>();
         var img = PsdCompose.Compose(psd, layers.Distinct(), psd.Canvas, 1, w);
-        warnings.AddRange(w.Distinct().Select(x => $"{label}: {x}"));
+        warnings.AddRange(w.Distinct().Select(x => new PsdWarning(x.Kind, $"{label}: {x.Text}")));
         return img;
     }
 
@@ -188,17 +188,17 @@ public static class PsdImport
     /// <summary>
     /// 表示灯 1 つぶん。昼と夜で範囲を合わせた同じ大きさで切り出す。夜にしかなければ昼は透明。
     /// </summary>
-    public static LampImages? RenderLamp(PsdFile day, PsdFile? night, string path, List<string> warnings)
+    public static LampImages? RenderLamp(PsdFile day, PsdFile? night, string path, List<PsdWarning> warnings)
     {
         var d = day.Find(path);
         var n = night?.Find(path);
         if (d is { HasPixels: false }) d = null;
         if (n is { HasPixels: false }) n = null;
-        if (d == null && n == null) { warnings.Add($"「{path}」は画像のあるレイヤーではありません"); return null; }
+        if (d == null && n == null) { warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"「{path}」は画像のあるレイヤーではありません")); return null; }
         // レイヤー効果（影・光彩など）が広がる分も含める
         var rect = (d != null ? PsdEffects.VisualBounds(d) : default).Union(n != null ? PsdEffects.VisualBounds(n) : default).Intersect(day.Canvas);
-        if (rect.IsEmpty) { warnings.Add($"「{path}」はキャンバスの外にあります"); return null; }
-        var w = new List<string>();
+        if (rect.IsEmpty) { warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"「{path}」はキャンバスの外にあります")); return null; }
+        var w = new List<PsdWarning>();
         var dayImg = d != null ? PsdCompose.RenderLayer(day, d, rect, w) : Transparent(rect);
         var nightImg = n != null ? PsdCompose.RenderLayer(night!, n, rect, w) : null;
         warnings.AddRange(w.Distinct());
@@ -208,24 +208,24 @@ public static class PsdImport
     public sealed record NumberImages(PsdRect Rect, int Frames, PsdPixels Day, PsdPixels? Night);
 
     /// <summary>デジタル数字のコマ画像。全コマの範囲を合わせた大きさで、上から順に縦に並べる。</summary>
-    public static NumberImages? RenderNumber(PsdFile day, PsdFile? night, IReadOnlyList<string> frames, List<string> warnings)
+    public static NumberImages? RenderNumber(PsdFile day, PsdFile? night, IReadOnlyList<string> frames, List<PsdWarning> warnings)
     {
         var dl = frames.Select(f => day.Find(f) is { HasPixels: true } x ? x : null).ToList();
         var nl = frames.Select(f => night?.Find(f) is { HasPixels: true } x ? x : null).ToList();
         var rect = default(PsdRect);
         foreach (var l in dl.Concat(nl)) if (l != null) rect = rect.Union(PsdEffects.VisualBounds(l));
         rect = rect.Intersect(day.Canvas);
-        if (rect.IsEmpty) { warnings.Add($"数字のコマ「{string.Join(" | ", frames)}」に画像がありません"); return null; }
+        if (rect.IsEmpty) { warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"数字のコマ「{string.Join(" | ", frames)}」に画像がありません")); return null; }
         for (int i = 0; i < frames.Count; i++)
-            if (dl[i] == null && nl[i] == null) warnings.Add($"数字のコマ「{frames[i]}」が見つかりません（透明なコマにします）");
-        var w = new List<string>();
+            if (dl[i] == null && nl[i] == null) warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"数字のコマ「{frames[i]}」が見つかりません（透明なコマにします）"));
+        var w = new List<PsdWarning>();
         var dayImg = Strip(day, dl, rect, w);
         var nightImg = night != null && nl.Any(l => l != null) ? Strip(night, nl, rect, w) : null;
         warnings.AddRange(w.Distinct());
         return new NumberImages(rect, frames.Count, dayImg, nightImg);
     }
 
-    private static PsdPixels Strip(PsdFile psd, List<PsdLayer?> layers, PsdRect rect, List<string> warnings)
+    private static PsdPixels Strip(PsdFile psd, List<PsdLayer?> layers, PsdRect rect, List<PsdWarning> warnings)
     {
         int fw = rect.Width, fh = rect.Height;
         var bgra = new byte[fw * fh * layers.Count * 4];

@@ -417,9 +417,9 @@ public sealed class PsdComposeTests : IDisposable
             TestLayer.FolderEnd(),
             TestLayer.Solid("赤", Full, 100, 100, 100),
             mul);
-        var w = new List<string>();
+        var w = new List<PsdWarning>();
         PsdCompose.Compose(psd, psd.Layers, psd.Canvas, 1, w);
-        Assert.Contains(w, x => x.Contains("乗算グループ") && x.Contains("乗算"));
+        Assert.Contains(w, x => x.Kind == PsdWarningKind.Unsupported && x.Text.Contains("乗算グループ") && x.Text.Contains("乗算"));
 
         // 「通過」なら警告しない。「通常」でも、中身が全部通常なら警告しない
         var pass = TestLayer.FolderStart("通過グループ"); pass.Blend = "pass";
@@ -428,9 +428,9 @@ public sealed class PsdComposeTests : IDisposable
             TestLayer.FolderEnd(),
             TestLayer.Solid("赤", Full, 100, 100, 100),
             pass);
-        var w2 = new List<string>();
+        var w2 = new List<PsdWarning>();
         PsdCompose.Compose(psd2, psd2.Layers, psd2.Canvas, 1, w2);
-        Assert.DoesNotContain(w2, x => x.Contains("通過グループ"));
+        Assert.DoesNotContain(w2, x => x.Text.Contains("通過グループ"));
 
         // 「通常」のフォルダでも、中身に乗算があれば見た目が変わるので警告する
         var norm = TestLayer.FolderStart("通常グループ");
@@ -440,9 +440,9 @@ public sealed class PsdComposeTests : IDisposable
             TestLayer.FolderEnd(),
             child,
             norm);
-        var w3 = new List<string>();
+        var w3 = new List<PsdWarning>();
         PsdCompose.Compose(psd3, psd3.Layers, psd3.Canvas, 1, w3);
-        Assert.Contains(w3, x => x.Contains("通常グループ"));
+        Assert.Contains(w3, x => x.Text.Contains("通常グループ"));
     }
 
     [Fact]
