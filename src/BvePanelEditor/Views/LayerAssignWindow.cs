@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -39,6 +39,8 @@ public sealed class LayerAssignWindow : Window
 
     // 読み込み画面と同じ色（注意 = 赤、注記 = 青）
     private static readonly Brush CautionBrush = new SolidColorBrush(Color.FromRgb(0xD0, 0x00, 0x00));
+    /// <summary>注意（△・×）のある行の背景（薄い赤）。</summary>
+    private static readonly Brush CautionRowBrush = new SolidColorBrush(Color.FromRgb(0xFD, 0xEC, 0xEC));
     private static readonly Brush NoteBrush = new SolidColorBrush(Color.FromRgb(0x00, 0x50, 0xD0));
     private readonly List<RadioButton> _heads = [];
     private readonly DispatcherTimer _previewTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
@@ -287,7 +289,10 @@ public sealed class LayerAssignWindow : Window
                 texts.Children.Add(new TextBlock { Text = notes, Foreground = NoteBrush, FontSize = 11, Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = PsdImport.NoteDetail(l) });
             var cautionItems = l.IsFolder ? PsdImport.FolderCautionItems(l, PixelLayersOf(l)) : PsdImport.CautionItems(l);
             if (cautionItems.Count > 0)
+            {
+                row.Background = CautionRowBrush; // 注意のある行は背景も薄く色づけて目立たせる
                 texts.Children.Add(new TextBlock { Text = PsdImport.CautionTags(cautionItems), Foreground = CautionBrush, FontSize = 11, Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = PsdImport.CautionDetail(cautionItems) });
+            }
             Grid.SetColumn(texts, _columns.Length);
             row.Children.Add(texts);
             _rows.Children.Add(row);

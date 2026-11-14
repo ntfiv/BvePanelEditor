@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -123,6 +123,8 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
         : IsFolder ? PsdImport.FolderCautionItems(l, Leaves().Select(x => x.Layer).OfType<PsdLayer>())
         : PsdImport.CautionItems(l);
     public string Cautions => string.Join("・", CautionItems.Select(x => x.Text));
+    /// <summary>注意（△・×）があるか。ある行は背景を薄く色づけて目立たせる。</summary>
+    public bool HasCautions => CautionItems.Count > 0;
     /// <summary>行に出す短い印（×非対応・△近似）。詳細は <see cref="CautionDetail"/> をツールチップで出す。</summary>
     public string CautionTags => PsdImport.CautionTags(CautionItems);
     public string CautionDetail => PsdImport.CautionDetail(CautionItems);

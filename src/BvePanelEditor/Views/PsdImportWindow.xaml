@@ -1,4 +1,4 @@
-﻿<Window x:Class="BvePanelEditor.Views.PsdImportWindow"
+<Window x:Class="BvePanelEditor.Views.PsdImportWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:v="clr-namespace:BvePanelEditor.Views"
@@ -78,6 +78,11 @@
                     <TreeView.ItemContainerStyle>
                         <Style TargetType="TreeViewItem">
                             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasCautions}" Value="True">
+                                    <Setter Property="Background" Value="#FDECEC" />
+                                </DataTrigger>
+                            </Style.Triggers>
                         </Style>
                     </TreeView.ItemContainerStyle>
                     <TreeView.ItemTemplate>
