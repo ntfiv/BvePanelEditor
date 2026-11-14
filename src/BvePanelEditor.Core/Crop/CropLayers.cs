@@ -13,7 +13,7 @@ public static partial class CropLayers
     /// 選んだレイヤー（パス。「#2」まで含めて完全一致）をキャンバス大に重ねる。フォルダを選んだら中の画像レイヤー全部。
     /// 表示・非表示は見ない。見つからないレイヤーは missing に入れる。
     /// </summary>
-    public static PsdPixels Compose(PsdFile psd, IEnumerable<string> layers, ICollection<string>? warnings = null, ICollection<string>? missing = null)
+    public static PsdPixels Compose(PsdFile psd, IEnumerable<string> layers, ICollection<PsdWarning>? warnings = null, ICollection<string>? missing = null)
     {
         var picked = new List<PsdLayer>();
         foreach (var p in layers)
@@ -23,7 +23,7 @@ public static partial class CropLayers
             if (l.IsFolder) picked.AddRange(psd.ComposableLayers.Where(x => IsInside(x, l)));
             else picked.Add(l);
         }
-        var w = new List<string>();
+        var w = new List<PsdWarning>();
         var img = PsdCompose.Compose(psd, picked.Distinct(), psd.Canvas, 1, w);
         if (warnings != null)
         {

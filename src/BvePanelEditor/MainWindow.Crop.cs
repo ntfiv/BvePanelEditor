@@ -259,7 +259,7 @@ public partial class MainWindow
             if (plan.Missing.Count > 0)
                 msg += "\n\n切り出せないもの:\n" + string.Join("\n", plan.Missing.Take(8).Select(m => "・" + m));
             if (plan.Warnings.Count > 0)
-                msg += "\n\n注意:\n" + string.Join("\n", plan.Warnings.Take(5).Select(m => "・" + m));
+                msg += "\n\n注意:\n" + string.Join("\n", plan.Warnings.Take(5).Select(m => "・" + m.Text));
             if (MessageBox.Show(this, msg, "切り抜き元から更新", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return null;
         }
         try

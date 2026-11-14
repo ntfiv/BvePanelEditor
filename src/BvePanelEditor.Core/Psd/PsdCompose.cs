@@ -1,5 +1,11 @@
 namespace BvePanelEditor.Core.Psd;
 
+/// <summary>PSD を重ねるときの注意の種類。△＝近似して再現（見た目が少し変わる）、×＝再現不可（その部分は出ない）。</summary>
+public enum PsdWarningKind { Approx, Unsupported }
+
+/// <summary>PSD を重ねるときの注意 1 件。</summary>
+public sealed record PsdWarning(PsdWarningKind Kind, string Text);
+
 /// <summary>PSD のレイヤーを重ねる。</summary>
 public static class PsdCompose
 {
@@ -63,7 +69,7 @@ public static class PsdCompose
     /// scale が 2 以上なら縮小して重ねる（見本用、戻り値の Bounds は 0,0 起点）。
     /// </summary>
     public static PsdPixels Compose(PsdFile psd, IEnumerable<PsdLayer> layers, PsdRect area, int scale = 1,
-        ICollection<string>? warnings = null, CancellationToken ct = default)
+        ICollection<PsdWarning>? warnings = null, CancellationToken ct = default)
     {
         var acc = new Accum(area, scale);
         var clips = new Dictionary<PsdLayer, PsdPixels?>();
@@ -77,17 +83,17 @@ public static class PsdCompose
             {
                 // 「通常」のフォルダは、中身に通常以外の描画モードがあるときだけ見た目が変わる（なければ平らに重ねても同じ）
                 if (f.BlendMode == "norm" && !list.Any(x => !IsNormalBlend(x.BlendMode) && IsInside(x, f))) continue;
-                warnings.Add($"フォルダ「{f.Path}」の描画モード（{BlendLabel(f.BlendMode)}）は再現できません（中身をそのまま重ねました）");
+                warnings.Add(new PsdWarning(PsdWarningKind.Approx, $"フォルダ「{f.Path}」の描画モード（{BlendLabel(f.BlendMode)}）は再現できません（中身をそのまま重ねました）"));
             }
         }
         foreach (var l in list)
         {
             ct.ThrowIfCancellationRequested();
             if (l.BlendMode == "diss" && l.Kind != PsdLayerKind.Adjustment)
-                warnings?.Add($"「{l.Path}」の描画モード（ディザ合成）は通常として重ねました");
+                warnings?.Add(new PsdWarning(PsdWarningKind.Approx, $"「{l.Path}」の描画モード（ディザ合成）は通常として重ねました"));
             else if (!IsSupportedBlend(l.BlendMode))
-                warnings?.Add($"「{l.Path}」の描画モード（{BlendLabel(l.BlendMode)}）は通常として重ねました");
-            if (l.Adjustment?.Note is { } note) warnings?.Add($"「{l.Path}」: {note}");
+                warnings?.Add(new PsdWarning(PsdWarningKind.Approx, $"「{l.Path}」の描画モード（{BlendLabel(l.BlendMode)}）は通常として重ねました"));
+            if (l.Adjustment?.Note is { } note) warnings?.Add(new PsdWarning(PsdWarningKind.Approx, $"「{l.Path}」: {note}"));
             if (warnings != null) foreach (var w in PsdEffects.Warnings(l)) warnings.Add(w);
             var clipBase = l.Clipped ? ClipBaseOf(psd, l) : null;
             Draw(psd, acc, l, l.BlendMode, clipBase is null ? null : ClipShape(psd, clipBase, clips));
@@ -99,7 +105,7 @@ public static class PsdCompose
     /// 1 つのレイヤーを area の範囲で切り出す。そのレイヤーにクリッピングされた上のレイヤーも重ねる。
     /// 自分の描画モードは通常として扱う（BVE は通常で描くため）。
     /// </summary>
-    public static PsdPixels RenderLayer(PsdFile psd, PsdLayer layer, PsdRect area, ICollection<string>? warnings = null)
+    public static PsdPixels RenderLayer(PsdFile psd, PsdLayer layer, PsdRect area, ICollection<PsdWarning>? warnings = null)
     {
         var acc = new Accum(area, 1);
         if (!layer.HasPixels) return acc.ToPixels();
@@ -112,7 +118,7 @@ public static class PsdCompose
         foreach (var c in ClippedOnto(psd, layer))
         {
             if (!IsSupportedBlend(c.BlendMode))
-                warnings?.Add($"「{c.Path}」の描画モード（{BlendLabel(c.BlendMode)}）は通常として重ねました");
+                warnings?.Add(new PsdWarning(PsdWarningKind.Approx, $"「{c.Path}」の描画モード（{BlendLabel(c.BlendMode)}）は通常として重ねました"));
             Draw(psd, acc, c, c.BlendMode, own);
         }
         return acc.ToPixels();

@@ -220,7 +220,7 @@ public sealed class PsdEffectTests : IDisposable
         using var psd = Open(Fx("patternFill", new() { ["enab"] = true, ["Md  "] = Mode("Nrml"), ["Opct"] = Pct(100) }));
         var l = psd.Find("四角")!;
         Assert.Contains("パターンオーバーレイ", l.Effects!.Unsupported);
-        Assert.Contains(PsdEffects.Warnings(l), w => w.Contains("再現しません"));
+        Assert.Contains(PsdEffects.Warnings(l), w => w.Kind == PsdWarningKind.Unsupported && w.Text.Contains("再現しません"));
 
         var off = Fx("SoFi", new() { ["enab"] = true, ["Md  "] = Mode("Nrml"), ["Clr "] = TestDesc.Rgb(255, 0, 0), ["Opct"] = Pct(100) });
         off["masterFXSwitch"] = false;
@@ -241,7 +241,7 @@ public sealed class PsdEffectTests : IDisposable
         })))];
         TestPsdWriter.Write(p, 20, 20, [sq]);
         using var psd = PsdFile.Open(p);
-        var w = new List<string>();
+        var w = new List<PsdWarning>();
         var lamp = PsdImport.RenderLamp(psd, null, "灯", w)!;
         Assert.True(lamp.Rect.Bottom >= 17);
         Assert.Equal(255, At(lamp.Day, 8, 16).A);   // 影も切り出しに入る

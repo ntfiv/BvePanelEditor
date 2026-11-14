@@ -64,7 +64,7 @@ public sealed class DigitStripTests : IDisposable
         // 数が重なれば上から順
         var dup = new[] { "a1", "b1" }.Select((n, i) => new PsdLayer { Name = n, Index = i }).ToList();
         Assert.Equal(["b1", "a1"], DigitStrip.FrameOrder(dup).Select(l => l.Name));
-        var w = new List<string>();
+        var w = new List<PsdWarning>();
         var num = PsdImport.RenderNumber(psd, null, DigitStrip.FrameOrder(layers).Select(l => l.Path).ToList(), w);
         Assert.NotNull(num);
         Assert.Equal(4, num!.Frames);
