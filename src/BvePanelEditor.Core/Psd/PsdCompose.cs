@@ -67,7 +67,20 @@ public static class PsdCompose
     {
         var acc = new Accum(area, scale);
         var clips = new Dictionary<PsdLayer, PsdPixels?>();
-        foreach (var l in layers.Where(l => l.CanCompose).OrderBy(l => l.Index))
+        var list = layers.Where(l => l.CanCompose).OrderBy(l => l.Index).ToList();
+        if (warnings != null)
+        {
+            // フォルダの描画モード（「通過」以外）は、フォルダを 1 枚にまとめてから重ねるもので、今の作りでは再現できない
+            var folders = new HashSet<PsdLayer>();
+            foreach (var l in list) for (var p = l.Parent; p != null; p = p.Parent) folders.Add(p);
+            foreach (var f in folders.Where(f => f.BlendMode != "pass").OrderBy(f => f.Index))
+            {
+                // 「通常」のフォルダは、中身に通常以外の描画モードがあるときだけ見た目が変わる（なければ平らに重ねても同じ）
+                if (f.BlendMode == "norm" && !list.Any(x => !IsNormalBlend(x.BlendMode) && IsInside(x, f))) continue;
+                warnings.Add($"フォルダ「{f.Path}」の描画モード（{BlendLabel(f.BlendMode)}）は再現できません（中身をそのまま重ねました）");
+            }
+        }
+        foreach (var l in list)
         {
             ct.ThrowIfCancellationRequested();
             if (l.BlendMode == "diss" && l.Kind != PsdLayerKind.Adjustment)
@@ -163,6 +176,13 @@ public static class PsdCompose
                 int a = (y * px.Width + x) * 4 + 3;
                 px.Bgra[a] = (byte)(px.Bgra[a] * m.At(px.Bounds.Left + x, px.Bounds.Top + y));
             }
+    }
+
+    /// <summary>l が folder の中（入れ子も含む）にあるか。</summary>
+    private static bool IsInside(PsdLayer l, PsdLayer folder)
+    {
+        for (var p = l.Parent; p != null; p = p.Parent) if (p == folder) return true;
+        return false;
     }
 
     /// <summary>このレイヤーにクリッピングされている上のレイヤー。</summary>

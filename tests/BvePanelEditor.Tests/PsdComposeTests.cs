@@ -202,6 +202,95 @@ public sealed class PsdComposeTests : IDisposable
         Assert.Equal((100, 100, 100, 255), At(All(psd), 0, 0));
     }
 
+    /// <summary>記述子（版＋名前＋クラス＋doub の項目）を作る。露光量のテスト用。</summary>
+    private static byte[] Descriptor(params (string Key, double Value)[] items)
+    {
+        var b = new List<byte>();
+        void U32(uint v) { b.Add((byte)(v >> 24)); b.Add((byte)(v >> 16)); b.Add((byte)(v >> 8)); b.Add((byte)v); }
+        void Ascii(string t) => b.AddRange(Encoding.ASCII.GetBytes(t));
+        void Doub(double v) { var x = BitConverter.GetBytes(v); if (BitConverter.IsLittleEndian) Array.Reverse(x); b.AddRange(x); }
+        U32(1); U32(0); U32(0); Ascii("    "); U32((uint)items.Length);
+        foreach (var (k, v) in items) { U32(0); Ascii(k); Ascii("doub"); Doub(v); }
+        return [.. b];
+    }
+
+    [Fact]
+    public void InvertAdjustment()
+    {
+        using var psd = Open(TestLayer.Solid("板", Full, 50, 100, 200), Adjustment("反転", "nvrt", []));
+        var (r, g, b, _) = At(All(psd), 0, 0);
+        Assert.Equal((205, 155, 55), (r, g, b));
+    }
+
+    [Fact]
+    public void ThresholdAdjustment()
+    {
+        using var psd = Open(TestLayer.Solid("板", Full, 50, 100, 200), Adjustment("2階調", "thrs", Be(128)));
+        var (r, g, b, _) = At(All(psd), 0, 0);
+        Assert.Equal((0, 0, 0), (r, g, b)); // 輝度 0.3×50＋0.59×100＋0.11×200＝96 ＜ 128
+        using var psd2 = Open(TestLayer.Solid("板", Full, 200, 200, 200), Adjustment("2階調", "thrs", Be(128)));
+        var (r2, g2, b2, _) = At(All(psd2), 0, 0);
+        Assert.Equal((255, 255, 255), (r2, g2, b2));
+    }
+
+    [Fact]
+    public void PosterizeAdjustment()
+    {
+        using var psd = Open(TestLayer.Solid("板", Full, 50, 100, 200), Adjustment("ポスタ", "post", Be(2)));
+        var (r, g, b, _) = At(All(psd), 0, 0);
+        Assert.Equal((0, 0, 255), (r, g, b));
+    }
+
+    [Fact]
+    public void ExposureAdjustment()
+    {
+        var expa = Descriptor(("Exps", 1), ("Ofst", 0), ("Gmmo", 1));
+        using var psd = Open(TestLayer.Solid("板", Full, 50, 100, 200), Adjustment("露光量", "expA", expa));
+        var l = psd.Find("露光量")!;
+        Assert.True(l.CanCompose);
+        Assert.Equal("露光量", l.Adjustment!.Name);
+        var (r, g, b, _) = At(All(psd), 0, 0);
+        Assert.Equal((100, 200, 255), (r, g, b)); // 露光量 +1 で 2 倍（255 で止まる）
+    }
+
+    [Fact]
+    public void FolderBlendModeWarns()
+    {
+        // フォルダの描画モード（乗算）は再現できないので警告する
+        var mul = TestLayer.FolderStart("乗算グループ"); mul.Blend = "mul ";
+        using var psd = Open(
+            TestLayer.Solid("板", Full, 200, 200, 200),
+            TestLayer.FolderEnd(),
+            TestLayer.Solid("赤", Full, 100, 100, 100),
+            mul);
+        var w = new List<string>();
+        PsdCompose.Compose(psd, psd.Layers, psd.Canvas, 1, w);
+        Assert.Contains(w, x => x.Contains("乗算グループ") && x.Contains("乗算"));
+
+        // 「通過」なら警告しない。「通常」でも、中身が全部通常なら警告しない
+        var pass = TestLayer.FolderStart("通過グループ"); pass.Blend = "pass";
+        using var psd2 = Open(
+            TestLayer.Solid("板", Full, 200, 200, 200),
+            TestLayer.FolderEnd(),
+            TestLayer.Solid("赤", Full, 100, 100, 100),
+            pass);
+        var w2 = new List<string>();
+        PsdCompose.Compose(psd2, psd2.Layers, psd2.Canvas, 1, w2);
+        Assert.DoesNotContain(w2, x => x.Contains("通過グループ"));
+
+        // 「通常」のフォルダでも、中身に乗算があれば見た目が変わるので警告する
+        var norm = TestLayer.FolderStart("通常グループ");
+        var child = TestLayer.Solid("赤", Full, 100, 100, 100); child.Blend = "mul ";
+        using var psd3 = Open(
+            TestLayer.Solid("板", Full, 200, 200, 200),
+            TestLayer.FolderEnd(),
+            child,
+            norm);
+        var w3 = new List<string>();
+        PsdCompose.Compose(psd3, psd3.Layers, psd3.Canvas, 1, w3);
+        Assert.Contains(w3, x => x.Contains("通常グループ"));
+    }
+
     [Fact]
     public void SplineThroughPoints()
     {

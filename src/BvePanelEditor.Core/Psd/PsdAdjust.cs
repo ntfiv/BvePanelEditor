@@ -2,7 +2,7 @@ namespace BvePanelEditor.Core.Psd;
 
 /// <summary>
 /// 調整レイヤー 1 枚ぶんの色の変え方（色は 0〜1）。
-/// 対応: 明るさ・コントラスト、レベル補正、トーンカーブ、色相・彩度（マスター＋色彩の統一）。
+/// 対応: 明るさ・コントラスト、レベル補正、トーンカーブ、色相・彩度（マスター＋色彩の統一）、階調の反転、2 階調化、ポスタリゼーション、露光量。
 /// </summary>
 public sealed class PsdAdjustment
 {
@@ -15,7 +15,7 @@ public sealed class PsdAdjustment
 public static class PsdAdjust
 {
     /// <summary>対応している調整レイヤーのキー（レイヤーの追加情報）。</summary>
-    public static readonly string[] Keys = ["brit", "CgEd", "levl", "curv", "hue2"];
+    public static readonly string[] Keys = ["brit", "CgEd", "levl", "curv", "hue2", "nvrt", "thrs", "post", "expA"];
 
     /// <summary>調整レイヤーの名前（キーから）。</summary>
     public static string Label(string key) => key switch
@@ -34,6 +34,12 @@ public static class PsdAdjust
             if (blocks.TryGetValue("levl", out var levl)) return Levels(levl);
             if (blocks.TryGetValue("curv", out var curv)) return Curves(curv);
             if (blocks.TryGetValue("hue2", out var hue)) return HueSaturation(hue);
+            if (blocks.ContainsKey("nvrt")) return Invert();
+            if (blocks.TryGetValue("thrs", out var thrs) && thrs.Length >= 2) return Threshold(U16(thrs, 0));
+            if (blocks.TryGetValue("post", out var post) && post.Length >= 2) return Posterize(U16(post, 0));
+            if (blocks.TryGetValue("expA", out var expa) && PsdDescriptor.ReadVersioned(expa) is { } ed
+                && PsdDescriptor.Number(ed, "Exps") is { } ex)
+                return Exposure(ex, PsdDescriptor.Number(ed, "Ofst") ?? 0, PsdDescriptor.Number(ed, "Gmmo") ?? 1);
             if (blocks.TryGetValue("CgEd", out var cged) && PsdDescriptor.ReadVersioned(cged) is { } d)
             {
                 double b = PsdDescriptor.Number(d, "Brgh") ?? 0, c = PsdDescriptor.Number(d, "Cntr") ?? 0;
@@ -266,6 +272,51 @@ public static class PsdAdjust
             return t < 1f / 6 ? p + (q - p) * 6 * t : t < 0.5f ? q : t < 2f / 3 ? p + (q - p) * (2f / 3 - t) * 6 : p;
         }
         return (Hue(p, q, h + 1f / 3), Hue(p, q, h), Hue(p, q, h - 1f / 3));
+    }
+
+    // ================= 階調の反転・2 階調化・ポスタリゼーション・露光量 =================
+
+    private static PsdAdjustment Invert() => new()
+    {
+        Name = "階調の反転",
+        Apply = (r, g, b) => (1 - r, 1 - g, 1 - b),
+    };
+
+    /// <summary>2 階調化（しきい値）。データはしきい値（0〜255）の 2 バイト。</summary>
+    private static PsdAdjustment Threshold(int level)
+    {
+        float t = level / 255f;
+        return new PsdAdjustment
+        {
+            Name = "2 階調化",
+            Apply = (r, g, b) => { float v = 0.3f * r + 0.59f * g + 0.11f * b >= t ? 1f : 0f; return (v, v, v); },
+        };
+    }
+
+    /// <summary>ポスタリゼーション。データは階調数（2〜255）の 2 バイト。</summary>
+    private static PsdAdjustment Posterize(int levels)
+    {
+        int n = Math.Clamp(levels, 2, 255);
+        float P(float v) => Clamp(MathF.Floor(Clamp(v) * n) / (n - 1));
+        return new PsdAdjustment
+        {
+            Name = "ポスタリゼーション",
+            Apply = (r, g, b) => (P(r), P(g), P(b)),
+        };
+    }
+
+    /// <summary>露光量。値×2^露光量＋オフセットの後に、ガンマ補正（1／ガンマの冪）。記述子に Exps がなければ使えないものとして扱う。</summary>
+    private static PsdAdjustment Exposure(double exposure, double offset, double gamma)
+    {
+        double mul = Math.Pow(2, exposure);
+        double g = gamma is > 0.01 and < 100 ? gamma : 1;
+        var lut = Lut(v => Clamp((float)Math.Pow(Math.Max(0, v * mul + offset), 1 / g)));
+        return new PsdAdjustment
+        {
+            Name = "露光量",
+            Note = "露光量は近似です（ガンマ補正の効き方が Photoshop と少し違うことがあります）",
+            Apply = (r, g, b) => (Look(lut, r), Look(lut, g), Look(lut, b)),
+        };
     }
 
     // ================= 表 =================
