@@ -11,7 +11,7 @@ public partial class MainWindow
 {
     private void OnAddStandardNeedle(object? sender, RoutedEventArgs? e)
     {
-        if (_doc == null) { Message("先にパネルを開くか作ってください"); return; }
+        EnsurePanel();
         if (PanelDir == null) { Warn("先にパネルファイルを保存してください（針の画像をパネルのフォルダにコピーするため）。"); return; }
         var w = new NeedlePickerWindow(this);
         if (w.ShowDialog() != true || w.Result == null) return;

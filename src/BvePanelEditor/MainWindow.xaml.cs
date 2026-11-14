@@ -319,6 +319,30 @@ public partial class MainWindow : Window
         UpdateTitle();
     }
 
+    /// <summary>
+    /// パネルが無ければ、その場で新しいパネルを作る（「オブジェクトの追加」などをそのまま始められるように）。
+    /// 大きさは、パネルに大きさの情報がないときの既定（1024×768）。まだ保存はしない（Ctrl+S で保存先を聞く）。
+    /// </summary>
+    private void EnsurePanel()
+    {
+        if (_doc != null) return;
+        _doc = PanelDocument.CreateNew(null, 1024, 768);
+        _path = null;
+        _info = TextFileInfo.NewUtf8();
+        _vehicle = null;
+        _selected = -1;
+        _selSet = [];
+        _selGroup = null;
+        _viewVariation = null;
+        _folded.Clear();
+        SetEditorText(_doc.Serialize(), clearUndo: true);
+        _savedText = "";
+        LoadRag(announce: false); // 前の車両の RealAnalogGauge 設定を持ち越さない
+        RebuildAll();
+        SetLocked(true);
+        UpdateTitle();
+    }
+
     private void OnOpen(object sender, ExecutedRoutedEventArgs e)
     {
         var dlg = new OpenFileDialog { Filter = PanelFilters.Open };
@@ -983,7 +1007,8 @@ public partial class MainWindow : Window
 
     private void OnAddElement(object sender, RoutedEventArgs e)
     {
-        if (_doc == null || sender is not MenuItem { Tag: string tag } || !Enum.TryParse<SectionKind>(tag, out var kind)) return;
+        if (sender is not MenuItem { Tag: string tag } || !Enum.TryParse<SectionKind>(tag, out var kind)) return;
+        EnsurePanel();
         FlushReparse();
         var baseDir = _path != null ? Path.GetDirectoryName(_path) : null;
         var sec = PanelSection.Create(kind);

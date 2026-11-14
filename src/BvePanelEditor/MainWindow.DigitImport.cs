@@ -25,7 +25,7 @@ public partial class MainWindow
     /// </summary>
     private void OnAddImages(object? sender, RoutedEventArgs? e)
     {
-        if (_doc == null) { Message("先にパネルファイルを開くか、新規パネルを作ってください"); return; }
+        EnsurePanel();
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             AddToRecent = false, Multiselect = true, Title = "読み込む画像・PSD",
