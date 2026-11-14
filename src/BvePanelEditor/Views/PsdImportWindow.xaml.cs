@@ -292,6 +292,9 @@ public partial class PsdImportWindow : Window
         // 作り直しても、同じ名前のレイヤーの役割は保つ
         var keep = new Dictionary<string, (PsdRole Role, string NumberSet)>();
         foreach (var l in _roots.SelectMany(r => r.Leaves())) keep.TryAdd(l.Path, (l.Role, l.NumberSet));
+        // フォルダの開閉も保つ（無ければ PSD 側の状態を使う）
+        var keepExpanded = new Dictionary<string, bool>();
+        foreach (var n in AllNodes()) if (n.IsFolder) keepExpanded.TryAdd(n.Path, n.IsExpanded);
         var byPath = new Dictionary<string, PsdLayerNode>();
         var roots = new List<PsdLayerNode>();
         void Add(PsdLayerNode n, string? parentPath)
@@ -314,6 +317,7 @@ public partial class PsdImportWindow : Window
             {
                 Name = PsdImport.Leaf(l.Path), Path = l.Path, IsFolder = l.IsFolder, Day = l, // 同じ名前は「名前 #2」で見分ける
                 Night = l.IsFolder ? null : _night?.Find(l.Path), NightLoaded = _night != null,
+                IsExpanded = !l.IsFolder ? true : keepExpanded.TryGetValue(l.Path, out var ex) ? ex : !l.Closed,
             };
             Add(n, l.Parent?.Path);
         }
@@ -323,7 +327,7 @@ public partial class PsdImportWindow : Window
             {
                 var l = _night.Layers[i];
                 if (!l.CanCompose || _day.Find(l.Path) != null) continue;
-                Add(new PsdLayerNode { Name = l.Name, Path = l.Path, Night = l, NightLoaded = true }, l.Parent?.Path);
+                Add(new PsdLayerNode { Name = l.Name, Path = l.Path, Night = l, NightLoaded = true, IsExpanded = keepExpanded.TryGetValue(l.Path, out var nex) ? nex : !l.Closed }, l.Parent?.Path);
             }
         }
 

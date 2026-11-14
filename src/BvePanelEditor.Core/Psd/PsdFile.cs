@@ -47,6 +47,8 @@ public sealed class PsdLayer
     /// <summary>下のレイヤーにクリッピングされている。</summary>
     public bool Clipped;
     public PsdLayerKind Kind = PsdLayerKind.Pixel;
+    /// <summary>フォルダが閉じた状態で保存されていたか（lsct の 2）。フォルダ以外では意味を持たない。</summary>
+    public bool Closed;
     public bool HasEffects;
     public uint Id;
 
@@ -384,7 +386,7 @@ public sealed class PsdFile : IDisposable
                 case "lsdk":
                     {
                         int type = I32();
-                        if (type is 1 or 2) l.Kind = PsdLayerKind.FolderOpen;
+                        if (type is 1 or 2) { l.Kind = PsdLayerKind.FolderOpen; l.Closed = type == 2; }
                         else if (type == 3) l.Kind = PsdLayerKind.FolderEnd;
                         if (len >= 12 && type is 1 or 2)
                         {

@@ -51,6 +51,24 @@ public sealed class PsdTests : IDisposable
     }
 
     [Fact]
+    public void FolderOpenClosedStateIsKept()
+    {
+        var p = WritePsd("folder.psd", 64, 32,
+            TestLayer.FolderEnd(),
+            TestLayer.Solid("板", new PsdRect(0, 0, 8, 8), 1, 2, 3),
+            new TestLayer { Name = "閉じた束", SectionType = 2 },
+            TestLayer.FolderEnd(),
+            TestLayer.Solid("板2", new PsdRect(8, 0, 16, 8), 4, 5, 6),
+            TestLayer.FolderStart("開いた束"));
+        using var psd = PsdFile.Open(p);
+        var closed = psd.Layers.Single(l => l.Name == "閉じた束");
+        var open = psd.Layers.Single(l => l.Name == "開いた束");
+        Assert.Equal(PsdLayerKind.FolderOpen, closed.Kind);
+        Assert.True(closed.Closed);
+        Assert.False(open.Closed);
+    }
+
+    [Fact]
     public void RejectsTooLargeCanvas()
     {
         var p = WritePsd("big.psd", 8, 4, TestLayer.Solid("板", new PsdRect(0, 0, 8, 4), 1, 2, 3));
