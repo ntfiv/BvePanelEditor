@@ -70,12 +70,14 @@ public sealed class PsdLayer
     public string? SpecialKey;
     /// <summary>べた塗りレイヤーの色。</summary>
     public (byte R, byte G, byte B)? SolidColor;
+    /// <summary>グラデーション塗り（GdFl）の内容。べた塗り・パターンでは null。</summary>
+    public PsdGradientFill? Gradient;
     internal Dictionary<string, byte[]>? Blocks;
     /// <summary>レイヤー効果（読めたとき）。HasEffects なのに null なら、読めない形式。</summary>
     public PsdLayerEffects? Effects;
 
     /// <summary>重ねられるか（画像のあるレイヤー、再現できる調整レイヤー、べた塗りレイヤー）。</summary>
-    public bool CanCompose => HasPixels || (Kind == PsdLayerKind.Adjustment && Adjustment != null) || (Kind == PsdLayerKind.Fill && SolidColor != null);
+    public bool CanCompose => HasPixels || (Kind == PsdLayerKind.Adjustment && Adjustment != null) || (Kind == PsdLayerKind.Fill && (SolidColor != null || Gradient != null));
 
     /// <summary>自分か、入っているフォルダのどれかが非表示。</summary>
     public bool EffectivelyHidden => Hidden || (Parent?.EffectivelyHidden ?? false);
@@ -412,7 +414,7 @@ public sealed class PsdFile : IDisposable
                 default:
                     if (l.Kind == PsdLayerKind.Pixel && AdjustmentKeys.Contains(key)) { l.Kind = PsdLayerKind.Adjustment; l.SpecialKey = key; }
                     else if (l.Kind == PsdLayerKind.Pixel && FillKeys.Contains(key)) { l.Kind = PsdLayerKind.Fill; l.SpecialKey = key; }
-                    if ((PsdAdjust.Keys.Contains(key) || key == "SoCo") && len < 1 << 20)
+                    if ((PsdAdjust.Keys.Contains(key) || key is "SoCo" or "GdFl") && len < 1 << 20)
                     {
                         var data = new byte[len];
                         Read(data);
@@ -427,6 +429,7 @@ public sealed class PsdFile : IDisposable
         {
             if (l.Kind == PsdLayerKind.Adjustment) l.Adjustment = PsdAdjust.Parse(l.Blocks);
             if (l.Kind == PsdLayerKind.Fill && l.Blocks.TryGetValue("SoCo", out var soco)) l.SolidColor = ReadSolidColor(soco);
+            if (l.Kind == PsdLayerKind.Fill && l.Blocks.TryGetValue("GdFl", out var gdfl)) l.Gradient = PsdGradientFill.Parse(gdfl);
             if (l.Blocks.ContainsKey("lfx2") || l.Blocks.ContainsKey("lmfx"))
                 l.Effects = PsdEffects.Parse(l.Blocks.GetValueOrDefault("lfx2"), l.Blocks.GetValueOrDefault("lmfx"), GlobalAngle, GlobalAltitude);
             l.Blocks = null;

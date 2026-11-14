@@ -213,21 +213,34 @@ public static class PsdCompose
         return list;
     }
 
-    /// <summary>べた塗りレイヤーをキャンバス大の絵にする（マスクで形を付ける）。</summary>
+    /// <summary>塗りつぶしレイヤーをキャンバス大の絵にする（マスクで形を付ける）。グラデーションは近似。</summary>
     private static PsdPixels? FillPixels(PsdFile psd, PsdLayer layer)
     {
-        if (layer.SolidColor is not { } c) return null;
+        if (layer.SolidColor == null && layer.Gradient == null) return null;
         var mask = psd.GetMask(layer);
         // マスクの外が 0 なら、マスクの範囲だけでよい
         var rect = mask != null && mask.Outside == 0 ? mask.Bounds.Intersect(psd.Canvas) : psd.Canvas;
         if (rect.IsEmpty) return null;
         var bgra = new byte[rect.Width * rect.Height * 4];
+        // グラデーションの広がりの基準（「レイヤーに整列」のときはレイヤーの範囲、それ以外はキャンバス）
+        var area = layer.Gradient is { AlignWithLayer: true } && !layer.Bounds.IsEmpty ? layer.Bounds : psd.Canvas;
         for (int y = 0; y < rect.Height; y++)
             for (int x = 0; x < rect.Width; x++)
             {
                 int i = (y * rect.Width + x) * 4;
-                bgra[i] = c.B; bgra[i + 1] = c.G; bgra[i + 2] = c.R;
-                bgra[i + 3] = mask == null ? (byte)255 : ToByte(mask.At(rect.Left + x, rect.Top + y));
+                float ma = mask == null ? 1f : mask.At(rect.Left + x, rect.Top + y); // マスクの濃さ（0〜1）
+                if (layer.Gradient is { } gr)
+                {
+                    var (r, g, b, a) = gr.Sample(gr.Position(rect.Left + x, rect.Top + y, area));
+                    bgra[i] = ToByte(b); bgra[i + 1] = ToByte(g); bgra[i + 2] = ToByte(r);
+                    bgra[i + 3] = ToByte(a * ma);
+                }
+                else
+                {
+                    var c = layer.SolidColor!.Value;
+                    bgra[i] = c.B; bgra[i + 1] = c.G; bgra[i + 2] = c.R;
+                    bgra[i + 3] = ToByte(ma);
+                }
             }
         return new PsdPixels(rect, bgra);
     }

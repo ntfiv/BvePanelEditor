@@ -215,6 +215,159 @@ public sealed class PsdComposeTests : IDisposable
         return [.. b];
     }
 
+    /// <summary>GdFl の記述子（版つき）を作る。色は黒→白の 2 点。</summary>
+    private static byte[] GradientBlock(string type = "Lnr ", bool reverse = false, bool alphaRamp = false, string? interp = null)
+    {
+        var b = new List<byte>();
+        void U32(uint v) { b.Add((byte)(v >> 24)); b.Add((byte)(v >> 16)); b.Add((byte)(v >> 8)); b.Add((byte)v); }
+        void Ascii(string t) => b.AddRange(Encoding.ASCII.GetBytes(t));
+        void Doub(double v) { var x = BitConverter.GetBytes(v); if (BitConverter.IsLittleEndian) Array.Reverse(x); b.AddRange(x); }
+        void Id(string t) { if (t.Length == 4) { U32(0); Ascii(t); } else { U32((uint)t.Length); Ascii(t); } }
+        void Uni(string t) { U32((uint)t.Length); foreach (var ch in t) { b.Add((byte)(ch >> 8)); b.Add((byte)ch); } }
+        void Item(string key, string typeName, Action value) { Id(key); Ascii(typeName); value(); }
+        void Desc(params Action[] items) { Uni(""); Id("    "); U32((uint)items.Length); foreach (var it in items) it(); }
+        Action ColorStop(double r, double g, double bl, int loc) => () =>
+        {
+            Ascii("Objc");
+            Desc(
+                () => Item("Clr ", "Objc", () => Desc(
+                    () => Item("Rd  ", "doub", () => Doub(r)),
+                    () => Item("Grn ", "doub", () => Doub(g)),
+                    () => Item("Bl  ", "doub", () => Doub(bl)))),
+                () => Item("Lctn", "long", () => U32((uint)loc)),
+                () => Item("Mdpn", "long", () => U32(50)));
+        };
+        Action AlphaStop(double opct, int loc) => () =>
+        {
+            Ascii("Objc");
+            Desc(
+                () => Item("Opct", "UntF", () => { Ascii("#Prc"); Doub(opct); }),
+                () => Item("Lctn", "long", () => U32((uint)loc)),
+                () => Item("Mdpn", "long", () => U32(50)));
+        };
+        U32(1); // 版（読み手が読み飛ばす）
+        var root = new List<Action>
+        {
+            () => Item("Grad", "Objc", () => Desc(
+                () => Item("Nm  ", "TEXT", () => Uni("")),
+                () => Item("GrdF", "enum", () => { Id("GrdF"); Id("CstS"); }),
+                () => Item("Clrs", "VlLs", () => { U32(2); ColorStop(0, 0, 0, 0)(); ColorStop(255, 255, 255, 4096)(); }),
+                () => Item("Trns", "VlLs", () => { U32(2); AlphaStop(100, 0)(); AlphaStop(alphaRamp ? 0 : 100, 4096)(); }))),
+            () => Item("Angl", "UntF", () => { Ascii("#Ang"); Doub(0); }),
+            () => Item("Type", "enum", () => { Id("GdTy"); Id(type); }),
+            () => Item("Scl ", "UntF", () => { Ascii("#Prc"); Doub(100); }),
+            () => Item("Rvrs", "bool", () => b.Add((byte)(reverse ? 1 : 0))),
+        };
+        if (interp != null) root.Add(() => Item("gradientsInterpolationMethod", "enum", () => { Id("gradientInterpolationMethodType"); Id(interp); }));
+        Desc([.. root]);
+        return [.. b];
+    }
+
+    private static TestLayer GradientLayer(byte[] block) =>
+        new() { Name = "グラデーション", Bgra = [], Blocks = [("GdFl", block)] };
+
+    [Fact]
+    public void LinearGradientFill()
+    {
+        using var psd = Open(GradientLayer(GradientBlock()));
+        var px = All(psd);
+        Assert.InRange(At(px, 0, 0).R, 8, 24);   // 左端は黒に近い（位置 0.0625）
+        Assert.InRange(At(px, 3, 0).R, 100, 124); // 中央寄り
+        Assert.InRange(At(px, 7, 0).R, 231, 247); // 右端は白に近い（位置 0.9375）
+    }
+
+    [Fact]
+    public void GradientFillReverse()
+    {
+        using var psd = Open(GradientLayer(GradientBlock(reverse: true)));
+        var px = All(psd);
+        Assert.InRange(At(px, 0, 0).R, 231, 247);
+        Assert.InRange(At(px, 7, 0).R, 8, 24);
+    }
+
+    [Fact]
+    public void GradientFillAlphaRamp()
+    {
+        using var psd = Open(GradientLayer(GradientBlock(alphaRamp: true)));
+        var px = All(psd);
+        Assert.InRange(At(px, 0, 0).A, 225, 250); // 左はほぼ不透明
+        Assert.InRange(At(px, 7, 0).A, 5, 30);    // 右はほぼ透明
+    }
+
+    [Fact]
+    public void SmoothGradientColor()
+    {
+        // スムーズ: 区間の混ざり具合が 2 次の曲線（f → 2f−f²）になる。実ファイルの実測に合わせた
+        using var psd = Open(GradientLayer(GradientBlock(interp: "Smoo")));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).R, 78, 96);   // f=0.1875 → 0.34（直線なら 48、クラシックなら 36）
+        Assert.InRange(At(px, 3, 0).R, 165, 183); // f=0.4375 → 0.68
+    }
+
+    [Fact]
+    public void SmoothGradientAlpha()
+    {
+        using var psd = Open(GradientLayer(GradientBlock(alphaRamp: true, interp: "Smoo")));
+        var px = All(psd);
+        Assert.InRange(At(px, 3, 0).A, 70, 92); // 不透明度も同じ曲線（1 − 0.68 = 0.32）
+    }
+
+    [Fact]
+    public void LinearSpaceGradientColor()
+    {
+        // リニア: 線形の色空間で 3 次補間するので、直線で混ぜるより暗めに出る
+        using var psd = Open(GradientLayer(GradientBlock(interp: "linear")));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).R, 97, 112); // f=0.1875 → 線形で 0.140 → 符号化で 0.41
+    }
+
+    [Fact]
+    public void PerceptualGradientColor()
+    {
+        // 知覚的: OKLab で 3 次補間する。灰色の ramp では明度が曲線になる
+        using var psd = Open(GradientLayer(GradientBlock(interp: "perceptual")));
+        var px = All(psd);
+        Assert.InRange(At(px, 3, 0).R, 72, 92); // f=0.4375 → 明度 0.422 → 線形で 0.075 → 符号化で 0.30
+    }
+
+    [Fact]
+    public void LinearGradientAlpha()
+    {
+        // リニアの不透明度は、古典の 3 次曲線 H の H^(2/3)（8300_Panel の実ファイルでの実測に合わせた）
+        using var psd = Open(GradientLayer(GradientBlock(alphaRamp: true, interp: "linear")));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).A, 222, 240); // f=0.1875 → H=0.860 → 0.904
+        Assert.InRange(At(px, 3, 0).A, 168, 186); // f=0.4375 → H=0.578 → 0.694
+    }
+
+    [Fact]
+    public void PerceptualGradientAlpha()
+    {
+        // 知覚的の不透明度は、古典の 3 次曲線 H の H^2（同上）
+        using var psd = Open(GradientLayer(GradientBlock(alphaRamp: true, interp: "perceptual")));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).A, 180, 197); // f=0.1875 → H=0.860 → 0.740
+        Assert.InRange(At(px, 3, 0).A, 77, 93);   // f=0.4375 → H=0.578 → 0.334
+    }
+
+    [Fact]
+    public void ClassicGradientColor()
+    {
+        // 補間方法の指定が無い（古いファイル）ときはクラシック（3 次補間）
+        using var psd = Open(GradientLayer(GradientBlock()));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).R, 30, 42); // f=0.1875 → 0.14（直線なら 48）
+    }
+
+    [Fact]
+    public void RadialGradientFill()
+    {
+        using var psd = Open(GradientLayer(GradientBlock(type: "Rdl ")));
+        var px = All(psd);
+        Assert.True(At(px, 3, 1).R < 80, "中心は黒に近い");   // 中心から始まるので黒
+        Assert.True(At(px, 0, 0).R > 180, "隅は白に近い");
+    }
+
     [Fact]
     public void InvertAdjustment()
     {
