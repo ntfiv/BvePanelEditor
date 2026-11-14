@@ -231,7 +231,7 @@ public static class PsdCompose
                 float ma = mask == null ? 1f : mask.At(rect.Left + x, rect.Top + y); // マスクの濃さ（0〜1）
                 if (layer.Gradient is { } gr)
                 {
-                    var (r, g, b, a) = gr.Gradient.At((float)gr.Position(rect.Left + x, rect.Top + y, area));
+                    var (r, g, b, a) = gr.Sample(gr.Position(rect.Left + x, rect.Top + y, area));
                     bgra[i] = ToByte(b); bgra[i + 1] = ToByte(g); bgra[i + 2] = ToByte(r);
                     bgra[i + 3] = ToByte(a * ma);
                 }

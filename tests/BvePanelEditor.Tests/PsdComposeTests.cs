@@ -216,7 +216,7 @@ public sealed class PsdComposeTests : IDisposable
     }
 
     /// <summary>GdFl の記述子（版つき）を作る。色は黒→白の 2 点。</summary>
-    private static byte[] GradientBlock(string type = "Lnr ", bool reverse = false, bool alphaRamp = false)
+    private static byte[] GradientBlock(string type = "Lnr ", bool reverse = false, bool alphaRamp = false, string? interp = null)
     {
         var b = new List<byte>();
         void U32(uint v) { b.Add((byte)(v >> 24)); b.Add((byte)(v >> 16)); b.Add((byte)(v >> 8)); b.Add((byte)v); }
@@ -246,7 +246,8 @@ public sealed class PsdComposeTests : IDisposable
                 () => Item("Mdpn", "long", () => U32(50)));
         };
         U32(1); // 版（読み手が読み飛ばす）
-        Desc(
+        var root = new List<Action>
+        {
             () => Item("Grad", "Objc", () => Desc(
                 () => Item("Nm  ", "TEXT", () => Uni("")),
                 () => Item("GrdF", "enum", () => { Id("GrdF"); Id("CstS"); }),
@@ -255,7 +256,10 @@ public sealed class PsdComposeTests : IDisposable
             () => Item("Angl", "UntF", () => { Ascii("#Ang"); Doub(0); }),
             () => Item("Type", "enum", () => { Id("GdTy"); Id(type); }),
             () => Item("Scl ", "UntF", () => { Ascii("#Prc"); Doub(100); }),
-            () => Item("Rvrs", "bool", () => b.Add((byte)(reverse ? 1 : 0))));
+            () => Item("Rvrs", "bool", () => b.Add((byte)(reverse ? 1 : 0))),
+        };
+        if (interp != null) root.Add(() => Item("gradientsInterpolationMethod", "enum", () => { Id("gradientInterpolationMethodType"); Id(interp); }));
+        Desc([.. root]);
         return [.. b];
     }
 
@@ -288,6 +292,51 @@ public sealed class PsdComposeTests : IDisposable
         var px = All(psd);
         Assert.InRange(At(px, 0, 0).A, 225, 250); // 左はほぼ不透明
         Assert.InRange(At(px, 7, 0).A, 5, 30);    // 右はほぼ透明
+    }
+
+    [Fact]
+    public void SmoothGradientColor()
+    {
+        // スムーズ: 区間の混ざり具合が 2 次の曲線（f → 2f−f²）になる。実ファイルの実測に合わせた
+        using var psd = Open(GradientLayer(GradientBlock(interp: "Smoo")));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).R, 78, 96);   // f=0.1875 → 0.34（直線なら 48、クラシックなら 36）
+        Assert.InRange(At(px, 3, 0).R, 165, 183); // f=0.4375 → 0.68
+    }
+
+    [Fact]
+    public void SmoothGradientAlpha()
+    {
+        using var psd = Open(GradientLayer(GradientBlock(alphaRamp: true, interp: "Smoo")));
+        var px = All(psd);
+        Assert.InRange(At(px, 3, 0).A, 70, 92); // 不透明度も同じ曲線（1 − 0.68 = 0.32）
+    }
+
+    [Fact]
+    public void LinearSpaceGradientColor()
+    {
+        // リニア: 線形の色空間で混ぜるので、符号化値では明るめに出る
+        using var psd = Open(GradientLayer(GradientBlock(interp: "linear")));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).R, 110, 130); // f=0.1875 → 符号化で 0.47
+    }
+
+    [Fact]
+    public void PerceptualGradientColor()
+    {
+        // 知覚的: OKLab で混ぜる。灰色の ramp では明度がそのまま位置になる
+        using var psd = Open(GradientLayer(GradientBlock(interp: "perceptual")));
+        var px = All(psd);
+        Assert.InRange(At(px, 3, 0).R, 72, 92); // f=0.4375 → 線形で 0.084 → 符号化で 0.32
+    }
+
+    [Fact]
+    public void ClassicGradientColor()
+    {
+        // 補間方法の指定が無い（古いファイル）ときはクラシック（3 次補間）
+        using var psd = Open(GradientLayer(GradientBlock()));
+        var px = All(psd);
+        Assert.InRange(At(px, 1, 0).R, 30, 42); // f=0.1875 → 0.14（直線なら 48）
     }
 
     [Fact]

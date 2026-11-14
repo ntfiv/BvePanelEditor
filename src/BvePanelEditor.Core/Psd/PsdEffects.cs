@@ -2,6 +2,9 @@ namespace BvePanelEditor.Core.Psd;
 
 public enum PsdEffectKind { DropShadow, OuterGlow, InnerShadow, InnerGlow, Bevel, Satin, ColorOverlay, GradientOverlay, PatternOverlay, Stroke }
 
+/// <summary>グラデーションの補間方法（Photoshop の「補間方法」）。塗りつぶしレイヤーの記述子にある。</summary>
+public enum PsdGradientInterp { Classic, Smooth, Linear, Perceptual }
+
 /// <summary>グラデーション（色の点と不透明度の点）。位置は 0〜1。</summary>
 public sealed class PsdGradient
 {
@@ -26,6 +29,100 @@ public sealed class PsdGradient
         return (r, g, b, a);
     }
 
+    /// <summary>
+    /// 補間方法つきで色を返す（塗りつぶしレイヤー用）。区間の位置 f は中点でゆがめたあとの値。
+    /// Smooth は、実ファイルでの実測に合う 2 次の曲線（f → 2f−f²）。Linear は線形の色空間、
+    /// Perceptual は OKLab 色空間で混ぜる。Classic は点ごとの 3 次補間（接線は前後の弦の平均）。
+    /// </summary>
+    public (float R, float G, float B, float A) AtInterpolated(float t, PsdGradientInterp mode)
+    {
+        t = Math.Clamp(t, 0, 1);
+        float r = 0, g = 0, b = 0, a = 1;
+        if (Colors.Count > 0)
+        {
+            var (i, f) = Find(Colors.Select(c => (c.Loc, c.Mid)).ToList(), t);
+            var c0 = Colors[i].Color; var c1 = Colors[Math.Min(i + 1, Colors.Count - 1)].Color;
+            switch (mode)
+            {
+                case PsdGradientInterp.Smooth:
+                    {
+                        float e = 2 * f - f * f;
+                        r = Lerp(c0.R, c1.R, e); g = Lerp(c0.G, c1.G, e); b = Lerp(c0.B, c1.B, e);
+                        break;
+                    }
+                case PsdGradientInterp.Linear:
+                    (r, g, b) = MixInSpace(c0, c1, f, linear: true);
+                    break;
+                case PsdGradientInterp.Perceptual:
+                    (r, g, b) = MixInSpace(c0, c1, f, linear: false);
+                    break;
+                default: // Classic
+                    r = CubicChannel(Colors.Select(c => c.Color.R).ToList(), i, f);
+                    g = CubicChannel(Colors.Select(c => c.Color.G).ToList(), i, f);
+                    b = CubicChannel(Colors.Select(c => c.Color.B).ToList(), i, f);
+                    break;
+            }
+        }
+        if (Alphas.Count > 0)
+        {
+            var (i, f) = Find(Alphas.Select(x => (x.Loc, x.Mid)).ToList(), t);
+            float a0 = Alphas[i].Opacity, a1 = Alphas[Math.Min(i + 1, Alphas.Count - 1)].Opacity;
+            a = mode switch
+            {
+                PsdGradientInterp.Smooth => Lerp(a0, a1, 2 * f - f * f),
+                PsdGradientInterp.Classic => CubicChannel(Alphas.Select(x => x.Opacity).ToList(), i, f),
+                _ => Lerp(a0, a1, f),
+            };
+        }
+        return (r, g, b, a);
+    }
+
+    private static float Lerp(float x, float y, float f) => x + (y - x) * f;
+
+    /// <summary>Classic の 3 次補間。点 i の接線は、前後の弦（値の差）の平均。端では無い側を 0 とする。</summary>
+    private static float CubicChannel(IReadOnlyList<float> v, int i, float f)
+    {
+        if (v.Count == 1 || i >= v.Count - 1) return v[Math.Min(i, v.Count - 1)];
+        float Chord(int k) => k >= 0 && k < v.Count - 1 ? v[k + 1] - v[k] : 0;
+        float t0 = (Chord(i - 1) + Chord(i)) / 2, t1 = (Chord(i) + Chord(i + 1)) / 2;
+        float f2 = f * f, f3 = f2 * f;
+        float value = (2 * f3 - 3 * f2 + 1) * v[i] + (f3 - 2 * f2 + f) * t0 + (-2 * f3 + 3 * f2) * v[i + 1] + (f3 - f2) * t1;
+        return Math.Clamp(value, 0, 1);
+    }
+
+    /// <summary>線形の色空間（linear: true）か OKLab（false）で 2 色を混ぜ、sRGB の符号化値に戻す。</summary>
+    private static (float R, float G, float B) MixInSpace((float R, float G, float B) c0, (float R, float G, float B) c1, float f, bool linear)
+    {
+        var x = ToSpace(c0, linear); var y = ToSpace(c1, linear);
+        return FromSpace((Lerp(x.Item1, y.Item1, f), Lerp(x.Item2, y.Item2, f), Lerp(x.Item3, y.Item3, f)), linear);
+    }
+
+    private static (float, float, float) ToSpace((float R, float G, float B) c, bool linear)
+    {
+        float r = SrgbToLinear(c.R), g = SrgbToLinear(c.G), b = SrgbToLinear(c.B);
+        if (linear) return (r, g, b);
+        double l = Math.Cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+        double m = Math.Cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+        double s = Math.Cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+        return ((float)(0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s),
+                (float)(1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s),
+                (float)(0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s));
+    }
+
+    private static (float, float, float) FromSpace((float, float, float) v, bool linear)
+    {
+        if (linear) return (LinearToSrgb(v.Item1), LinearToSrgb(v.Item2), LinearToSrgb(v.Item3));
+        double L = v.Item1, a = v.Item2, b = v.Item3;
+        double l = Math.Pow(L + 0.3963377774 * a + 0.2158037573 * b, 3);
+        double m = Math.Pow(L - 0.1055613458 * a - 0.0638541728 * b, 3);
+        double s = Math.Pow(L - 0.0894841775 * a - 1.2914855480 * b, 3);
+        return (LinearToSrgb((float)(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s)),
+                LinearToSrgb((float)(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s)),
+                LinearToSrgb((float)(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)));
+    }
+
+    private static float SrgbToLinear(float c) => c <= 0.04045f ? c / 12.92f : MathF.Pow((c + 0.055f) / 1.055f, 2.4f);
+    private static float LinearToSrgb(float c) => Math.Clamp(c <= 0.0031308f ? c * 12.92f : 1.055f * MathF.Pow(c, 1 / 2.4f) - 0.055f, 0, 1);
     /// <summary>t がどの区間（i と i+1 の間）のどこ（0〜1）か。</summary>
     private static (int I, float F) Find(List<(float Loc, float Mid)> stops, float t)
     {
