@@ -117,6 +117,9 @@ public sealed class PsdFile : IDisposable
     private long _cacheBytes;
     public long CacheLimitBytes { get; set; } = 600L * 1024 * 1024;
 
+    /// <summary>キャッシュしている画像・マスク・レイヤー効果の合計バイト数。</summary>
+    public long CacheBytes => _cacheBytes + _maskBytes + EffectCacheBytes;
+
     /// <summary>描いたレイヤー効果（PsdCompose が使う）。</summary>
     internal Dictionary<PsdLayer, List<PsdEffects.Part>> EffectCache { get; } = [];
     internal long EffectCacheBytes;
@@ -151,28 +154,48 @@ public sealed class PsdFile : IDisposable
     /// <summary>重ねられるレイヤー（画像レイヤーと、再現できる調整レイヤー・べた塗りレイヤー。ファイル内の順）。</summary>
     public IEnumerable<PsdLayer> ComposableLayers => Layers.Where(l => l.CanCompose);
 
+    // 名前で探すための索引（レイヤーが多い PSD で、探すたびに全件見ないように）
+    private Dictionary<string, PsdLayer>? _byPath;
+    private Dictionary<string, List<PsdLayer>>? _byBasePath;
+    private Dictionary<string, List<PsdLayer>>? _byName;
+
+    private void EnsureIndex()
+    {
+        if (_byPath != null) return;
+        _byPath = [];
+        _byBasePath = [];
+        _byName = [];
+        foreach (var l in Layers)
+        {
+            if (l.Kind == PsdLayerKind.FolderEnd) continue;
+            _byPath[l.Path] = l;
+            if (!_byBasePath.TryGetValue(l.BasePath, out var b)) _byBasePath[l.BasePath] = b = [];
+            b.Add(l); // 下から順（Index の昇順）
+            if (!_byName.TryGetValue(l.Name, out var n)) _byName[l.Name] = n = [];
+            n.Add(l);
+        }
+    }
+
     /// <summary>
     /// 名前（パス）でレイヤーを探す。
     /// 1. 「#2」まで含めて同じもの　2. 「#2」を除いた名前が同じもののうち、いちばん上（手前）　3. レイヤー名だけが一致するものが 1 つならそれ。
     /// </summary>
     public PsdLayer? Find(string path)
     {
-        var exact = Layers.FirstOrDefault(l => l.Kind != PsdLayerKind.FolderEnd && l.Path == path);
-        if (exact != null) return exact;
+        EnsureIndex();
+        if (_byPath!.TryGetValue(path, out var exact)) return exact;
         var basePath = StripDuplicateMark(path);
-        var sameBase = Layers.Where(l => l.Kind != PsdLayerKind.FolderEnd && l.BasePath == basePath).ToList();
-        if (sameBase.Count > 0) return sameBase.MaxBy(l => l.Index);
+        if (_byBasePath!.TryGetValue(basePath, out var sameBase) && sameBase.Count > 0) return sameBase[^1];
         var leaf = basePath.Contains('/') ? basePath[(basePath.LastIndexOf('/') + 1)..] : basePath;
-        var byName = Layers.Where(l => l.Kind != PsdLayerKind.FolderEnd && l.Name == leaf).ToList();
-        return byName.Count == 1 ? byName[0] : null;
+        return _byName!.TryGetValue(leaf, out var byName) && byName.Count == 1 ? byName[0] : null;
     }
 
     /// <summary>「#2」を除いた名前が同じレイヤーを全部（下から順）。なければ Find と同じ探し方で 1 つ。</summary>
     public List<PsdLayer> FindAllSameName(string path)
     {
+        EnsureIndex();
         var basePath = StripDuplicateMark(path);
-        var all = Layers.Where(l => l.Kind != PsdLayerKind.FolderEnd && l.BasePath == basePath).ToList();
-        if (all.Count > 0) return all;
+        if (_byBasePath!.TryGetValue(basePath, out var all) && all.Count > 0) return all;
         return Find(path) is { } one ? [one] : [];
     }
 
@@ -225,6 +248,8 @@ public sealed class PsdFile : IDisposable
             throw new NotSupportedException($"{name} の PSD は読めません。RGB に変換して保存し直してください");
         }
         if (Depth is not (8 or 16)) throw new NotSupportedException($"{Depth}bit の PSD は読めません。8bit か 16bit で保存し直してください");
+        if (Width is < 1 or > 30000 || Height is < 1 or > 30000)
+            throw new InvalidDataException($"キャンバスの大きさ（{Width}×{Height}）が不正です");
 
         Skip(U32()); // カラーモードデータ
         ReadResources(U32());
@@ -449,6 +474,28 @@ public sealed class PsdFile : IDisposable
     // ================= 画像 =================
 
     private readonly Dictionary<PsdLayer, PsdMask?> _masks = [];
+    private readonly List<PsdLayer> _maskOrder = []; // マスクを入れた順（古いものから捨てる）
+    private long _maskBytes;
+
+    /// <summary>キャッシュ（レイヤー画像とマスク）の合計が上限を超えたら、古いものから捨てる。keepMask のマスクは捨てない。</summary>
+    private void TrimCache(PsdLayer? keepMask)
+    {
+        while (_cacheBytes + _maskBytes > CacheLimitBytes)
+        {
+            if (_cache.Count > 1)
+            {
+                var last = _cache.Last!;
+                _cacheBytes -= last.Value.Pixels.Bgra.Length;
+                _cache.RemoveLast();
+                continue;
+            }
+            var old = _maskOrder.FirstOrDefault(l => l != keepMask);
+            if (old == null) break;
+            if (_masks.TryGetValue(old, out var m) && m != null) _maskBytes -= (long)m.Bounds.Width * m.Bounds.Height;
+            _masks.Remove(old);
+            _maskOrder.Remove(old);
+        }
+    }
 
     /// <summary>レイヤー（フォルダ・調整レイヤー・塗りつぶしレイヤーも）のマスク。ない・使わない設定なら null。</summary>
     public PsdMask? GetMask(PsdLayer layer)
@@ -463,6 +510,12 @@ public sealed class PsdFile : IDisposable
                     break;
                 }
         _masks[layer] = m;
+        if (m != null)
+        {
+            _maskBytes += (long)m.Bounds.Width * m.Bounds.Height;
+            _maskOrder.Add(layer);
+            TrimCache(layer);
+        }
         return m;
     }
 
@@ -480,19 +533,16 @@ public sealed class PsdFile : IDisposable
         var px = DecodeLayer(layer);
         _cache.AddFirst((layer, px));
         _cacheBytes += px.Bgra.Length;
-        while (_cacheBytes > CacheLimitBytes && _cache.Count > 1)
-        {
-            var last = _cache.Last!;
-            _cacheBytes -= last.Value.Pixels.Bgra.Length;
-            _cache.RemoveLast();
-        }
+        TrimCache(null);
         return px;
     }
 
     private PsdPixels DecodeLayer(PsdLayer layer)
     {
         int w = layer.Bounds.Width, h = layer.Bounds.Height;
-        var bgra = new byte[w * h * 4];
+        long bytes = (long)w * h * 4;
+        if (bytes > int.MaxValue) throw new InvalidDataException("レイヤーが大きすぎます");
+        var bgra = new byte[bytes];
         bool hasAlpha = false;
         foreach (var (id, offset, length) in layer.Channels)
         {
@@ -538,8 +588,12 @@ public sealed class PsdFile : IDisposable
     /// <summary>1 チャンネルを 8bit の平面に読む。</summary>
     private byte[] DecodeChannel(long offset, long length, int w, int h)
     {
+        if (offset < 0 || length < 0 || offset + length > _fs.Length)
+            throw new InvalidDataException("チャンネルのデータがファイルの範囲外にあります");
+        long total = (long)w * h;
+        if (total > int.MaxValue / 4) throw new InvalidDataException("レイヤーが大きすぎます");
         int bps = Depth / 8;
-        var outPlane = new byte[w * h];
+        var outPlane = new byte[total];
         if (w == 0 || h == 0 || length < 2) return outPlane;
         _fs.Position = offset;
         int comp = U16();
@@ -584,6 +638,7 @@ public sealed class PsdFile : IDisposable
                     {
                         int n = 0, r;
                         while (n < result.Length && (r = z.Read(result, n, result.Length - n)) > 0) n += r;
+                        if (n < result.Length) throw new InvalidDataException("ZIP データが途中で終わっています");
                     }
                     if (comp == 3) Unpredict(result, w, h, bps);
                     break;
@@ -643,7 +698,9 @@ public sealed class PsdFile : IDisposable
     public PsdPixels ReadMerged()
     {
         int w = Width, h = Height, bps = Depth / 8;
-        var bgra = new byte[w * h * 4];
+        long bytes = (long)w * h * 4;
+        if (bytes > int.MaxValue) throw new InvalidDataException("キャンバスが大きすぎます");
+        var bgra = new byte[bytes];
         _fs.Position = _mergedOffset;
         int comp = U16();
         int colorCh = ColorMode == 1 ? 1 : 3;
@@ -686,6 +743,7 @@ public sealed class PsdFile : IDisposable
             {
                 int n = 0, r;
                 while (n < all.Length && (r = z.Read(all, n, all.Length - n)) > 0) n += r;
+                if (n < all.Length) throw new InvalidDataException("統合画像の ZIP データが途中で終わっています");
             }
             if (comp == 3) Unpredict(all, w, h * ChannelCount, bps);
             for (int c = 0; c < useCh; c++) planes.Add(all.AsSpan(c * rowBytes * h, rowBytes * h).ToArray());

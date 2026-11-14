@@ -70,6 +70,7 @@ public partial class App : Application
         string[]? spacepantest = null;
         string[]? ragtest = null;
         string[]? ragmultitest = null;
+        string? psdnodetest = null;
         string[]? memtest = null;
         string[]? variationtest = null;
         string[]? variationimport = null;
@@ -103,6 +104,7 @@ public partial class App : Application
             else if (e.Args[i] == "--spacepantest" && i + 2 < e.Args.Length) { spacepantest = e.Args[(i + 1)..(i + 3)]; i += 2; }
             else if (e.Args[i] == "--ragtest" && i + 2 < e.Args.Length) { ragtest = e.Args[(i + 1)..(i + 3)]; i += 2; }
             else if (e.Args[i] == "--ragmultitest" && i + 2 < e.Args.Length) { ragmultitest = e.Args[(i + 1)..(i + 3)]; i += 2; }
+            else if (e.Args[i] == "--psdnodetest" && i + 1 < e.Args.Length) psdnodetest = e.Args[++i];
             else if (e.Args[i] == "--memtest" && i + 3 < e.Args.Length) { memtest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--variationtest" && i + 3 < e.Args.Length) { variationtest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--variationimport" && i + 4 < e.Args.Length) { variationimport = e.Args[(i + 1)..]; i = e.Args.Length; }
@@ -162,6 +164,8 @@ public partial class App : Application
             w.Dispatcher.BeginInvoke(() => w.RunRagTest(rgt[0], rgt[1]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (ragmultitest is { } rgmt)
             w.Dispatcher.BeginInvoke(() => w.RunRagMultiTest(rgmt[0], rgmt[1]), System.Windows.Threading.DispatcherPriority.ContextIdle);
+        if (psdnodetest is { } pndt)
+            w.Dispatcher.BeginInvoke(() => w.RunPsdNodeTest(pndt), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (spacepantest is { } spt)
             w.Dispatcher.BeginInvoke(() => w.RunSpacePanTest(spt[0], spt[1]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (listordertest is { } lot)

@@ -32,6 +32,9 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
     public ObservableCollection<PsdLayerNode> Children { get; } = [];
     public Action? Changed;
 
+    /// <summary>一括変更の深さ（0 でないあいだは、役割の Changed を出さない。葉ごとに再集計が走らないように）。</summary>
+    internal static int ChangeBatch;
+
     public static readonly RoleOption[] Options =
     [
         new() { Value = PsdRole.None, Label = "使わない" },
@@ -55,8 +58,11 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
             Raise(nameof(Role));
             Raise(nameof(RoleValue));
             Raise(nameof(NumberVisibility));
-            for (var p = ParentNode; p != null; p = p.ParentNode) p.Raise(nameof(RoleValue));
-            Changed?.Invoke();
+            if (ChangeBatch == 0)
+            {
+                for (var p = ParentNode; p != null; p = p.ParentNode) p.Raise(nameof(RoleValue));
+                Changed?.Invoke();
+            }
         }
     }
 
@@ -73,12 +79,19 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
         {
             if (value is not PsdRole r) return;
             if (!IsFolder) { Role = r; return; }
-            foreach (var l in Leaves().Where(l => l.Usable))
+            ChangeBatch++;
+            try
             {
-                if (r == PsdRole.Number && l.Role != PsdRole.Number) l.NumberSet = Name;
-                l.Role = r;
+                foreach (var l in Leaves().Where(l => l.Usable))
+                {
+                    if (r == PsdRole.Number && l.Role != PsdRole.Number) l.NumberSet = Name;
+                    l.Role = r;
+                }
             }
+            finally { ChangeBatch--; }
             Raise(nameof(RoleValue));
+            for (var p = ParentNode; p != null; p = p.ParentNode) p.RaiseRoleValue();
+            Changed?.Invoke();
         }
     }
 
@@ -92,7 +105,7 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
             if (_numberSet == v) return;
             _numberSet = v;
             Raise(nameof(NumberSet));
-            Changed?.Invoke();
+            if (ChangeBatch == 0) Changed?.Invoke();
         }
     }
 
@@ -113,6 +126,9 @@ public sealed class PsdLayerNode : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    /// <summary>フォルダの役割の表示を更新する（一括変更の後にまとめて呼ぶ）。</summary>
+    internal void RaiseRoleValue() => Raise(nameof(RoleValue));
 }
 
 /// <summary>デジタル数字のコマの並び 1 行。</summary>
@@ -269,6 +285,7 @@ public partial class PsdImportWindow : Window
         var roots = new List<PsdLayerNode>();
         void Add(PsdLayerNode n, string? parentPath)
         {
+            n.Changed = OnRolesChanged;
             if (parentPath != null && byPath.TryGetValue(parentPath, out var parent))
             {
                 n.ParentNode = parent;
@@ -299,16 +316,20 @@ public partial class PsdImportWindow : Window
             }
         }
 
-        foreach (var leaf in roots.SelectMany(r => r.Leaves()))
+        PsdLayerNode.ChangeBatch++;
+        try
         {
-            if (keep.TryGetValue(leaf.Path, out var k)) { leaf.Role = k.Role; leaf.NumberSet = k.NumberSet; }
-            else
+            foreach (var leaf in roots.SelectMany(r => r.Leaves()))
             {
-                leaf.Role = leaf.Day != null ? PsdImport.DefaultRole(leaf.Day, _day.Canvas) : PsdRole.None;
-                leaf.NumberSet = leaf.ParentNode?.Name ?? "数字";
+                if (keep.TryGetValue(leaf.Path, out var k)) { leaf.Role = k.Role; leaf.NumberSet = k.NumberSet; }
+                else
+                {
+                    leaf.Role = leaf.Day != null ? PsdImport.DefaultRole(leaf.Day, _day.Canvas) : PsdRole.None;
+                    leaf.NumberSet = leaf.ParentNode?.Name ?? "数字";
+                }
             }
-            leaf.Changed = OnRolesChanged;
         }
+        finally { PsdLayerNode.ChangeBatch--; }
         _roots = roots;
         LayerTree.ItemsSource = _roots;
         OnRolesChanged();
@@ -318,7 +339,23 @@ public partial class PsdImportWindow : Window
 
     private void OnDefaultRoles(object sender, RoutedEventArgs e)
     {
-        foreach (var l in Leaves) l.Role = l.Day != null ? PsdImport.DefaultRole(l.Day, _day!.Canvas) : PsdRole.None;
+        PsdLayerNode.ChangeBatch++;
+        try { foreach (var l in Leaves) l.Role = l.Day != null ? PsdImport.DefaultRole(l.Day, _day!.Canvas) : PsdRole.None; }
+        finally { PsdLayerNode.ChangeBatch--; }
+        foreach (var n in AllNodes().Where(n => n.IsFolder)) n.RaiseRoleValue();
+        OnRolesChanged();
+    }
+
+    /// <summary>全部のノード（フォルダも含む）。</summary>
+    private IEnumerable<PsdLayerNode> AllNodes()
+    {
+        var stack = new Stack<PsdLayerNode>(_roots);
+        while (stack.Count > 0)
+        {
+            var n = stack.Pop();
+            yield return n;
+            foreach (var c in n.Children) stack.Push(c);
+        }
     }
 
     private void OnRolesChanged()
