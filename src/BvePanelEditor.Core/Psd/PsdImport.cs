@@ -260,6 +260,7 @@ public static class PsdImport
         if (l.Kind == PsdLayerKind.Adjustment && l.Adjustment != null)
             n.Add($"調整レイヤー（{l.Adjustment.Name}。ベースに重ねるときだけ効きます）");
         if (l.Kind == PsdLayerKind.Fill && l.SolidColor != null) n.Add("べた塗り");
+        if (l.Kind == PsdLayerKind.Fill && l.Gradient != null) n.Add("グラデーション塗り");
         if (l.Kind == PsdLayerKind.Text) n.Add("文字");
         if (l.Kind == PsdLayerKind.Smart) n.Add("スマートオブジェクト");
         if (l.HasEffects && !l.IsFolder && l.Effects != null)
@@ -285,7 +286,11 @@ public static class PsdImport
             if (l.Adjustment == null) n.Add($"調整レイヤー（{PsdAdjust.Label(l.SpecialKey ?? "")}）は使えません");
             else if (l.Adjustment.Note is { Length: > 0 } note) n.Add(note);
         }
-        if (l.Kind == PsdLayerKind.Fill && l.SolidColor == null) n.Add("グラデーション・パターンの塗りつぶしは使えません");
+        if (l.Kind == PsdLayerKind.Fill && l.SolidColor == null)
+        {
+            if (l.Gradient != null) n.Add("グラデーション塗りは近似です");
+            else n.Add(l.SpecialKey == "PtFl" ? "パターンの塗りつぶしは使えません" : "グラデーションの塗りつぶしは使えません");
+        }
         if (l.HasEffects)
         {
             if (l.IsFolder) n.Add("フォルダの効果は再現しません");
