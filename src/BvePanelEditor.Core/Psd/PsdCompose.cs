@@ -83,7 +83,7 @@ public static class PsdCompose
             {
                 // 「通常」のフォルダは、中身に通常以外の描画モードがあるときだけ見た目が変わる（なければ平らに重ねても同じ）
                 if (f.BlendMode == "norm" && !list.Any(x => !IsNormalBlend(x.BlendMode) && IsInside(x, f))) continue;
-                warnings.Add(new PsdWarning(PsdWarningKind.Approx, $"フォルダ「{f.Path}」の描画モード（{BlendLabel(f.BlendMode)}）は再現できません（中身をそのまま重ねました）"));
+                warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"フォルダ「{f.Path}」の描画モード（{BlendLabel(f.BlendMode)}）は再現できません（中身をそのまま重ねました）"));
             }
         }
         foreach (var l in list)

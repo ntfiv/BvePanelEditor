@@ -266,7 +266,7 @@ public sealed class PsdComposeTests : IDisposable
             mul);
         var w = new List<PsdWarning>();
         PsdCompose.Compose(psd, psd.Layers, psd.Canvas, 1, w);
-        Assert.Contains(w, x => x.Kind == PsdWarningKind.Approx && x.Text.Contains("乗算グループ") && x.Text.Contains("乗算"));
+        Assert.Contains(w, x => x.Kind == PsdWarningKind.Unsupported && x.Text.Contains("乗算グループ") && x.Text.Contains("乗算"));
 
         // 「通過」なら警告しない。「通常」でも、中身が全部通常なら警告しない
         var pass = TestLayer.FolderStart("通過グループ"); pass.Blend = "pass";
