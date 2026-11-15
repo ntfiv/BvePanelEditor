@@ -24,6 +24,18 @@ public interface ILayerImage : IDisposable
     /// </summary>
     IReadOnlyList<PsdWarning> FileWarnings { get; }
 
+    /// <summary>
+    /// 合成をリニア（ガンマなし）の明るさで行うか。GIMP 2.10 世代は、半透明の重なりや
+    /// 今の方式の描画モードをリニアで計算するので、XCF はこちらに合わせる。PSD（Photoshop）は sRGB のまま。
+    /// </summary>
+    bool LinearComposite { get; }
+
+    /// <summary>
+    /// 画素のバイト値がリニアの明るさで格納されているか（XCF の 8bit リニア精度=100）。
+    /// 通常のファイルは sRGB で格納されているので false。
+    /// </summary>
+    bool LinearPixels { get; }
+
     PsdLayer? Find(string path);
     List<PsdLayer> FindAllSameName(string path);
     PsdPixels? GetPixels(PsdLayer layer);

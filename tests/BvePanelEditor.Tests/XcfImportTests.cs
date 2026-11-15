@@ -17,10 +17,10 @@ public sealed class XcfImportTests : IDisposable
     }
 
     private string WriteXcf(string name, int w, int h, IReadOnlyList<TestXcfLayer> layersTopFirst,
-        int version = 11, IReadOnlyList<(string Name, byte[] Data)>? parasites = null)
+        int version = 11, IReadOnlyList<(string Name, byte[] Data)>? parasites = null, uint precision = 150)
     {
         var p = Path.Combine(_dir, name);
-        TestXcfWriter.Write(p, w, h, layersTopFirst, version, parasites: parasites);
+        TestXcfWriter.Write(p, w, h, layersTopFirst, version, parasites: parasites, precision: precision);
         return p;
     }
 
@@ -155,6 +155,89 @@ public sealed class XcfImportTests : IDisposable
         var d = PsdImport.CautionItems(xcf.Find("ディザ")!);
         Assert.Contains(d, w => w.Kind == PsdWarningKind.Approx && w.Text.Contains("ディザ合成は通常として重ねます"));
         Assert.DoesNotContain(d, w => w.Text.Contains("モード 1"));
+    }
+
+    [Fact]
+    public void LinearCompositeMatchesGimp()
+    {
+        // 白の上に黒 50%: GIMP（版 11 以降）はリニアで混ぜるので、sRGB の単純平均 127 ではなく 188 になる
+        byte GrayAt(string name, int version)
+        {
+            var top = TestXcfLayer.Solid("黒", 2, 2, 0, 0, 0, 128); top.Mode = 28; // 通常（今の方式）
+            var bottom = TestXcfLayer.Solid("白", 2, 2, 255, 255, 255); bottom.Mode = 28;
+            var p = WriteXcf(name, 2, 2, [top, bottom], version: version);
+            using var xcf = XcfFile.Open(p);
+            Assert.Equal(version >= 10, xcf.LinearComposite);
+            var px = PsdCompose.Compose(xcf, xcf.ComposableLayers.ToList(), xcf.Canvas);
+            return px.Bgra[2]; // R
+        }
+        Assert.InRange(GrayAt("lin11.xcf", 11), (byte)184, (byte)192);
+        // 版 10（GIMP 2.10 世代、今の方式のモードが入る版）もリニア合成
+        Assert.InRange(GrayAt("lin10.xcf", 10), (byte)184, (byte)192);
+        Assert.InRange(GrayAt("lin3.xcf", 3), (byte)124, (byte)131);
+    }
+
+    [Fact]
+    public void LinearPrecisionIsNotDoubleConverted()
+    {
+        // 8bit リニア精度（100）の画素は、バイト値そのものがリニア。sRGB として再変換してはいけない
+        var p = WriteXcf("linprec.xcf", 2, 2, [TestXcfLayer.Solid("灰", 2, 2, 128, 128, 128)], precision: 100);
+        using var xcf = XcfFile.Open(p);
+        Assert.True(xcf.LinearPixels);
+        Assert.DoesNotContain(xcf.FileWarnings, w => w.Text.Contains("リニア精度")); // 版 11 では正しく扱える
+        var px = PsdCompose.Compose(xcf, xcf.ComposableLayers.ToList(), xcf.Canvas);
+        Assert.InRange(px.Bgra[2], (byte)184, (byte)192); // リニア 0.502 を sRGB 出力すると 188
+    }
+
+    [Fact]
+    public void LinearPrecisionScreenBlend()
+    {
+        // リニア格納でも、sRGB で計算するモード（スクリーン）は入力を sRGB に直してから混ぜる
+        var top = TestXcfLayer.Solid("上", 2, 2, 192, 192, 192); top.Mode = 31;
+        var p = WriteXcf("linprec-scr.xcf", 2, 2, [top, TestXcfLayer.Solid("下", 2, 2, 64, 64, 64)], precision: 100);
+        using var xcf = XcfFile.Open(p);
+        var px = PsdCompose.Compose(xcf, xcf.ComposableLayers.ToList(), xcf.Canvas);
+        Assert.InRange(px.Bgra[2], (byte)238, (byte)244);
+    }
+
+    [Fact]
+    public void BlendModesUseTheirGimpSpace()
+    {
+        // GIMP は描画モードごとに計算する色空間が違う（実ファイル 03 の書き出しで照合した分類）
+        byte ComposeGray(string name, int mode, byte bottom, byte top)
+        {
+            var t = TestXcfLayer.Solid("上", 2, 2, top, top, top);
+            t.Mode = mode;
+            var p = WriteXcf(name, 2, 2, [t, TestXcfLayer.Solid("下", 2, 2, bottom, bottom, bottom)], version: 11);
+            using var xcf = XcfFile.Open(p);
+            var px = PsdCompose.Compose(xcf, xcf.ComposableLayers.ToList(), xcf.Canvas);
+            return px.Bgra[2]; // R
+        }
+        // スクリーン（31）は sRGB で計算: 64 の上に 192 → sRGB の 208（リニアで混ぜると 197 になる）
+        Assert.InRange(ComposeGray("scr.xcf", 31, 64, 192), (byte)205, (byte)211);
+        // 加算（33）はリニアで計算: 100 + 100 → sRGB の 200 ではなく 139
+        Assert.InRange(ComposeGray("add.xcf", 33, 100, 100), (byte)136, (byte)142);
+        // 加算の旧方式（7）は sRGB で計算: 100 + 100 → 200
+        Assert.InRange(ComposeGray("addleg.xcf", 7, 100, 100), (byte)197, (byte)203);
+    }
+
+    [Fact]
+    public void ComposeAndBuildEmitEffectCaution()
+    {
+        // レイヤー効果（非破壊フィルター）の知らせは、行表示だけでなく合成・読み込みの警告にも出す
+        var fx = TestXcfLayer.Solid("効果", 2, 2, 9, 9, 9);
+        fx.Effects = 1;
+        var p = WriteXcf("fxwarn.xcf", 2, 2, [fx], version: 20);
+        using var xcf = XcfFile.Open(p);
+        var layer = xcf.Find("効果")!;
+        var w = new List<PsdWarning>();
+        _ = PsdCompose.Compose(xcf, [layer], xcf.Canvas, 1, w);
+        Assert.Contains(w, x => x.Kind == PsdWarningKind.Unsupported && x.Text.Contains("レイヤー効果"));
+        var r = PsdImport.Build(new PsdImportSpec
+        {
+            Day = xcf, PanelDir = _dir, OutputDir = Path.Combine(_dir, "out"), BaseLayers = ["効果"],
+        });
+        Assert.Contains(r.Warnings, x => x.Kind == PsdWarningKind.Unsupported && x.Text.Contains("レイヤー効果"));
     }
 
     [Fact]

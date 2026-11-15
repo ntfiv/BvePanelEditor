@@ -221,11 +221,22 @@ public sealed class XcfTests : IDisposable
             Assert.Equal(150, x.Precision);
         using (var x = XcfFile.Open(WriteXcf("p7.xcf", 1, 1, [layer], version: 7, precision: 175)))
             Assert.Equal(175, x.Precision);
-        // 8bit リニアは開けるが、解釈が違うことを警告する
+        // 8bit リニア: 版 11 以降はリニア合成で正しく扱えるので警告なし。古い版は sRGB 合成で読むため警告する
         using (var x = XcfFile.Open(WriteXcf("plin.xcf", 1, 1, [layer], version: 11, precision: 100)))
         {
             Assert.Equal(100, x.Precision);
+            Assert.DoesNotContain(x.Warnings, w => w.Contains("リニア"));
+        }
+        using (var x = XcfFile.Open(WriteXcf("plin7.xcf", 1, 1, [layer], version: 7, precision: 100)))
+        {
+            Assert.Equal(100, x.Precision);
             Assert.Contains(x.Warnings, w => w.Contains("リニア"));
+        }
+        // 版 10 もリニア合成の対象なので、精度 100 を正しく扱えて警告なし
+        using (var x = XcfFile.Open(WriteXcf("plin10.xcf", 1, 1, [layer], version: 10, precision: 100)))
+        {
+            Assert.Equal(100, x.Precision);
+            Assert.DoesNotContain(x.Warnings, w => w.Contains("リニア"));
         }
         // 16bit は理由つきで断る
         var deep = WriteXcf("pdeep.xcf", 1, 1, [layer], version: 11, precision: 250);
