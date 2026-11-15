@@ -1,0 +1,107 @@
+# BvePanelEditor (パネルくん) — ビルドと単体テストの自動実行
+#
+# 目的:
+#   PR を出すたびに Windows 環境で「Release ビルド + dotnet test」を自動で回し、
+#   Windows 側へ手作業で確認を頼む往復をなくす。
+#
+# このワークフローがやること:
+#   1. ソリューション全体 (Core / WPF 本体 / Tests) の Release ビルド
+#   2. 単体テスト (tests/BvePanelEditor.Tests, xUnit) の実行と結果の保存
+#   3. 配布形式 (dotnet publish) の作成と、ダウンロードできる成果物の保存
+#      → 手元の Windows でそのまま起動して目視確認に使える
+#
+# やらないこと (従来どおり手元確認が要るもの):
+#   - 実ファイル照合: BVE_PSD_DIR / BVE_XCF_DIR / BVE_PANEL_DIR /
+#     BVE_VARIATION_MASTERS を設定したときだけ動くテストは、
+#     環境変数を設定しないので CI では自動的に素通りする
+#     (実 PSD / XCF は配布不可素材を含むため CI には置かない)。
+#   - 確認用起動オプション (--selftest / --psdtest / --ragtest など、
+#     Debug 版専用) の実行と、画面の目視確認。
+#
+# 置き場所: このファイルをリポジトリ直下の
+#   .github/workflows/build-and-test.yml
+# に置く (この下書きフォルダの階層がそのままリポジトリ直下と対応している)。
+
+name: build-and-test
+
+on:
+  # main 向け PR の作成・更新のたびに実行
+  pull_request:
+    branches: [main]
+  # main へマージ (push) されたあとの状態でも 1 回確認する
+  push:
+    branches: [main]
+  # Actions 画面から手動でも実行できるようにする
+  workflow_dispatch:
+
+# 必要最小限の権限 (コードの読み取りだけ。書き込みはしない)
+permissions:
+  contents: read
+
+# 同じ PR へ続けて push したときは、古い実行を打ち切って課金分を節約する
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      # ランナー同梱の SDK の版に依存しないよう .NET 10 を明示する
+      # (Core / Tests = net10.0, 本体 = net10.0-windows / WPF)
+      - name: .NET 10 SDK のセットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: 環境の記録
+        run: dotnet --info
+
+      - name: 復元
+        run: dotnet restore BvePanelEditor.sln
+
+      # 本体 (WPF) を含むソリューション全体の Release ビルド。
+      # Release では確認用起動オプション (MainWindow.*Test.cs) が外れる
+      # 本番構成でコンパイルできることをここで確認する。
+      - name: ビルド (Release)
+        run: dotnet build BvePanelEditor.sln -c Release --no-restore
+
+      # 単体テスト。テストプロジェクトは Core のみ参照 (WPF 本体は対象外)。
+      # Linux ではパス区切り差で落ちる 3 件も、Windows ランナーでは本来の結果になる。
+      - name: テスト
+        run: >
+          dotnet test tests/BvePanelEditor.Tests/BvePanelEditor.Tests.csproj
+          -c Release --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+
+      # テスト結果 (trx) は成否にかかわらず保存し、失敗時に PR から辿れるようにする
+      - name: テスト結果の保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}
+          path: TestResults/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # 配布形式の作成 (docs/開発者向け.md の手順どおり)。
+      # テストまで通ったときだけ作る (このステップは失敗時は自動で飛ばされる)。
+      - name: 配布形式の作成 (publish)
+        run: >
+          dotnet publish src/BvePanelEditor/BvePanelEditor.csproj
+          -c Release -r win-x64 --self-contained false
+          -o publish
+
+      # ダウンロードして手元で起動すれば、目視確認用のビルドを別途作らなくてよい
+      - name: 配布形式の保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: BvePanelEditor-${{ github.sha }}
+          path: publish/
+          retention-days: 14
