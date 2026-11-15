@@ -13,32 +13,51 @@ public sealed class XcfLayerInfo
     public bool ModeApprox;
     /// <summary>PSD 側に写せる描画モードが無い（×非対応。通常として重ねる）。</summary>
     public bool ModeUnsupported;
+    /// <summary>レイヤー効果（GIMP 3 の非破壊フィルタ）が付いている。効果そのものは再現しない。</summary>
+    public bool HasEffects;
+    /// <summary>合成モード（PROP_COMPOSITE_MODE）。null は「書かれていない＝自動」。</summary>
+    public int? CompositeMode;
+    /// <summary>合成空間（PROP_COMPOSITE_SPACE）。0=自動、1=RGB リニア、2=RGB 知覚的、3=Lab。null は自動。</summary>
+    public int? CompositeSpace;
+    /// <summary>描画モードの計算空間（PROP_BLEND_SPACE）。値の意味は合成空間と同じ。null は自動。</summary>
+    public int? BlendSpace;
+    /// <summary>合成空間・描画空間が自動以外に指定されていて、パネルくんの重ね方と色が少し違う可能性がある。</summary>
+    public bool SpaceNonDefault =>
+        (CompositeSpace is not null and not 0) || (BlendSpace is not null and not 0) || (CompositeMode is not null and not 0);
 }
 
 /// <summary>
 /// XCF（GIMP の形式）を読む。RGB／グレースケール、8bit 整数のみ。
 /// レイヤーの持ち方は PSD と同じ（<see cref="PsdLayer"/> の並び、0 がいちばん下、フォルダは開始・終了の印）にして、
 /// 合成・取り込みの既存コードをそのまま使えるようにする。画素は必要になったときに読む。
-/// 仕様: GIMP 付属の XCF 仕様書（Makholm）と GIMP 2.10/3 の読み書きコードを参照。
+/// 仕様: GIMP 公式の XCF 仕様書（devel-docs/xcf.txt）と GIMP 2.10/3 の読み書きコードを参照。
 /// </summary>
 public sealed class XcfFile : IDisposable
 {
     // プロパティ番号（xcf-private.h）
-    private const int PropEnd = 0, PropOpacity = 6, PropMode = 7, PropVisible = 8, PropApplyMask = 11,
+    private const int PropEnd = 0, PropParasites = 21, PropOpacity = 6, PropMode = 7, PropVisible = 8, PropApplyMask = 11,
         PropOffsets = 15, PropCompression = 17, PropTextLayerFlags = 26, PropGroupItem = 29,
-        PropItemPath = 30, PropGroupItemFlags = 31, PropFloatOpacity = 33, PropFloatingSelection = 5;
+        PropItemPath = 30, PropGroupItemFlags = 31, PropFloatOpacity = 33, PropFloatingSelection = 5,
+        PropCompositeMode = 35, PropCompositeSpace = 36, PropBlendSpace = 37;
 
     public string FilePath { get; }
     public int Width { get; private set; }
     public int Height { get; private set; }
-    /// <summary>XCF の版（0〜23。GIMP 2.10 世代は 11 前後、GIMP 3 世代は 14〜23）。</summary>
+    /// <summary>XCF の版（0〜23。GIMP 2.10 世代は 4〜13、GIMP 3 世代は 14〜23）。</summary>
     public int Version { get; private set; }
     /// <summary>0=RGB、1=グレースケール。</summary>
     public int BaseType { get; private set; }
+    /// <summary>
+    /// 精度（GimpPrecision の番号にそろえた値）。100=8bit リニア、150=8bit ガンマ、175=8bit 知覚的。
+    /// 版 3 以前はフィールド自体が無く、常に 150（8bit ガンマ）。
+    /// </summary>
+    public int Precision { get; private set; } = 150;
+    /// <summary>ICC プロファイルが埋め込まれているか（パネルくんでは反映しない）。</summary>
+    public bool HasIccProfile { get; private set; }
     /// <summary>レイヤー（0 がいちばん下）。フォルダの開始・終了の印も含む。</summary>
     public List<PsdLayer> Layers { get; } = [];
     public List<string> Warnings { get; } = [];
-    /// <summary>レイヤーごとの追加情報（描画モードの写像結果）。</summary>
+    /// <summary>レイヤーごとの追加情報（描画モードの写像結果など）。</summary>
     public IReadOnlyDictionary<PsdLayer, XcfLayerInfo> LayerInfo => _info;
 
     public PsdRect Canvas => new(0, 0, Width, Height);
@@ -46,10 +65,19 @@ public sealed class XcfFile : IDisposable
     private readonly FileStream _fs;
     private readonly Dictionary<PsdLayer, XcfLayerInfo> _info = [];
     private readonly Dictionary<PsdLayer, RawLayer> _raw = [];
-    private readonly Dictionary<PsdLayer, PsdPixels> _cache = [];
-    private readonly Dictionary<PsdLayer, PsdMask?> _masks = [];
     private int _compression = 1; // 0=なし、1=RLE、2=zlib
     private int _ptrSize = 4;     // 版 11 から 8
+
+    // 読んだ画像・マスクの置き場（PSD と同じ考え方: 合計が上限を超えたら古いものから捨てる）
+    private readonly LinkedList<(PsdLayer Layer, PsdPixels Pixels)> _cache = new();
+    private long _cacheBytes;
+    private readonly Dictionary<PsdLayer, byte[]?> _maskPlanes = [];
+    private readonly List<PsdLayer> _maskOrder = []; // マスクを入れた順（古いものから捨てる）
+    private long _maskBytes;
+    public long CacheLimitBytes { get; set; } = 600L * 1024 * 1024;
+
+    /// <summary>キャッシュしている画像・マスクの合計バイト数。</summary>
+    public long CacheBytes => _cacheBytes + _maskBytes;
 
     /// <summary>レイヤー 1 つの、画素を読むための控え。</summary>
     private sealed class RawLayer
@@ -82,7 +110,15 @@ public sealed class XcfFile : IDisposable
         }
     }
 
-    public void Dispose() => _fs.Dispose();
+    public void Dispose()
+    {
+        _cache.Clear();
+        _cacheBytes = 0;
+        _maskPlanes.Clear();
+        _maskOrder.Clear();
+        _maskBytes = 0;
+        _fs.Dispose();
+    }
 
     /// <summary>画像として使えるレイヤー（ファイル内の順）。</summary>
     public IEnumerable<PsdLayer> PixelLayers => Layers.Where(l => l.HasPixels);
@@ -195,13 +231,7 @@ public sealed class XcfFile : IDisposable
         if (BaseType is not (0 or 1)) throw new InvalidDataException($"色の種類（{BaseType}）が不正です");
         if (Width is < 1 or > 30000 || Height is < 1 or > 30000)
             throw new InvalidDataException($"キャンバスの大きさ（{Width}×{Height}）が不正です");
-        if (Version >= 11)
-        {
-            int precision = U8();
-            // 0=8bit リニア、1=8bit ガンマ（非リニア）。2 以上は 16bit 以上
-            if (precision > 1)
-                throw new NotSupportedException("16bit 以上の精度の XCF は読めません。8bit で保存し直してください");
-        }
+        ReadPrecision();
 
         ReadProps((type, start, len) =>
         {
@@ -210,9 +240,18 @@ public sealed class XcfFile : IDisposable
                 _fs.Position = start;
                 _compression = U8();
             }
+            else if (type == PropParasites && len is >= 4 and < (1 << 24))
+            {
+                _fs.Position = start;
+                var payload = new byte[len];
+                Read(payload);
+                HasIccProfile = ParasiteNames(payload).Contains("icc-profile");
+            }
         });
         if (_compression is not (0 or 1 or 2))
             throw new NotSupportedException($"XCF の圧縮方式 {_compression} は読めません");
+        if (HasIccProfile)
+            Warnings.Add("ICC プロファイルは反映されません（色の数値をそのまま読みます）");
 
         var layerPtrs = new List<long>();
         while (true)
@@ -223,10 +262,77 @@ public sealed class XcfFile : IDisposable
             layerPtrs.Add(p);
         }
         while (Ptr() != 0) { } // チャンネルは使わない（マスクはレイヤー側からたどる）
+        // 版 18 からはパスのポインタ列が続くが、パネルくんでは使わないので読み飛ばす必要はない
+        // （この先はポインタでたどる読み方しかしないため）。
 
         var records = new List<LayerRecord>();
         foreach (var p in layerPtrs) records.Add(ReadLayerRecord(p));
         BuildLayers(records);
+    }
+
+    /// <summary>
+    /// 精度を読む。版 4 から、ヘッダーの 32bit 整数。値の付け方は版で違う
+    /// （版 4 は旧番号、版 5・6 は浮動小数点の番号が今とずれ、版 7 から GimpPrecision の番号）。
+    /// 8bit 整数（リニア 100／ガンマ 150／知覚的 175）だけを受け付け、それ以外は理由を出して断る。
+    /// </summary>
+    private void ReadPrecision()
+    {
+        if (Version < 4)
+        {
+            Precision = 150; // フィールドが無い時代は 8bit ガンマ固定
+            return;
+        }
+        int raw = I32();
+        Precision = (Version, raw) switch
+        {
+            (4, 0) => 150,   // 版 4 の 0 は 8bit ガンマ
+            (4, 1) => 250,   // 16bit ガンマ
+            (4, 2) => 300,   // 32bit リニア
+            (4, 3) => 500,   // 16bit float リニア
+            (4, 4) => 600,   // 32bit float リニア
+            (5 or 6, 400) => 500,  // 版 5・6 の float 番号を今の番号へ
+            (5 or 6, 450) => 550,
+            (5 or 6, 500) => 600,
+            (5 or 6, 550) => 650,
+            _ => raw,
+        };
+        if (Precision == 100)
+            Warnings.Add("8bit リニア精度のファイルです。明るさの解釈が GIMP と少し違うことがあります");
+        else if (Precision is not (150 or 175))
+            throw new NotSupportedException($"精度（{PrecisionName(Precision)}）の XCF は読めません。8bit で保存し直してください");
+    }
+
+    private static string PrecisionName(int p) => p switch
+    {
+        100 => "8bit リニア整数", 150 => "8bit ガンマ整数", 175 => "8bit 知覚的整数",
+        200 => "16bit リニア整数", 250 => "16bit ガンマ整数", 275 => "16bit 知覚的整数",
+        300 => "32bit リニア整数", 350 => "32bit ガンマ整数", 375 => "32bit 知覚的整数",
+        500 => "16bit リニア浮動小数点", 550 => "16bit ガンマ浮動小数点", 575 => "16bit 知覚的浮動小数点",
+        600 => "32bit リニア浮動小数点", 650 => "32bit ガンマ浮動小数点", 675 => "32bit 知覚的浮動小数点",
+        700 => "64bit リニア浮動小数点", 750 => "64bit ガンマ浮動小数点", 775 => "64bit 知覚的浮動小数点",
+        _ => $"番号 {p}",
+    };
+
+    /// <summary>寄生データ（parasites）の名前一覧。壊れていたら途中で打ち切る。</summary>
+    private static List<string> ParasiteNames(byte[] payload)
+    {
+        var names = new List<string>();
+        int pos = 0;
+        uint U32At() => pos + 4 <= payload.Length ? (uint)(payload[pos] << 24 | payload[pos + 1] << 16 | payload[pos + 2] << 8 | payload[pos + 3]) : 0u;
+        if (payload.Length < 4) return names;
+        uint count = U32At();
+        pos += 4;
+        for (uint i = 0; i < count && pos < payload.Length; i++)
+        {
+            uint n = U32At();
+            if (n == 0 || pos + 4 + n + 8 > payload.Length) break;
+            pos += 4;
+            names.Add(Encoding.UTF8.GetString(payload, pos, (int)n - 1));
+            pos += (int)n + 4; // 名前＋フラグ
+            uint size = U32At();
+            pos += 4 + (int)size;
+        }
+        return names;
     }
 
     /// <summary>レイヤー構造 1 つ分の読み取り結果（並べ替え前、上から順）。</summary>
@@ -281,6 +387,9 @@ public sealed class XcfFile : IDisposable
                     break;
                 case PropTextLayerFlags: isText = true; break;
                 case PropFloatingSelection: rec.Floating = true; break;
+                case PropCompositeMode: if (len >= 4) rec.Info.CompositeMode = I32(); break;
+                case PropCompositeSpace: if (len >= 4) rec.Info.CompositeSpace = I32(); break;
+                case PropBlendSpace: if (len >= 4) rec.Info.BlendSpace = I32(); break;
             }
         });
         if (l.Bounds == default) l.Bounds = new PsdRect(0, 0, w, h);
@@ -288,6 +397,7 @@ public sealed class XcfFile : IDisposable
         rec.Raw.Hierarchy = Ptr();
         long maskPtr = Ptr();
         if (maskPtr != 0) rec.Raw.MaskHierarchy = ReadMaskHierarchy(maskPtr, l);
+        if (Version >= 20) ReadEffectPointers(rec);
         if (rec.IsGroup) l.Kind = PsdLayerKind.FolderOpen;
         else if (isText) l.Kind = PsdLayerKind.Text;
         l.BlendMode = MapBlendMode(mode, out bool approx, out bool unsupported);
@@ -295,6 +405,23 @@ public sealed class XcfFile : IDisposable
         rec.Info.ModeApprox = approx;
         rec.Info.ModeUnsupported = unsupported;
         return rec;
+    }
+
+    /// <summary>
+    /// 版 20 からレイヤー構造の末尾に付く、レイヤー効果（非破壊フィルタ）へのポインタ列を読む。
+    /// 効果の中身は再現しないので、付いているかどうかだけを数える（0 終端、上限つき）。
+    /// </summary>
+    private void ReadEffectPointers(LayerRecord rec)
+    {
+        int count = 0;
+        for (int i = 0; i < 1024; i++)
+        {
+            long p = Ptr();
+            if (p == 0) break;
+            if (p < 0 || p >= _fs.Length) throw new InvalidDataException("レイヤー効果の位置がファイルの範囲外です");
+            count++;
+        }
+        rec.Info.HasEffects = count > 0;
     }
 
     /// <summary>マスク（チャンネル構造）を読み、階層へのポインタを返す。マスクの範囲はレイヤーと同じ場所にする。</summary>
@@ -330,7 +457,7 @@ public sealed class XcfFile : IDisposable
 
         // 子の並び（上から順）を ITEM_PATH から作る。
         // パスが付いていないレコードはルートのレイヤーとして、ファイル順に通し番号を振る
-        // （世代によってはルートのレイヤーにだけパスが付かないことがあるため）。
+        // （GIMP 本体はルートのレイヤーにパスを付けないため）。
         // パスが全く無いファイル（グループ導入前）では全てルートとして平らに扱う。
         var roots = new List<LayerRecord>();
         var children = new Dictionary<LayerRecord, List<LayerRecord>>();
@@ -362,10 +489,11 @@ public sealed class XcfFile : IDisposable
             for (int i = siblingsTopFirst.Count - 1; i >= 0; i--) // 下から順に
             {
                 var r = siblingsTopFirst[i];
-                if (r.IsGroup && children.TryGetValue(r, out var kids))
+                if (r.IsGroup)
                 {
+                    // 空のフォルダでも開始・終了を必ず対にする（対がないと後続が子と誤認される）
                     Layers.Add(new PsdLayer { Kind = PsdLayerKind.FolderEnd, Name = "", Index = Layers.Count });
-                    Emit(kids);
+                    if (children.TryGetValue(r, out var kids)) Emit(kids);
                 }
                 r.Layer.Index = Layers.Count;
                 Layers.Add(r.Layer);
@@ -402,62 +530,108 @@ public sealed class XcfFile : IDisposable
 
     // ================= 画素 =================
 
+    /// <summary>キャッシュ（レイヤー画像とマスク）の合計が上限を超えたら、古いものから捨てる。keepMask のマスクは捨てない。</summary>
+    private void TrimCache(PsdLayer? keepMask)
+    {
+        while (_cacheBytes + _maskBytes > CacheLimitBytes)
+        {
+            if (_cache.Count > 1)
+            {
+                var last = _cache.Last!;
+                _cacheBytes -= last.Value.Pixels.Bgra.Length;
+                _cache.RemoveLast();
+                continue;
+            }
+            var old = _maskOrder.FirstOrDefault(l => l != keepMask);
+            if (old == null) break;
+            if (_maskPlanes.TryGetValue(old, out var plane) && plane != null) _maskBytes -= plane.Length;
+            _maskPlanes.Remove(old);
+            _maskOrder.Remove(old);
+        }
+    }
+
     /// <summary>レイヤーの画像（マスク適用済み、不透明度は掛けていない）。画像がなければ null。</summary>
     public PsdPixels? GetPixels(PsdLayer layer)
     {
         if (!_raw.TryGetValue(layer, out var raw) || raw.Hierarchy == 0 || raw.Width == 0 || raw.Height == 0) return null;
-        if (_cache.TryGetValue(layer, out var cached)) return cached;
+        for (var node = _cache.First; node != null; node = node.Next)
+        {
+            if (node.Value.Layer != layer) continue;
+            _cache.Remove(node);
+            _cache.AddFirst(node);
+            return node.Value.Pixels;
+        }
         var bgra = DecodeHierarchy(raw.Hierarchy, raw.Width, raw.Height, Components(raw.Type));
         if (bgra == null) return null;
         if (raw.MaskHierarchy != 0 && raw.ApplyMask && !layer.Bounds.IsEmpty)
         {
-            var plane = DecodeHierarchy(raw.MaskHierarchy, raw.Width, raw.Height, 1);
+            var plane = MaskPlane(layer);
             if (plane != null)
                 for (int i = 0; i < raw.Width * raw.Height; i++)
                 {
                     int a = i * 4 + 3;
-                    bgra[a] = (byte)(bgra[a] * plane[i * 4 + 2] / 255); // グレーの値は B 成分に入っている
+                    bgra[a] = (byte)(bgra[a] * plane[i] / 255);
                 }
         }
         var px = new PsdPixels(layer.Bounds, bgra);
-        _cache[layer] = px;
+        _cache.AddFirst((layer, px));
+        _cacheBytes += px.Bgra.Length;
+        TrimCache(null);
         return px;
+    }
+
+    /// <summary>マスクの平面（グレー）を 1 回だけ展開して使い回す。マスクがなければ null。</summary>
+    private byte[]? MaskPlane(PsdLayer layer)
+    {
+        if (_maskPlanes.TryGetValue(layer, out var plane)) return plane;
+        plane = null;
+        if (_raw.TryGetValue(layer, out var raw) && raw.MaskHierarchy != 0)
+        {
+            var bgra = DecodeHierarchy(raw.MaskHierarchy, raw.Width, raw.Height, 1);
+            if (bgra != null)
+            {
+                plane = new byte[raw.Width * raw.Height];
+                for (int i = 0; i < plane.Length; i++) plane[i] = bgra[i * 4 + 2]; // グレーの値は B 成分に入っている
+            }
+        }
+        _maskPlanes[layer] = plane;
+        if (plane != null)
+        {
+            _maskBytes += plane.Length;
+            _maskOrder.Add(layer);
+            TrimCache(layer);
+        }
+        return plane;
     }
 
     /// <summary>レイヤーのマスク。ない・適用しない設定なら null。</summary>
     public PsdMask? GetMask(PsdLayer layer)
     {
-        if (_masks.TryGetValue(layer, out var m)) return m;
-        m = null;
-        if (_raw.TryGetValue(layer, out var raw) && raw.MaskHierarchy != 0 && raw.ApplyMask && layer.HasMask)
-        {
-            var plane = DecodeHierarchy(raw.MaskHierarchy, raw.Width, raw.Height, 1);
-            if (plane != null)
-            {
-                var gray = new byte[raw.Width * raw.Height];
-                for (int i = 0; i < gray.Length; i++) gray[i] = plane[i * 4 + 2];
-                m = new PsdMask(layer.MaskBounds, gray, layer.MaskDefault);
-            }
-        }
-        _masks[layer] = m;
-        return m;
+        if (!_raw.TryGetValue(layer, out var raw) || raw.MaskHierarchy == 0 || !raw.ApplyMask || !layer.HasMask) return null;
+        var plane = MaskPlane(layer);
+        return plane == null ? null : new PsdMask(layer.MaskBounds, plane, layer.MaskDefault);
     }
 
     private static int Components(int layerType) => layerType switch { 0 => 3, 1 => 4, 2 => 1, 3 => 2, _ => 4 };
 
-    /// <summary>階層構造をたどって BGRA（レイヤー範囲ぶん）を返す。グレーは RGB に広げる。</summary>
+    /// <summary>
+    /// 階層構造をたどって BGRA（レイヤー範囲ぶん）を返す。グレーは RGB に広げる。
+    /// レイヤーの種類と成分の数（bpp）が合わない・ポインタが範囲外のときは、壊れたファイルとして例外にする。
+    /// </summary>
     private byte[]? DecodeHierarchy(long offset, int w, int h, int components)
     {
-        if (offset <= 0 || offset >= _fs.Length) return null;
+        if (offset == 0) return null;
+        if (offset < 0 || offset >= _fs.Length) throw new InvalidDataException("階層構造の位置がファイルの範囲外です");
         _fs.Position = offset;
         int hw = I32(), hh = I32(), bpp = I32();
-        if (hw != w || hh != h || bpp < 1 || bpp > 4) return null;
+        if (hw != w || hh != h) throw new InvalidDataException("階層構造の大きさがレイヤーと合いません");
+        if (bpp != components) throw new InvalidDataException($"レイヤーの種類と成分の数（bpp={bpp}）が合いません");
         long levelPtr = Ptr();
         while (Ptr() != 0) { } // ダミーのレベルは読み飛ばす
-        if (levelPtr <= 0 || levelPtr >= _fs.Length) return null;
+        if (levelPtr <= 0 || levelPtr >= _fs.Length) throw new InvalidDataException("レベルの位置がファイルの範囲外です");
         _fs.Position = levelPtr;
         int lw = I32(), lh = I32();
-        if (lw != w || lh != h) return null;
+        if (lw != w || lh != h) throw new InvalidDataException("レベルの大きさがレイヤーと合いません");
         int cols = (w + 63) / 64, rows = (h + 63) / 64;
         var tilePtrs = new long[cols * rows];
         for (int i = 0; i < tilePtrs.Length; i++) tilePtrs[i] = Ptr();
@@ -471,6 +645,7 @@ public sealed class XcfFile : IDisposable
             {
                 long tp = tilePtrs[ty * cols + tx];
                 if (tp == 0) continue;
+                if (tp < 0 || tp >= _fs.Length) throw new InvalidDataException("タイルの位置がファイルの範囲外です");
                 int tw = Math.Min(64, w - tx * 64), th = Math.Min(64, h - ty * 64);
                 var tile = DecodeTile(tp, tw, th, bpp);
                 for (int y = 0; y < th; y++)
@@ -551,7 +726,10 @@ public sealed class XcfFile : IDisposable
         }
     }
 
-    /// <summary>RLE の stream 1 成分ぶんを dst に展開する（GIMP の PackBits 変種）。</summary>
+    /// <summary>
+    /// RLE の stream 1 成分ぶんを dst に展開する（GIMP の PackBits 変種）。
+    /// 長さ 0 の命令や、dst を超える展開は壊れたデータとして例外にする。
+    /// </summary>
     private void RleDecode(byte[] dst)
     {
         int i = 0;
@@ -563,26 +741,30 @@ public sealed class XcfFile : IDisposable
             {
                 int v = _fs.ReadByte();
                 if (v < 0) throw new InvalidDataException("RLE データが途中で終わっています");
-                int len = Math.Min(n + 1, dst.Length - i);
-                for (int k = 0; k < len; k++) dst[i++] = (byte)v;
+                if (n + 1 > dst.Length - i) throw new InvalidDataException("RLE の展開サイズがタイルと合いません");
+                for (int k = 0; k < n + 1; k++) dst[i++] = (byte)v;
             }
             else if (n == 127)
             {
                 int len = U16FromStream();
+                if (len == 0) throw new InvalidDataException("RLE の長さが 0 です");
                 int v = _fs.ReadByte();
                 if (v < 0) throw new InvalidDataException("RLE データが途中で終わっています");
-                len = Math.Min(len, dst.Length - i);
+                if (len > dst.Length - i) throw new InvalidDataException("RLE の展開サイズがタイルと合いません");
                 for (int k = 0; k < len; k++) dst[i++] = (byte)v;
             }
             else if (n == 128)
             {
-                int len = Math.Min(U16FromStream(), dst.Length - i);
+                int len = U16FromStream();
+                if (len == 0) throw new InvalidDataException("RLE の長さが 0 です");
+                if (len > dst.Length - i) throw new InvalidDataException("RLE の展開サイズがタイルと合いません");
                 Read(dst.AsSpan(i, len));
                 i += len;
             }
             else
             {
-                int len = Math.Min(256 - n, dst.Length - i);
+                int len = 256 - n;
+                if (len > dst.Length - i) throw new InvalidDataException("RLE の展開サイズがタイルと合いません");
                 Read(dst.AsSpan(i, len));
                 i += len;
             }
@@ -601,6 +783,8 @@ public sealed class XcfFile : IDisposable
     /// <summary>
     /// GIMP の描画モード番号を PSD のキーへ写す。写せないものは通常（norm）にして unsupported を立てる。
     /// 番号は GimpLayerMode（0〜61）。レガシー（0〜22）と標準（23〜61）で同じ意味のものは同じキーにする。
+    /// 例外: レガシーのオーバーレイ（5）は GIMP 本体でもソフトライトと同じ計算（旧仕様の不具合を引き継いだもの）なので sLit に写す。
+    /// ディザ合成（1）はランダムなディザで、再現できないため approx を立てる（PSD 側では通常として重ねる）。
     /// </summary>
     public static string MapBlendMode(int mode, out bool approx, out bool unsupported)
     {
@@ -609,10 +793,11 @@ public sealed class XcfFile : IDisposable
         switch (mode)
         {
             case 0: case 28: return "norm";                    // 通常
-            case 1: return "diss";                             // ディザ合成（PSD 側で通常として重ね、△を出す）
+            case 1: approx = true; return "diss";              // ディザ合成（近似: 通常として重ねる）
             case 3: case 30: return "mul ";                    // 乗算
             case 4: case 31: return "scrn";                   // スクリーン
-            case 5: case 23: return "over";                    // オーバーレイ
+            case 5: return "sLit";                             // レガシー オーバーレイ = ソフトライトと同じ計算
+            case 23: return "over";                            // オーバーレイ
             case 6: case 32: return "diff";                    // 差の絶対値
             case 7: case 33: return "lddg";                    // 加算
             case 8: case 34: return "fsub";                    // 減算

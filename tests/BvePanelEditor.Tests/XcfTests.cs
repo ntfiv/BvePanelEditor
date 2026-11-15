@@ -16,7 +16,7 @@ public sealed class XcfTests : IDisposable
     }
 
     private string WriteXcf(string name, int w, int h, IReadOnlyList<TestXcfLayer> layersTopFirst,
-        int version = 3, int compression = 1, int baseType = 0, int precision = 0)
+        int version = 3, int compression = 1, int baseType = 0, uint precision = 150)
     {
         var p = Path.Combine(_dir, name);
         TestXcfWriter.Write(p, w, h, layersTopFirst, version, compression, baseType, precision);
@@ -183,7 +183,7 @@ public sealed class XcfTests : IDisposable
         var layer = TestXcfLayer.Solid("x", 1, 1, 0, 0, 0);
         var indexed = WriteXcf("idx.xcf", 1, 1, [layer], baseType: 2);
         Assert.Throws<NotSupportedException>(() => XcfFile.Open(indexed));
-        var deep = WriteXcf("deep.xcf", 1, 1, [layer], version: 11, precision: 2);
+        var deep = WriteXcf("deep.xcf", 1, 1, [layer], version: 11, precision: 200);
         Assert.Throws<NotSupportedException>(() => XcfFile.Open(deep));
         var junk = Path.Combine(_dir, "junk.xcf");
         File.WriteAllBytes(junk, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
@@ -202,5 +202,173 @@ public sealed class XcfTests : IDisposable
         Assert.True(l.Hidden);
         Assert.True(l.EffectivelyHidden);
         Assert.Equal(PsdLayerKind.Text, l.Kind);
+    }
+
+    [Fact]
+    public void PrecisionByGeneration()
+    {
+        var layer = TestXcfLayer.Solid("x", 1, 1, 3, 4, 5);
+        // 版 3 以前は精度フィールド自体が無い（8bit ガンマ扱い）
+        using (var x = XcfFile.Open(WriteXcf("p3.xcf", 1, 1, [layer], version: 3)))
+            Assert.Equal(150, x.Precision);
+        // 版 4 は旧番号（0 = 8bit ガンマ）
+        using (var x = XcfFile.Open(WriteXcf("p4.xcf", 1, 1, [layer], version: 4, precision: 0)))
+            Assert.Equal(150, x.Precision);
+        // 版 5・7 の 8bit ガンマ／知覚的
+        using (var x = XcfFile.Open(WriteXcf("p5.xcf", 1, 1, [layer], version: 5, precision: 150)))
+            Assert.Equal(150, x.Precision);
+        using (var x = XcfFile.Open(WriteXcf("p7.xcf", 1, 1, [layer], version: 7, precision: 175)))
+            Assert.Equal(175, x.Precision);
+        // 8bit リニアは開けるが、解釈が違うことを警告する
+        using (var x = XcfFile.Open(WriteXcf("plin.xcf", 1, 1, [layer], version: 11, precision: 100)))
+        {
+            Assert.Equal(100, x.Precision);
+            Assert.Contains(x.Warnings, w => w.Contains("リニア"));
+        }
+        // 16bit は理由つきで断る
+        var deep = WriteXcf("pdeep.xcf", 1, 1, [layer], version: 11, precision: 250);
+        var ex = Assert.Throws<NotSupportedException>(() => XcfFile.Open(deep));
+        Assert.Contains("16bit", ex.Message);
+    }
+
+    [Fact]
+    public void EmptyFolderKeepsMarkersPaired()
+    {
+        var group = new TestXcfLayer { Name = "空", IsGroup = true, ItemPath = [0] };
+        var under = TestXcfLayer.Solid("下", 1, 1, 1, 1, 1);
+        under.ItemPath = [1];
+        var p = WriteXcf("empty.xcf", 1, 1, [group, under], version: 11);
+        using var xcf = XcfFile.Open(p);
+        Assert.Equal(
+            [PsdLayerKind.Pixel, PsdLayerKind.FolderEnd, PsdLayerKind.FolderOpen],
+            xcf.Layers.Select(l => l.Kind).ToArray());
+        // 空フォルダの後ろのレイヤーが子として飲み込まれていないこと
+        Assert.Equal("下", xcf.Layers[0].Path);
+        Assert.Null(xcf.Layers[0].Parent);
+        Assert.Equal("空", xcf.Layers[2].Path);
+    }
+
+    [Fact]
+    public void NestedFoldersBuildPaths()
+    {
+        var g1 = new TestXcfLayer { Name = "外", IsGroup = true, ItemPath = [0] };
+        var g2 = new TestXcfLayer { Name = "内", IsGroup = true, ItemPath = [0, 0] };
+        var leaf = TestXcfLayer.Solid("葉", 1, 1, 2, 2, 2);
+        leaf.ItemPath = [0, 0, 0];
+        var root = TestXcfLayer.Solid("根", 1, 1, 3, 3, 3);
+        root.ItemPath = [1];
+        var p = WriteXcf("nested.xcf", 1, 1, [g1, g2, leaf, root], version: 11);
+        using var xcf = XcfFile.Open(p);
+        Assert.Equal("外/内/葉", xcf.Find("外/内/葉")?.Path);
+        Assert.Equal("外/内", xcf.Find("外/内/葉")?.Parent?.Path);
+        Assert.Equal("根", xcf.Layers[0].Path);
+    }
+
+    [Fact]
+    public void FolderWithOnlyFloatingChildBecomesEmpty()
+    {
+        var group = new TestXcfLayer { Name = "束", IsGroup = true, ItemPath = [0] };
+        var floating = TestXcfLayer.Solid("浮動", 1, 1, 9, 9, 9);
+        floating.ItemPath = [0, 0];
+        floating.IsFloating = true;
+        var keep = TestXcfLayer.Solid("残る", 1, 1, 4, 4, 4);
+        keep.ItemPath = [1];
+        var p = WriteXcf("floatgrp.xcf", 1, 1, [group, floating, keep], version: 11);
+        using var xcf = XcfFile.Open(p);
+        Assert.Contains(xcf.Warnings, w => w.Contains("浮動選択"));
+        // 浮動選択が抜けた結果として空になったフォルダでも、開始・終了が対になっていること
+        Assert.Equal(
+            [PsdLayerKind.Pixel, PsdLayerKind.FolderEnd, PsdLayerKind.FolderOpen],
+            xcf.Layers.Select(l => l.Kind).ToArray());
+        Assert.Equal("残る", xcf.Layers[0].Path);
+    }
+
+    [Fact]
+    public void EffectsAreDetectedInVersion20()
+    {
+        var withFx = TestXcfLayer.Solid("効果つき", 1, 1, 1, 2, 3);
+        withFx.Effects = 2;
+        var plain = TestXcfLayer.Solid("素", 1, 1, 4, 5, 6);
+        var p = WriteXcf("fx.xcf", 1, 1, [withFx, plain], version: 20);
+        using var xcf = XcfFile.Open(p);
+        Assert.True(xcf.LayerInfo[xcf.Find("効果つき")!].HasEffects);
+        Assert.False(xcf.LayerInfo[xcf.Find("素")!].HasEffects);
+        // 効果つきでも画素は読める（後続レイヤーの読みも壊れていない）
+        Assert.NotNull(xcf.GetPixels(xcf.Find("素")!));
+    }
+
+    [Fact]
+    public void CompositeAndBlendSpacesAreRead()
+    {
+        var layer = TestXcfLayer.Solid("空間", 1, 1, 1, 1, 1);
+        layer.BlendSpace = 2;
+        layer.CompositeSpace = 1;
+        var plain = TestXcfLayer.Solid("自動", 1, 1, 2, 2, 2);
+        var p = WriteXcf("space.xcf", 1, 1, [layer, plain], version: 11);
+        using var xcf = XcfFile.Open(p);
+        var info = xcf.LayerInfo[xcf.Find("空間")!];
+        Assert.Equal(2, info.BlendSpace);
+        Assert.Equal(1, info.CompositeSpace);
+        Assert.True(info.SpaceNonDefault);
+        Assert.False(xcf.LayerInfo[xcf.Find("自動")!].SpaceNonDefault);
+    }
+
+    [Fact]
+    public void LegacyOverlayMapsToSoftLight()
+    {
+        Assert.Equal("sLit", XcfFile.MapBlendMode(5, out _, out _));  // レガシー オーバーレイ
+        Assert.Equal("over", XcfFile.MapBlendMode(23, out _, out _)); // 標準 オーバーレイ
+        XcfFile.MapBlendMode(1, out bool dissApprox, out _);          // ディザ合成は近似
+        Assert.True(dissApprox);
+    }
+
+    [Fact]
+    public void CorruptTileDataThrows()
+    {
+        // RLE の長さ 0 命令
+        var bad = TestXcfLayer.Solid("壊", 2, 2, 1, 1, 1);
+        bad.TileOverride = [127, 0, 0, 65];
+        var p = WriteXcf("badrle.xcf", 2, 2, [bad]);
+        using var xcf = XcfFile.Open(p);
+        Assert.Throws<InvalidDataException>(() => xcf.GetPixels(xcf.PixelLayers.Single()));
+
+        // レイヤーの種類と bpp の不一致
+        var mismatch = TestXcfLayer.Solid("不一致", 2, 2, 1, 1, 1);
+        mismatch.BppOverride = 3;
+        var p2 = WriteXcf("badbpp.xcf", 2, 2, [mismatch]);
+        using var xcf2 = XcfFile.Open(p2);
+        Assert.Throws<InvalidDataException>(() => xcf2.GetPixels(xcf2.PixelLayers.Single()));
+    }
+
+    [Fact]
+    public void ManyLayersAndHugeCanvas()
+    {
+        var layers = new List<TestXcfLayer>();
+        for (int i = 0; i < 300; i++) layers.Add(TestXcfLayer.Solid($"層{i}", 1, 1, 1, 1, 1));
+        var p = WriteXcf("many.xcf", 1, 1, layers, version: 11);
+        using var xcf = XcfFile.Open(p);
+        Assert.Equal(300, xcf.PixelLayers.Count());
+        Assert.NotNull(xcf.Find("層299"));
+
+        var huge = WriteXcf("huge.xcf", 30001, 1, [TestXcfLayer.Solid("x", 1, 1, 0, 0, 0)]);
+        Assert.Throws<InvalidDataException>(() => XcfFile.Open(huge));
+    }
+
+    [Fact]
+    public void CacheEvictsOldestLayers()
+    {
+        var top = TestXcfLayer.Solid("上", 64, 64, 8, 8, 8);
+        var bottom = TestXcfLayer.Solid("下", 64, 64, 9, 9, 9);
+        var p = WriteXcf("cache.xcf", 64, 64, [top, bottom]);
+        using var xcf = XcfFile.Open(p);
+        xcf.CacheLimitBytes = 64 * 64 * 4; // 1 枚ぶんだけ
+        var pxB = xcf.GetPixels(xcf.Find("下")!);
+        Assert.Equal(64 * 64 * 4, xcf.CacheBytes);
+        var pxT = xcf.GetPixels(xcf.Find("上")!);
+        Assert.Equal(64 * 64 * 4, xcf.CacheBytes); // 古い方が捨てられ、上限に収まる
+        // 捨てられたレイヤーも、もう一度読めば正しく返る
+        var pxB2 = xcf.GetPixels(xcf.Find("下")!);
+        Assert.Equal(pxB!.Bgra, pxB2!.Bgra);
+        Assert.NotNull(pxT);
     }
 }

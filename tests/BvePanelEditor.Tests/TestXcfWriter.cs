@@ -20,6 +20,13 @@ public sealed class TestXcfLayer
     public bool IsText;
     public byte[]? Mask;              // 幅×高さ のグレー
     public bool ApplyMask = true;
+    public bool IsFloating;           // 浮動選択（PROP_FLOATING_SELECTION）
+    public int Effects;               // レイヤー効果の数（版 20 から。ダミーへのポインタ列を書く）
+    public int? CompositeMode;        // PROP_COMPOSITE_MODE
+    public int? CompositeSpace;       // PROP_COMPOSITE_SPACE
+    public int? BlendSpace;           // PROP_BLEND_SPACE
+    public int? BppOverride;          // 階層の bpp を偽る（破損データのテスト用）
+    public byte[]? TileOverride;      // 最初のタイルの符号化済みバイト列を差し替える（破損データのテスト用）
 
     public int Components => Type switch { 0 => 3, 1 => 4, 2 => 1, _ => 2 };
 
@@ -74,10 +81,10 @@ public static class TestXcfWriter
     }
 
     public static void Write(string path, int width, int height, IReadOnlyList<TestXcfLayer> layersTopFirst,
-        int version = 3, int compression = 1, int baseType = 0, int precision = 0)
+        int version = 3, int compression = 1, int baseType = 0, uint precision = 150)
     {
         int ptr = version >= 11 ? 8 : 4;
-        int headerLen = 14 + (version >= 11 ? 1 : 0) + 12;
+        int headerLen = 14 + 12 + (version >= 4 ? 4 : 0); // 精度は版 4 から 32bit 整数
         int propsLen = 9 + 8; // COMPRESSION + END
         int ptrArrayLen = (layersTopFirst.Count + 1) * ptr + ptr;
         long pos = headerLen + propsLen + ptrArrayLen;
@@ -86,7 +93,7 @@ public static class TestXcfWriter
         for (int i = 0; i < layersTopFirst.Count; i++)
         {
             bases[i] = pos;
-            var blob = BuildLayer(layersTopFirst[i], pos, ptr, compression);
+            var blob = BuildLayer(layersTopFirst[i], pos, ptr, compression, version);
             blobs.Add(blob);
             pos += blob.Length;
         }
@@ -99,7 +106,7 @@ public static class TestXcfWriter
         head.U32((uint)width);
         head.U32((uint)height);
         head.U32((uint)baseType);
-        if (version >= 11) head.U8(precision);
+        if (version >= 4) head.U32(precision);
         head.Prop(17, [(byte)compression]);
         head.Prop(0, []);
         foreach (var b in bases) head.Ptr(b);
@@ -110,10 +117,10 @@ public static class TestXcfWriter
         foreach (var blob in blobs) fs.Write(blob, 0, blob.Length);
     }
 
-    private static byte[] BuildLayer(TestXcfLayer l, long base_, int ptr, int compression)
+    private static byte[] BuildLayer(TestXcfLayer l, long base_, int ptr, int compression, int version)
     {
         // 構造部（長さを先に知るため、ポインタは後で埋める前提で一度組み立てる）
-        byte[] BuildStruct(long hierarchyPtr, long maskPtr)
+        byte[] BuildStruct(long hierarchyPtr, long maskPtr, long effectsBase)
         {
             var w = new W(new MemoryStream(), ptr);
             w.U32((uint)l.Width);
@@ -125,6 +132,10 @@ public static class TestXcfWriter
             w.Prop(8, U32Bytes(l.Visible ? 1u : 0u));
             w.Prop(15, U32Bytes((uint)l.OffsetX, (uint)l.OffsetY));
             if (l.Mask != null) w.Prop(11, U32Bytes(l.ApplyMask ? 1u : 0u));
+            if (l.IsFloating) w.Prop(5, new byte[ptr]);
+            if (l.CompositeMode is { } cm) w.Prop(35, U32Bytes((uint)cm));
+            if (l.CompositeSpace is { } cs) w.Prop(36, U32Bytes((uint)cs));
+            if (l.BlendSpace is { } bs) w.Prop(37, U32Bytes((uint)bs));
             if (l.IsGroup)
             {
                 w.Prop(29, []);
@@ -135,13 +146,20 @@ public static class TestXcfWriter
             w.Prop(0, []);
             w.Ptr(hierarchyPtr);
             w.Ptr(maskPtr);
+            if (version >= 20)
+            {
+                for (int i = 0; i < l.Effects; i++) w.Ptr(effectsBase + i * 8L);
+                w.Ptr(0);
+            }
             return w.Done();
         }
 
+        int tileCall = 0;
+        byte[] TileAt(int tx, int ty, int tw, int th) =>
+            l.TileOverride != null && tileCall++ == 0 ? l.TileOverride : EncodeTile(l, tx, ty, tw, th, compression);
         var hier = l.IsGroup || l.Width == 0 || l.Height == 0
             ? []
-            : BuildHierarchy(l.Width, l.Height, l.Components,
-                (tx, ty, tw, th) => EncodeTile(l, tx, ty, tw, th, compression), 0, ptr);
+            : BuildHierarchy(l.Width, l.Height, l.BppOverride ?? l.Components, TileAt, 0, ptr);
         byte[] maskStruct = [], maskHier = [];
         if (l.Mask != null)
         {
@@ -152,7 +170,7 @@ public static class TestXcfWriter
         }
 
         // 長さの確定: 構造部はポインタの値に依らず一定長
-        int structLen = BuildStruct(0, 0).Length;
+        int structLen = BuildStruct(0, 0, 0).Length;
         long hierPtr = l.IsGroup || hier.Length == 0 ? 0 : base_ + structLen;
         long maskPtr = 0;
         if (l.Mask != null)
@@ -172,14 +190,19 @@ public static class TestXcfWriter
                 maskBase + maskStruct.Length, ptr);
         }
         if (hier.Length > 0)
-            hier = BuildHierarchy(l.Width, l.Height, l.Components,
-                (tx, ty, tw, th) => EncodeTile(l, tx, ty, tw, th, compression), hierPtr, ptr);
+        {
+            tileCall = 0;
+            hier = BuildHierarchy(l.Width, l.Height, l.BppOverride ?? l.Components, TileAt, hierPtr, ptr);
+        }
+        long effectsBase = base_ + structLen + hier.Length
+            + (maskStruct.Length == 1 ? 0 : maskStruct.Length) + maskHier.Length;
 
         var all = new W(new MemoryStream(), ptr);
-        all.Bytes(BuildStruct(hierPtr, maskPtr));
+        all.Bytes(BuildStruct(hierPtr, maskPtr, effectsBase));
         all.Bytes(hier);
         all.Bytes(maskStruct.Length == 1 ? [] : maskStruct);
         all.Bytes(maskHier);
+        for (int i = 0; i < l.Effects; i++) all.Bytes(new byte[8]); // 効果のダミー本体
         return all.Done();
     }
 
