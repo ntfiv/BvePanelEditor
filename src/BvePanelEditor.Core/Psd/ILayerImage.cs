@@ -30,6 +30,12 @@ public interface ILayerImage : IDisposable
     /// </summary>
     bool LinearComposite { get; }
 
+    /// <summary>
+    /// 画素のバイト値がリニアの明るさで格納されているか（XCF の 8bit リニア精度=100）。
+    /// 通常のファイルは sRGB で格納されているので false。
+    /// </summary>
+    bool LinearPixels { get; }
+
     PsdLayer? Find(string path);
     List<PsdLayer> FindAllSameName(string path);
     PsdPixels? GetPixels(PsdLayer layer);

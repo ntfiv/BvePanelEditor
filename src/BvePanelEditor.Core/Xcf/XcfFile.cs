@@ -68,6 +68,9 @@ public sealed class XcfFile : ILayerImage
 
     /// <summary>GIMP は版 11 以降、合成をリニアの明るさで行う（実ファイルの書き出し画像で照合済み）。</summary>
     public bool LinearComposite => Version >= 11;
+
+    /// <summary>8bit リニア精度（100）は、画素のバイト値そのものがリニアの明るさ。</summary>
+    public bool LinearPixels => Precision == 100;
     private readonly List<PsdWarning> _fileWarnings = [];
     /// <summary>レイヤーごとの追加情報（描画モードの写像結果など）。</summary>
     public IReadOnlyDictionary<PsdLayer, XcfLayerInfo> LayerInfo => _info;
@@ -346,8 +349,12 @@ public sealed class XcfFile : ILayerImage
         };
         if (Precision == 100)
         {
-            Warnings.Add("8bit リニア精度のファイルです。明るさの解釈が GIMP と少し違うことがあります");
-            _fileWarnings.Add(new PsdWarning(PsdWarningKind.Approx, "8bit リニア精度のファイルです。明るさの解釈が GIMP と少し違うことがあります"));
+            // 版 11 以降はリニア合成で正しく扱える。古い版は sRGB 合成の経路で読むため近似になる
+            if (Version < 11)
+            {
+                Warnings.Add("8bit リニア精度のファイルです。明るさの解釈が GIMP と少し違うことがあります");
+                _fileWarnings.Add(new PsdWarning(PsdWarningKind.Approx, "8bit リニア精度のファイルです。明るさの解釈が GIMP と少し違うことがあります"));
+            }
         }
         else if (Precision is not (150 or 175))
             throw new NotSupportedException($"精度（{PrecisionName(Precision)}）の XCF は読めません。8bit で保存し直してください");

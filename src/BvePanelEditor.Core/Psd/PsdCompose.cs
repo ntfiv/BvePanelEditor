@@ -304,7 +304,7 @@ public static class PsdCompose
         var parts = layer.Effects is { HasRenderable: true } fx && psd is PsdFile pf ? EffectParts(pf, layer, fx, px) : null;
         if (parts != null)
             foreach (var p in parts.Where(p => !p.Above)) DrawPixels(acc, p.Pixels, p.Blend, fxOpacity * p.Opacity, clip, folderMasks);
-        if (opacity > 0) DrawPixels(acc, px, blend, opacity, clip, folderMasks, layer.LegacyMode);
+        if (opacity > 0) DrawPixels(acc, px, blend, opacity, clip, folderMasks, layer.LegacyMode, psd.LinearPixels);
         if (parts != null)
             foreach (var p in parts.Where(p => p.Above)) DrawPixels(acc, p.Pixels, p.Blend, fxOpacity * p.Opacity, clip, folderMasks);
     }
@@ -346,7 +346,7 @@ public static class PsdCompose
 
     private static float SrgbToLinearF(float v) => v <= 0.04045f ? v / 12.92f : MathF.Pow((v + 0.055f) / 1.055f, 2.4f);
 
-    private static void DrawPixels(Accum acc, PsdPixels px, string blend, float opacity, PsdPixels? clip, List<PsdMask> folderMasks, bool legacy = false)
+    private static void DrawPixels(Accum acc, PsdPixels px, string blend, float opacity, PsdPixels? clip, List<PsdMask> folderMasks, bool legacy = false, bool linearPixels = false)
     {
         if (opacity <= 0) return;
         var rect = px.Bounds.Intersect(acc.Area);
@@ -383,6 +383,7 @@ public static class PsdCompose
                 {
                     // 背景を sRGB に戻して混ぜ、結果をリニアに戻して蓄える
                     float sr = src[si + 2] / 255f, sg = src[si + 1] / 255f, sb = src[si] / 255f;
+                    if (linearPixels) { sr = EncodeSrgb(sr); sg = EncodeSrgb(sg); sb = EncodeSrgb(sb); }
                     float brs = 0f, bgs = 0f, bbs = 0f;
                     float cr = sr, cg = sg, cb = sb;
                     if (ab > 0)
@@ -408,7 +409,7 @@ public static class PsdCompose
                     continue;
                 }
                 float sr2, sg2, sb2;
-                if (acc.Linear) { sr2 = SrgbToLinear[src[si + 2]]; sg2 = SrgbToLinear[src[si + 1]]; sb2 = SrgbToLinear[src[si]]; }
+                if (acc.Linear && !linearPixels) { sr2 = SrgbToLinear[src[si + 2]]; sg2 = SrgbToLinear[src[si + 1]]; sb2 = SrgbToLinear[src[si]]; }
                 else { sr2 = src[si + 2] / 255f; sg2 = src[si + 1] / 255f; sb2 = src[si] / 255f; }
                 float cr2 = sr2, cg2 = sg2, cb2 = sb2;
                 if (mode != 0 && ab > 0)

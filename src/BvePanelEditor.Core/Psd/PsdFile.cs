@@ -115,6 +115,7 @@ public sealed class PsdFile : ILayerImage
     /// <summary>PSD はファイル単位の注意を持たない（注意はレイヤーごとに出る）。</summary>
     public IReadOnlyList<PsdWarning> FileWarnings => [];
     public bool LinearComposite => false; // Photoshop は sRGB のまま合成する
+    public bool LinearPixels => false; // PSD の画素は sRGB で格納されている
     public List<string> Warnings { get; } = [];
     /// <summary>全体の光源（「包括光源を使用」のレイヤー効果が使う角度と高度、度）。</summary>
     public float GlobalAngle { get; private set; } = 120;

@@ -18,7 +18,7 @@ public class XcfRealFileTests(ITestOutputHelper output)
         var dir = Environment.GetEnvironmentVariable("BVE_XCF_DIR");
         if (string.IsNullOrEmpty(dir)) return;
         var failures = new List<string>();
-        int files = 0;
+        int files = 0, opened = 0;
         foreach (var d in dir.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
             if (!Directory.Exists(d)) continue;
@@ -28,6 +28,7 @@ public class XcfRealFileTests(ITestOutputHelper output)
                 try
                 {
                     using var xcf = XcfFile.Open(f);
+                    opened++;
                     int opens = xcf.Layers.Count(l => l.Kind == BvePanelEditor.Core.Psd.PsdLayerKind.FolderOpen);
                     int ends = xcf.Layers.Count(l => l.Kind == BvePanelEditor.Core.Psd.PsdLayerKind.FolderEnd);
                     if (opens != ends) failures.Add($"{f}: フォルダの開始 {opens} と終了 {ends} が対になっていません");
@@ -51,6 +52,7 @@ public class XcfRealFileTests(ITestOutputHelper output)
             }
         }
         Assert.True(files > 0, "BVE_XCF_DIR の下に XCF がありません");
+        Assert.True(opened > 0, "最後まで読み込めた XCF が 1 本もありません（全部スキップされています）");
         Assert.True(failures.Count == 0, string.Join("\n", failures));
     }
 }

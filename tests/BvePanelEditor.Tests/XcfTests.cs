@@ -1,4 +1,4 @@
-using BvePanelEditor.Core.Psd;
+﻿using BvePanelEditor.Core.Psd;
 using BvePanelEditor.Core.Xcf;
 using Xunit;
 
@@ -221,8 +221,13 @@ public sealed class XcfTests : IDisposable
             Assert.Equal(150, x.Precision);
         using (var x = XcfFile.Open(WriteXcf("p7.xcf", 1, 1, [layer], version: 7, precision: 175)))
             Assert.Equal(175, x.Precision);
-        // 8bit リニアは開けるが、解釈が違うことを警告する
+        // 8bit リニア: 版 11 以降はリニア合成で正しく扱えるので警告なし。古い版は sRGB 合成で読むため警告する
         using (var x = XcfFile.Open(WriteXcf("plin.xcf", 1, 1, [layer], version: 11, precision: 100)))
+        {
+            Assert.Equal(100, x.Precision);
+            Assert.DoesNotContain(x.Warnings, w => w.Contains("リニア"));
+        }
+        using (var x = XcfFile.Open(WriteXcf("plin7.xcf", 1, 1, [layer], version: 7, precision: 100)))
         {
             Assert.Equal(100, x.Precision);
             Assert.Contains(x.Warnings, w => w.Contains("リニア"));

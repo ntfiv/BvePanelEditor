@@ -17,10 +17,10 @@ public sealed class XcfImportTests : IDisposable
     }
 
     private string WriteXcf(string name, int w, int h, IReadOnlyList<TestXcfLayer> layersTopFirst,
-        int version = 11, IReadOnlyList<(string Name, byte[] Data)>? parasites = null)
+        int version = 11, IReadOnlyList<(string Name, byte[] Data)>? parasites = null, uint precision = 150)
     {
         var p = Path.Combine(_dir, name);
-        TestXcfWriter.Write(p, w, h, layersTopFirst, version, parasites: parasites);
+        TestXcfWriter.Write(p, w, h, layersTopFirst, version, parasites: parasites, precision: precision);
         return p;
     }
 
@@ -173,6 +173,29 @@ public sealed class XcfImportTests : IDisposable
         }
         Assert.InRange(GrayAt("lin11.xcf", 11), (byte)184, (byte)192);
         Assert.InRange(GrayAt("lin3.xcf", 3), (byte)124, (byte)131);
+    }
+
+    [Fact]
+    public void LinearPrecisionIsNotDoubleConverted()
+    {
+        // 8bit リニア精度（100）の画素は、バイト値そのものがリニア。sRGB として再変換してはいけない
+        var p = WriteXcf("linprec.xcf", 2, 2, [TestXcfLayer.Solid("灰", 2, 2, 128, 128, 128)], precision: 100);
+        using var xcf = XcfFile.Open(p);
+        Assert.True(xcf.LinearPixels);
+        Assert.DoesNotContain(xcf.FileWarnings, w => w.Text.Contains("リニア精度")); // 版 11 では正しく扱える
+        var px = PsdCompose.Compose(xcf, xcf.ComposableLayers.ToList(), xcf.Canvas);
+        Assert.InRange(px.Bgra[2], (byte)184, (byte)192); // リニア 0.502 を sRGB 出力すると 188
+    }
+
+    [Fact]
+    public void LinearPrecisionScreenBlend()
+    {
+        // リニア格納でも、sRGB で計算するモード（スクリーン）は入力を sRGB に直してから混ぜる
+        var top = TestXcfLayer.Solid("上", 2, 2, 192, 192, 192); top.Mode = 31;
+        var p = WriteXcf("linprec-scr.xcf", 2, 2, [top, TestXcfLayer.Solid("下", 2, 2, 64, 64, 64)], precision: 100);
+        using var xcf = XcfFile.Open(p);
+        var px = PsdCompose.Compose(xcf, xcf.ComposableLayers.ToList(), xcf.Canvas);
+        Assert.InRange(px.Bgra[2], (byte)238, (byte)244);
     }
 
     [Fact]
