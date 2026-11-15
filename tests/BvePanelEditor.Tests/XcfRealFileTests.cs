@@ -8,6 +8,7 @@ namespace BvePanelEditor.Tests;
 /// BVE_XCF_DIR を設定したときだけ動く。その下の XCF（本物の GIMP が書いたファイル）を全部読み（読み取りのみ）、
 /// 構造と画素が最後まで読めることを確かめる。XCF には統合画像が無いので、PSD のような見比べはできない。
 /// 合成ファイルだけでは「書き手と読み手が同じ勘違いをする」事故を拾えないため、この照合が本命。
+/// 設計として読まないファイル（16bit・インデックスカラーなど、NotSupportedException で断るもの）は失敗に数えない。
 /// </summary>
 public class XcfRealFileTests(ITestOutputHelper output)
 {
@@ -37,6 +38,11 @@ public class XcfRealFileTests(ITestOutputHelper output)
                             failures.Add($"{f}: レイヤー「{l.Path}」の画素が読めませんでした");
                     }
                     output.WriteLine($"{Path.GetFileName(f)}: 版 {xcf.Version}、精度 {xcf.Precision}、レイヤー {xcf.Layers.Count}、警告 {xcf.Warnings.Count}");
+                }
+                catch (NotSupportedException ex)
+                {
+                    // 16bit・インデックスカラーなど、設計として読まないものは失敗に数えない
+                    output.WriteLine($"{Path.GetFileName(f)}: 対象外としてスキップ（{ex.Message}）");
                 }
                 catch (Exception ex)
                 {

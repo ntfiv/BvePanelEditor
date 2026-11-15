@@ -61,6 +61,9 @@ public sealed class PsdLayer
     /// <summary>形式固有の注意（XCF の描画モード・効果など）。PsdImport.CautionItems が PSD 側の注意に足す。PSD では使わない。</summary>
     public List<PsdWarning>? ExtraCautions;
 
+    /// <summary>XCF の旧方式（レガシー）モードか。GIMP は旧方式を sRGB のまま計算するので、リニア合成中でもこのレイヤーだけ sRGB で混ぜる。</summary>
+    public bool LegacyMode;
+
     internal readonly List<(short Id, long Offset, long Length)> Channels = [];
 
     public bool IsFolder => Kind == PsdLayerKind.FolderOpen;
@@ -111,6 +114,7 @@ public sealed class PsdFile : ILayerImage
 
     /// <summary>PSD はファイル単位の注意を持たない（注意はレイヤーごとに出る）。</summary>
     public IReadOnlyList<PsdWarning> FileWarnings => [];
+    public bool LinearComposite => false; // Photoshop は sRGB のまま合成する
     public List<string> Warnings { get; } = [];
     /// <summary>全体の光源（「包括光源を使用」のレイヤー効果が使う角度と高度、度）。</summary>
     public float GlobalAngle { get; private set; } = 120;

@@ -65,6 +65,9 @@ public sealed class XcfFile : ILayerImage
 
     /// <summary>ファイル全体への注意（△／× つき）。<see cref="Warnings"/> と同じ内容を、読み込みの警告表示用に種類つきで持つ。</summary>
     public IReadOnlyList<PsdWarning> FileWarnings => _fileWarnings;
+
+    /// <summary>GIMP は版 11 以降、合成をリニアの明るさで行う（実ファイルの書き出し画像で照合済み）。</summary>
+    public bool LinearComposite => Version >= 11;
     private readonly List<PsdWarning> _fileWarnings = [];
     /// <summary>レイヤーごとの追加情報（描画モードの写像結果など）。</summary>
     public IReadOnlyDictionary<PsdLayer, XcfLayerInfo> LayerInfo => _info;
@@ -468,6 +471,7 @@ public sealed class XcfFile : ILayerImage
         if (rec.IsGroup) l.Kind = PsdLayerKind.FolderOpen;
         else if (isText) l.Kind = PsdLayerKind.Text;
         l.BlendMode = MapBlendMode(mode, out bool approx, out bool unsupported);
+        l.LegacyMode = mode is >= 0 and <= 22; // 旧方式（〜22）は GIMP も sRGB で計算する
         rec.Info.Mode = mode;
         rec.Info.ModeApprox = approx;
         rec.Info.ModeUnsupported = unsupported;
@@ -876,14 +880,16 @@ public sealed class XcfFile : ILayerImage
             case 8: case 34: return "fsub";                    // 減算
             case 9: case 35: return "dark";                    // 比較（暗）
             case 10: case 36: return "lite";                   // 比較（明）
-            case 11: case 37: return "hue ";                   // 色相（HSV）
+            case 11: approx = true; return "hue ";             // 色相（HSV・旧。式が PSD と違う）
+            case 37: approx = true; return "hue ";             // 色相（HSV。式が PSD と違う）
             case 12: case 38: return "sat ";                   // 彩度（HSV）
             case 13: case 39: return "colr";                   // カラー（HSL）
             case 15: case 41: return "fdiv";                   // 除算
             case 16: case 42: return "div ";                   // 覆い焼きカラー
             case 17: case 43: return "idiv";                   // 焼き込みカラー
             case 18: case 44: return "hLit";                   // ハードライト
-            case 19: case 45: return "sLit";                   // ソフトライト
+            case 19: approx = true; return "sLit";             // ソフトライト（旧。式が PSD と違う）
+            case 45: approx = true; return "sLit";             // ソフトライト（式が PSD と違う）
             case 48: return "vLit";                            // ビビッドライト
             case 49: return "pLit";                            // ピンライト
             case 50: return "lLit";                            // リニアライト
@@ -908,7 +914,11 @@ public sealed class XcfFile : ILayerImage
     public static string ModeName(int mode) => mode switch
     {
         2 or 29 => "背後",
+        11 => "色相（HSV・旧）",
         14 => "明度（HSV・旧）",
+        19 => "ソフトライト（旧）",
+        37 => "色相（HSV）",
+        45 => "ソフトライト",
         20 or 46 => "グレイン抽出",
         21 or 47 => "グレイン統合",
         22 or 57 => "カラー消去",

@@ -35,6 +35,9 @@ public static class PsdCompose
         public readonly int Scale, W, H;
         public readonly float[] R, G, B, A;
 
+        /// <summary>中身をリニアの明るさで持つ（XCF 版 11 以降）。出力時に sRGB へ戻す。</summary>
+        public bool Linear;
+
         public Accum(PsdRect area, int scale)
         {
             Area = area;
@@ -51,17 +54,47 @@ public static class PsdCompose
             {
                 float a = A[i];
                 if (a <= 0) continue;
-                bgra[i * 4] = ToByte(B[i] / a);
-                bgra[i * 4 + 1] = ToByte(G[i] / a);
-                bgra[i * 4 + 2] = ToByte(R[i] / a);
+                bgra[i * 4] = Out(B[i] / a);
+                bgra[i * 4 + 1] = Out(G[i] / a);
+                bgra[i * 4 + 2] = Out(R[i] / a);
                 bgra[i * 4 + 3] = ToByte(a);
             }
             var rect = Scale == 1 ? Area : new PsdRect(0, 0, W, H);
             return new PsdPixels(rect, bgra);
         }
+
+        private byte Out(float v) => Linear ? ToByte(EncodeSrgb(v)) : ToByte(v);
     }
 
     private static byte ToByte(float v) => (byte)Math.Clamp((int)MathF.Round(v * 255f), 0, 255);
+
+    /// <summary>sRGB のバイト値→リニアの明るさ（変換表）。</summary>
+    private static readonly float[] SrgbToLinear = BuildSrgbToLinear();
+
+    private static float[] BuildSrgbToLinear()
+    {
+        var t = new float[256];
+        for (int i = 0; i < 256; i++)
+        {
+            float v = i / 255f;
+            t[i] = v <= 0.04045f ? v / 12.92f : MathF.Pow((v + 0.055f) / 1.055f, 2.4f);
+        }
+        return t;
+    }
+
+    /// <summary>リニアの明るさ→sRGB の 0..1。</summary>
+    private static float EncodeSrgb(float v)
+    {
+        v = Math.Clamp(v, 0f, 1f);
+        return v <= 0.0031308f ? v * 12.92f : 1.055f * MathF.Pow(v, 1f / 2.4f) - 0.055f;
+    }
+
+    /// <summary>形式固有の注意（XCF の描画モード・効果など）を、合成の警告にも出す（行表示だけでなく読み込み結果でも知らせる）。</summary>
+    private static void AddExtraCautions(ICollection<PsdWarning>? warnings, PsdLayer l)
+    {
+        if (warnings == null || l.ExtraCautions == null) return;
+        foreach (var ec in l.ExtraCautions) warnings.Add(new PsdWarning(ec.Kind, $"「{l.Path}」: {ec.Text}"));
+    }
 
     /// <summary>
     /// レイヤーを下から順に重ねる（表示・非表示は見ない。渡したものを全部重ねる）。
@@ -71,7 +104,7 @@ public static class PsdCompose
     public static PsdPixels Compose(ILayerImage psd, IEnumerable<PsdLayer> layers, PsdRect area, int scale = 1,
         ICollection<PsdWarning>? warnings = null, CancellationToken ct = default)
     {
-        var acc = new Accum(area, scale);
+        var acc = new Accum(area, scale) { Linear = psd.LinearComposite };
         var clips = new Dictionary<PsdLayer, PsdPixels?>();
         var list = layers.Where(l => l.CanCompose).OrderBy(l => l.Index).ToList();
         if (warnings != null)
@@ -95,6 +128,7 @@ public static class PsdCompose
                 warnings?.Add(new PsdWarning(PsdWarningKind.Approx, $"「{l.Path}」の描画モード（{BlendLabel(l.BlendMode)}）は通常として重ねました"));
             if (l.Adjustment?.Note is { } note) warnings?.Add(new PsdWarning(PsdWarningKind.Approx, $"「{l.Path}」: {note}"));
             if (warnings != null) foreach (var w in PsdEffects.Warnings(l)) warnings.Add(w);
+            AddExtraCautions(warnings, l);
             var clipBase = l.Clipped ? ClipBaseOf(psd, l) : null;
             Draw(psd, acc, l, l.BlendMode, clipBase is null ? null : ClipShape(psd, clipBase, clips));
         }
@@ -107,11 +141,12 @@ public static class PsdCompose
     /// </summary>
     public static PsdPixels RenderLayer(ILayerImage psd, PsdLayer layer, PsdRect area, ICollection<PsdWarning>? warnings = null)
     {
-        var acc = new Accum(area, 1);
+        var acc = new Accum(area, 1) { Linear = psd.LinearComposite };
         if (!layer.HasPixels) return acc.ToPixels();
         var own = psd.GetPixels(layer);
         var clips = new Dictionary<PsdLayer, PsdPixels?>();
         if (warnings != null) foreach (var w in PsdEffects.Warnings(layer)) warnings.Add(w);
+        AddExtraCautions(warnings, layer);
         // 自分がクリッピングされているなら、土台の形で切り抜く（Photoshop での見た目と同じにする）
         var ownClip = layer.Clipped && ClipBaseOf(psd, layer) is { } clipBase ? ClipShape(psd, clipBase, clips) : null;
         Draw(psd, acc, layer, "norm", ownClip);
@@ -148,7 +183,7 @@ public static class PsdCompose
         else
         {
             var inner = psd.ComposableLayers.Where(l => IsVisibleInside(l, clipBase)).ToList();
-            var acc = new Accum(psd.Canvas, 1);
+            var acc = new Accum(psd.Canvas, 1) { Linear = psd.LinearComposite };
             foreach (var l in inner.OrderBy(l => l.Index))
             {
                 var cb = l.Clipped ? ClipBaseOf(psd, l) : null;
@@ -269,7 +304,7 @@ public static class PsdCompose
         var parts = layer.Effects is { HasRenderable: true } fx && psd is PsdFile pf ? EffectParts(pf, layer, fx, px) : null;
         if (parts != null)
             foreach (var p in parts.Where(p => !p.Above)) DrawPixels(acc, p.Pixels, p.Blend, fxOpacity * p.Opacity, clip, folderMasks);
-        if (opacity > 0) DrawPixels(acc, px, blend, opacity, clip, folderMasks);
+        if (opacity > 0) DrawPixels(acc, px, blend, opacity, clip, folderMasks, layer.LegacyMode);
         if (parts != null)
             foreach (var p in parts.Where(p => p.Above)) DrawPixels(acc, p.Pixels, p.Blend, fxOpacity * p.Opacity, clip, folderMasks);
     }
@@ -300,12 +335,25 @@ public static class PsdCompose
     }
 
     /// <summary>1 枚の絵を、描画モード・不透明度・クリッピング・フォルダのマスクを付けて重ねる。</summary>
-    private static void DrawPixels(Accum acc, PsdPixels px, string blend, float opacity, PsdPixels? clip, List<PsdMask> folderMasks)
+    /// <summary>
+    /// リニア合成中でも sRGB のまま計算する描画モード（GIMP の実ファイル書き出しで照合した分類）。
+    /// 乗算・加算・減算・除算などの算術系はリニア、それ以外（スクリーン・オーバーレイ系・差・覆い焼き・焼き込み・HSV 系）は sRGB。
+    /// </summary>
+    private static readonly HashSet<string> SrgbSpaceBlends = new()
+    {
+        "scrn", "over", "sLit", "hLit", "vLit", "pLit", "hMix", "diff", "smud", "div ", "idiv", "hue ", "sat ", "colr",
+    };
+
+    private static float SrgbToLinearF(float v) => v <= 0.04045f ? v / 12.92f : MathF.Pow((v + 0.055f) / 1.055f, 2.4f);
+
+    private static void DrawPixels(Accum acc, PsdPixels px, string blend, float opacity, PsdPixels? clip, List<PsdMask> folderMasks, bool legacy = false)
     {
         if (opacity <= 0) return;
         var rect = px.Bounds.Intersect(acc.Area);
         if (rect.IsEmpty) return;
         int mode = BlendIndex(blend);
+        // XCF のリニア合成中、このレイヤーだけ sRGB で計算するか（旧方式モードと、GIMP が sRGB で計算するモード）
+        bool srgbSpace = acc.Linear && (legacy || SrgbSpaceBlends.Contains(blend));
         int s = acc.Scale;
         // 縮小時は、出力の 1 画素 = キャンバスの (s×s) の左上 1 画素で代表させる
         int dx0 = (rect.Left - acc.Area.Left + s - 1) / s;
@@ -329,21 +377,51 @@ public static class PsdCompose
                 if (clip != null) sa *= ClipAt(clip, cx, cy);
                 foreach (var m in folderMasks) sa *= m.At(cx, cy);
                 if (sa <= 0) continue;
-                float sr = src[si + 2] / 255f, sg = src[si + 1] / 255f, sb = src[si] / 255f;
                 int di = dy * acc.W + dx;
                 float ab = acc.A[di];
-                float cr = sr, cg = sg, cb = sb;
+                if (srgbSpace)
+                {
+                    // 背景を sRGB に戻して混ぜ、結果をリニアに戻して蓄える
+                    float sr = src[si + 2] / 255f, sg = src[si + 1] / 255f, sb = src[si] / 255f;
+                    float brs = 0f, bgs = 0f, bbs = 0f;
+                    float cr = sr, cg = sg, cb = sb;
+                    if (ab > 0)
+                    {
+                        brs = EncodeSrgb(acc.R[di] / ab); bgs = EncodeSrgb(acc.G[di] / ab); bbs = EncodeSrgb(acc.B[di] / ab);
+                        if (mode != 0)
+                        {
+                            var (mr, mg, mb) = Blend(mode, brs, bgs, bbs, sr, sg, sb);
+                            cr = (1 - ab) * sr + ab * mr;
+                            cg = (1 - ab) * sg + ab * mg;
+                            cb = (1 - ab) * sb + ab * mb;
+                        }
+                    }
+                    float na = sa + ab * (1 - sa);
+                    if (na > 0)
+                    {
+                        acc.R[di] = SrgbToLinearF((sa * cr + (1 - sa) * ab * brs) / na) * na;
+                        acc.G[di] = SrgbToLinearF((sa * cg + (1 - sa) * ab * bgs) / na) * na;
+                        acc.B[di] = SrgbToLinearF((sa * cb + (1 - sa) * ab * bbs) / na) * na;
+                    }
+                    else { acc.R[di] = acc.G[di] = acc.B[di] = 0f; }
+                    acc.A[di] = na;
+                    continue;
+                }
+                float sr2, sg2, sb2;
+                if (acc.Linear) { sr2 = SrgbToLinear[src[si + 2]]; sg2 = SrgbToLinear[src[si + 1]]; sb2 = SrgbToLinear[src[si]]; }
+                else { sr2 = src[si + 2] / 255f; sg2 = src[si + 1] / 255f; sb2 = src[si] / 255f; }
+                float cr2 = sr2, cg2 = sg2, cb2 = sb2;
                 if (mode != 0 && ab > 0)
                 {
                     float br = acc.R[di] / ab, bg = acc.G[di] / ab, bb = acc.B[di] / ab;
-                    var (mr, mg, mb) = Blend(mode, br, bg, bb, sr, sg, sb);
-                    cr = (1 - ab) * sr + ab * mr;
-                    cg = (1 - ab) * sg + ab * mg;
-                    cb = (1 - ab) * sb + ab * mb;
+                    var (mr, mg, mb) = Blend(mode, br, bg, bb, sr2, sg2, sb2);
+                    cr2 = (1 - ab) * sr2 + ab * mr;
+                    cg2 = (1 - ab) * sg2 + ab * mg;
+                    cb2 = (1 - ab) * sb2 + ab * mb;
                 }
-                acc.R[di] = sa * cr + (1 - sa) * acc.R[di];
-                acc.G[di] = sa * cg + (1 - sa) * acc.G[di];
-                acc.B[di] = sa * cb + (1 - sa) * acc.B[di];
+                acc.R[di] = sa * cr2 + (1 - sa) * acc.R[di];
+                acc.G[di] = sa * cg2 + (1 - sa) * acc.G[di];
+                acc.B[di] = sa * cb2 + (1 - sa) * acc.B[di];
                 acc.A[di] = sa + ab * (1 - sa);
             }
         }
