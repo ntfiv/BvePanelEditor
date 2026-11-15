@@ -492,7 +492,7 @@ public sealed class PsdTests : IDisposable
         Assert.Equal("monitor.psd", back.GetPsdSource(2)!.Day);
 
         // 1 つ目の PSD の更新では、2 つ目の PSD のオブジェクトを触らない
-        var plan = PsdUpdate.Plan(back, _dir, spec.Day, spec.Night, 1);
+        var plan = PsdUpdate.Plan(back, _dir, (PsdFile)spec.Day, (PsdFile?)spec.Night, 1);
         Assert.Equal(back.Sections.Count(s => s.PsdLayers.Count > 0 && s.PsdSource == 1), plan.Linked);
         spec.Day.Dispose(); spec.Night!.Dispose();
     }

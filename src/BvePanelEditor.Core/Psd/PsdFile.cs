@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Text;
 
 namespace BvePanelEditor.Core.Psd;
@@ -58,6 +58,9 @@ public sealed class PsdLayer
     public bool MaskDisabled;
     public bool HasMask => !MaskBounds.IsEmpty;
 
+    /// <summary>形式固有の注意（XCF の描画モード・効果など）。PsdImport.CautionItems が PSD 側の注意に足す。PSD では使わない。</summary>
+    public List<PsdWarning>? ExtraCautions;
+
     internal readonly List<(short Id, long Offset, long Length)> Channels = [];
 
     public bool IsFolder => Kind == PsdLayerKind.FolderOpen;
@@ -95,7 +98,7 @@ public sealed class PsdPixels(PsdRect bounds, byte[] bgra)
 }
 
 /// <summary>PSD（版 1）を読む。RGB／グレースケール、8／16bit、無圧縮・RLE・ZIP。</summary>
-public sealed class PsdFile : IDisposable
+public sealed class PsdFile : ILayerImage
 {
     public string FilePath { get; }
     public int Width { get; private set; }
@@ -105,6 +108,9 @@ public sealed class PsdFile : IDisposable
     public int ChannelCount { get; private set; }
     /// <summary>レイヤー（0 がいちばん下）。フォルダの開始・終了の印も含む。</summary>
     public List<PsdLayer> Layers { get; } = [];
+
+    /// <summary>PSD はファイル単位の注意を持たない（注意はレイヤーごとに出る）。</summary>
+    public IReadOnlyList<PsdWarning> FileWarnings => [];
     public List<string> Warnings { get; } = [];
     /// <summary>全体の光源（「包括光源を使用」のレイヤー効果が使う角度と高度、度）。</summary>
     public float GlobalAngle { get; private set; } = 120;

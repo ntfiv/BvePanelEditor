@@ -213,7 +213,7 @@ public partial class MainWindow : Window
         // 画像や PSD はパネルファイルとして開かず、画像からパネルを作る（PSD は読み込み方を選ぶ）
         var ext = Path.GetExtension(path).ToLowerInvariant();
         // その画像から作ったパネルがすでにあれば、作り直して上書きしないよう、先にそのパネルを開くか聞く
-        bool? offered = ImageExtensions.Contains(ext) || ext == ".psd" ? OfferExistingPanel(path) : null;
+        bool? offered = ImageExtensions.Contains(ext) || ext == ".psd" || ext == ".xcf" ? OfferExistingPanel(path) : null;
         if (offered == true) return;
         if (ImageExtensions.Contains(ext))
         {
@@ -223,6 +223,7 @@ public partial class MainWindow : Window
             return;
         }
         if (ext == ".psd") { OpenPsd(path); return; }
+        if (ext == ".xcf") { StartPsdImport(path); return; }
         if (!ConfirmDiscard()) return;
         try
         {

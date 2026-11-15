@@ -1,4 +1,4 @@
-namespace BvePanelEditor.Core.Psd;
+﻿namespace BvePanelEditor.Core.Psd;
 
 /// <summary>PSD を重ねるときの注意の種類。△＝近似して再現（見た目が少し変わる）、×＝再現不可（その部分は出ない）。</summary>
 public enum PsdWarningKind { Approx, Unsupported }
@@ -68,7 +68,7 @@ public static class PsdCompose
     /// 画像レイヤーのほか、再現できる調整レイヤー・べた塗りレイヤーも重ねる。
     /// scale が 2 以上なら縮小して重ねる（見本用、戻り値の Bounds は 0,0 起点）。
     /// </summary>
-    public static PsdPixels Compose(PsdFile psd, IEnumerable<PsdLayer> layers, PsdRect area, int scale = 1,
+    public static PsdPixels Compose(ILayerImage psd, IEnumerable<PsdLayer> layers, PsdRect area, int scale = 1,
         ICollection<PsdWarning>? warnings = null, CancellationToken ct = default)
     {
         var acc = new Accum(area, scale);
@@ -105,7 +105,7 @@ public static class PsdCompose
     /// 1 つのレイヤーを area の範囲で切り出す。そのレイヤーにクリッピングされた上のレイヤーも重ねる。
     /// 自分の描画モードは通常として扱う（BVE は通常で描くため）。
     /// </summary>
-    public static PsdPixels RenderLayer(PsdFile psd, PsdLayer layer, PsdRect area, ICollection<PsdWarning>? warnings = null)
+    public static PsdPixels RenderLayer(ILayerImage psd, PsdLayer layer, PsdRect area, ICollection<PsdWarning>? warnings = null)
     {
         var acc = new Accum(area, 1);
         if (!layer.HasPixels) return acc.ToPixels();
@@ -128,7 +128,7 @@ public static class PsdCompose
     /// クリッピングの土台になっているレイヤー（すぐ下の、クリッピングされていないレイヤー。すぐ下がフォルダならそのフォルダ）。
     /// フォルダの中のいちばん下なら土台はない。
     /// </summary>
-    public static PsdLayer? ClipBaseOf(PsdFile psd, PsdLayer layer)
+    public static PsdLayer? ClipBaseOf(ILayerImage psd, PsdLayer layer)
     {
         for (int i = layer.Index - 1; i >= 0; i--)
         {
@@ -141,7 +141,7 @@ public static class PsdCompose
     }
 
     /// <summary>クリッピングの土台の形（アルファだけを使う）。フォルダなら、中で表示されているものを重ねた形。</summary>
-    private static PsdPixels? ClipShape(PsdFile psd, PsdLayer clipBase, Dictionary<PsdLayer, PsdPixels?> cache)
+    private static PsdPixels? ClipShape(ILayerImage psd, PsdLayer clipBase, Dictionary<PsdLayer, PsdPixels?> cache)
     {
         if (cache.TryGetValue(clipBase, out var shape)) return shape;
         if (!clipBase.IsFolder) shape = clipBase.Kind == PsdLayerKind.Fill ? FillPixels(psd, clipBase) : psd.GetPixels(clipBase);
@@ -192,7 +192,7 @@ public static class PsdCompose
     }
 
     /// <summary>このレイヤーにクリッピングされている上のレイヤー。</summary>
-    public static IEnumerable<PsdLayer> ClippedOnto(PsdFile psd, PsdLayer layer)
+    public static IEnumerable<PsdLayer> ClippedOnto(ILayerImage psd, PsdLayer layer)
     {
         for (int i = layer.Index + 1; i < psd.Layers.Count; i++)
         {
@@ -211,7 +211,7 @@ public static class PsdCompose
     }
 
     /// <summary>親のフォルダのマスク（stopAt より内側だけ）。</summary>
-    private static List<PsdMask> FolderMasks(PsdFile psd, PsdLayer l, PsdLayer? stopAt)
+    private static List<PsdMask> FolderMasks(ILayerImage psd, PsdLayer l, PsdLayer? stopAt)
     {
         var list = new List<PsdMask>();
         for (var p = l.Parent; p != null && p != stopAt; p = p.Parent)
@@ -220,7 +220,7 @@ public static class PsdCompose
     }
 
     /// <summary>塗りつぶしレイヤーをキャンバス大の絵にする（マスクで形を付ける）。グラデーションは近似。</summary>
-    private static PsdPixels? FillPixels(PsdFile psd, PsdLayer layer)
+    private static PsdPixels? FillPixels(ILayerImage psd, PsdLayer layer)
     {
         if (layer.SolidColor == null && layer.Gradient == null) return null;
         var mask = psd.GetMask(layer);
@@ -251,7 +251,7 @@ public static class PsdCompose
         return new PsdPixels(rect, bgra);
     }
 
-    private static void Draw(PsdFile psd, Accum acc, PsdLayer layer, string blend, PsdPixels? clip, PsdLayer? stopAt = null)
+    private static void Draw(ILayerImage psd, Accum acc, PsdLayer layer, string blend, PsdPixels? clip, PsdLayer? stopAt = null)
     {
         float opacity = OpacityOf(layer, stopAt);
         // レイヤー効果は塗りの不透明度の影響を受けない
@@ -265,7 +265,8 @@ public static class PsdCompose
         }
         var px = layer.Kind == PsdLayerKind.Fill ? FillPixels(psd, layer) : psd.GetPixels(layer);
         if (px == null) return;
-        var parts = layer.Effects is { HasRenderable: true } fx ? EffectParts(psd, layer, fx, px) : null;
+        // レイヤー効果の絵は PSD 側にだけある（XCF のレイヤーには Effects が付かない）
+        var parts = layer.Effects is { HasRenderable: true } fx && psd is PsdFile pf ? EffectParts(pf, layer, fx, px) : null;
         if (parts != null)
             foreach (var p in parts.Where(p => !p.Above)) DrawPixels(acc, p.Pixels, p.Blend, fxOpacity * p.Opacity, clip, folderMasks);
         if (opacity > 0) DrawPixels(acc, px, blend, opacity, clip, folderMasks);
@@ -355,7 +356,7 @@ public static class PsdCompose
     }
 
     /// <summary>調整レイヤー: いままで重ねた絵の色を変える（不透明度・マスク・クリッピングの分だけ）。</summary>
-    private static void Adjust(PsdFile psd, Accum acc, PsdLayer layer, PsdAdjustment adj, float opacity, List<PsdMask> folderMasks, PsdPixels? clip)
+    private static void Adjust(ILayerImage psd, Accum acc, PsdLayer layer, PsdAdjustment adj, float opacity, List<PsdMask> folderMasks, PsdPixels? clip)
     {
         var mask = psd.GetMask(layer);
         int s = acc.Scale;
@@ -464,6 +465,6 @@ public static class PsdCompose
     }
 
     /// <summary>PSD で表示されている、重ねられるレイヤー（統合画像との見比べ用）。</summary>
-    public static IEnumerable<PsdLayer> VisibleLayers(PsdFile psd) =>
+    public static IEnumerable<PsdLayer> VisibleLayers(ILayerImage psd) =>
         psd.ComposableLayers.Where(l => !l.EffectivelyHidden && !(l.Clipped && (ClipBaseOf(psd, l)?.EffectivelyHidden ?? false)));
 }

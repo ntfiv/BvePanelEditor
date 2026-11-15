@@ -41,7 +41,7 @@ public partial class MainWindow
             if (_doc != null && !ConfirmDiscard()) return;
             var save = new SaveFileDialog
             {
-                Title = "新しいパネルファイルの保存先（PSD の画像はこのフォルダの psd に書き出します）",
+                Title = "新しいパネルファイルの保存先（PSD・XCF の画像はこのフォルダの psd に書き出します）",
                 Filter = PanelFilters.Save, FileName = "panel.txt",
                 InitialDirectory = psdPath != null ? Path.GetDirectoryName(psdPath) : null,
             };
@@ -186,11 +186,11 @@ public partial class MainWindow
         int lamps = result.Sections.Count(s => s.Kind == SectionKind.PilotLamp);
         int nums = result.Sections.Count(s => s.Kind == SectionKind.DigitalNumber);
         int noSubject = result.Sections.Count(s => string.IsNullOrEmpty(s.Get("Subject")));
-        Message($"PSD から読み込みました（{(result.Base != null ? "ベース・" : "")}表示灯 {lamps} 個・数字 {nums} 個、画像 {result.Files.Count} 枚）"
+        Message($"PSD・XCF から読み込みました（{(result.Base != null ? "ベース・" : "")}表示灯 {lamps} 個・数字 {nums} 個、画像 {result.Files.Count} 枚）"
             + (noSubject > 0 ? $"。Subject が空のオブジェクト {noSubject} 個は右の欄で設定してください" : "")
             + (newPanelPath != null ? "。パネルファイルはまだ保存していません（Ctrl+S）" : ""));
         if (interactive && result.Warnings.Count > 0)
-            MessageBox.Show(this, PsdWarningMessage.Build("読み込みましたが、次の点に注意してください。", result.Warnings), "PSD から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, PsdWarningMessage.Build("読み込みましたが、次の点に注意してください。", result.Warnings), "PSD・XCF から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
         return true;
     }
 
