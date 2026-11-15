@@ -66,8 +66,11 @@ public sealed class XcfFile : ILayerImage
     /// <summary>ファイル全体への注意（△／× つき）。<see cref="Warnings"/> と同じ内容を、読み込みの警告表示用に種類つきで持つ。</summary>
     public IReadOnlyList<PsdWarning> FileWarnings => _fileWarnings;
 
-    /// <summary>GIMP は版 11 以降、合成をリニアの明るさで行う（実ファイルの書き出し画像で照合済み）。</summary>
-    public bool LinearComposite => Version >= 11;
+    /// <summary>
+    /// GIMP 2.10 世代は、今の方式の描画モードをリニアの明るさで合成する（実ファイルの書き出し画像で照合済み）。
+    /// 今の方式のモードが入るのは版 10 から。版 9 以下は旧方式のみで、旧方式はレイヤーごとに sRGB で計算するので、この値の影響は出ない。
+    /// </summary>
+    public bool LinearComposite => Version >= 10;
 
     /// <summary>8bit リニア精度（100）は、画素のバイト値そのものがリニアの明るさ。</summary>
     public bool LinearPixels => Precision == 100;
@@ -349,8 +352,8 @@ public sealed class XcfFile : ILayerImage
         };
         if (Precision == 100)
         {
-            // 版 11 以降はリニア合成で正しく扱える。古い版は sRGB 合成の経路で読むため近似になる
-            if (Version < 11)
+            // リニア合成の対象（版 10 以降）はリニア格納のまま正しく扱える。それ以外は sRGB 合成の経路で読むため近似になる
+            if (!LinearComposite)
             {
                 Warnings.Add("8bit リニア精度のファイルです。明るさの解釈が GIMP と少し違うことがあります");
                 _fileWarnings.Add(new PsdWarning(PsdWarningKind.Approx, "8bit リニア精度のファイルです。明るさの解釈が GIMP と少し違うことがあります"));

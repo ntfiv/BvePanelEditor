@@ -232,6 +232,12 @@ public sealed class XcfTests : IDisposable
             Assert.Equal(100, x.Precision);
             Assert.Contains(x.Warnings, w => w.Contains("リニア"));
         }
+        // 版 10 もリニア合成の対象なので、精度 100 を正しく扱えて警告なし
+        using (var x = XcfFile.Open(WriteXcf("plin10.xcf", 1, 1, [layer], version: 10, precision: 100)))
+        {
+            Assert.Equal(100, x.Precision);
+            Assert.DoesNotContain(x.Warnings, w => w.Contains("リニア"));
+        }
         // 16bit は理由つきで断る
         var deep = WriteXcf("pdeep.xcf", 1, 1, [layer], version: 11, precision: 250);
         var ex = Assert.Throws<NotSupportedException>(() => XcfFile.Open(deep));

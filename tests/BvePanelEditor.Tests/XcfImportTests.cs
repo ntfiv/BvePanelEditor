@@ -167,11 +167,13 @@ public sealed class XcfImportTests : IDisposable
             var bottom = TestXcfLayer.Solid("白", 2, 2, 255, 255, 255); bottom.Mode = 28;
             var p = WriteXcf(name, 2, 2, [top, bottom], version: version);
             using var xcf = XcfFile.Open(p);
-            Assert.Equal(version >= 11, xcf.LinearComposite);
+            Assert.Equal(version >= 10, xcf.LinearComposite);
             var px = PsdCompose.Compose(xcf, xcf.ComposableLayers.ToList(), xcf.Canvas);
             return px.Bgra[2]; // R
         }
         Assert.InRange(GrayAt("lin11.xcf", 11), (byte)184, (byte)192);
+        // 版 10（GIMP 2.10 世代、今の方式のモードが入る版）もリニア合成
+        Assert.InRange(GrayAt("lin10.xcf", 10), (byte)184, (byte)192);
         Assert.InRange(GrayAt("lin3.xcf", 3), (byte)124, (byte)131);
     }
 
