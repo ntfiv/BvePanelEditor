@@ -280,7 +280,7 @@ public static class PsdImport
     /// <summary>青い注記のツールチップに出す補足。調整レイヤーは「ベースに重ねるときだけ効く」ことをここで伝える（行の文は短く保つ）。</summary>
     public static string NoteDetail(PsdLayer l)
     {
-        var s = "そのまま再現できるもの（PSD対応.md の ○ のもの）";
+        var s = "そのまま再現できるもの（対応表で ○ のもの）";
         if (l.Kind == PsdLayerKind.Adjustment && l.Adjustment != null)
             s = "調整レイヤーは、ベースに重ねるときだけ効きます\n" + s;
         return s;

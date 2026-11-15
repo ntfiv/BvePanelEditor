@@ -28,7 +28,7 @@ public partial class MainWindow
     /// </summary>
     public void HandleDrop(string[] files, Point? at)
     {
-        var images = files.Where(f => IsImageFile(f) || IsPsdFile(f)).ToList();
+        var images = files.Where(f => IsImageFile(f) || IsLayerFile(f)).ToList();
         if (_doc == null || images.Count == 0 || images.Count != files.Length)
         {
             OpenPath(files[0]);

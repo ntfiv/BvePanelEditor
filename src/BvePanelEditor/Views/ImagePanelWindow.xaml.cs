@@ -84,18 +84,18 @@ public partial class ImagePanelWindow : Window
     private void OnBrowseImage(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string t } || !int.TryParse(t, out var slot)) return;
-        var dlg = new OpenFileDialog { AddToRecent = false, Title = $"{SlotLabels[slot]}の画像を選ぶ", Filter = "画像・PSD|*.png;*.bmp;*.jpg;*.jpeg;*.gif;*.tif;*.tiff;*.psd|すべて|*.*" };
+        var dlg = new OpenFileDialog { AddToRecent = false, Title = $"{SlotLabels[slot]}の画像を選ぶ", Filter = "画像・PSD・XCF|*.png;*.bmp;*.jpg;*.jpeg;*.gif;*.tif;*.tiff;*.psd;*.xcf|すべて|*.*" };
         var known = _paths.FirstOrDefault(p => p != null);
         if (known != null) dlg.InitialDirectory = Path.GetDirectoryName(known);
         if (dlg.ShowDialog(this) == true) LoadWithGuess(slot, dlg.FileName);
     }
 
-    private static bool IsPsd(string path) => Path.GetExtension(path).Equals(".psd", StringComparison.OrdinalIgnoreCase);
+    private static bool IsLayerFile(string path) => LayerImage.IsSupported(path);
 
-    /// <summary>1 点を読み、まだ空いている欄は名前から探して読む。PSD ならレイヤーを振り分ける画面を開く。</summary>
+    /// <summary>1 点を読み、まだ空いている欄は名前から探して読む。PSD・XCF ならレイヤーを振り分ける画面を開く。</summary>
     public void LoadWithGuess(int slot, string path)
     {
-        if (IsPsd(path)) { AssignPsd(slot, path); return; }
+        if (IsLayerFile(path)) { AssignPsd(slot, path); return; }
         bool first = _paths.All(p => p == null);
         if (!LoadSlot(slot, path)) return;
         var guess = Guess(path);
@@ -139,7 +139,7 @@ public partial class ImagePanelWindow : Window
     public static readonly CropSlotKind[] SlotKinds = [new(false, false), new(false, true), new(true, false), new(true, true)];
 
     /// <summary>
-    /// PSD を slot の欄に選んだ。同じ名前の付け方の PSD（夜の PSD など）も探して、レイヤーを振り分ける画面を開く。
+    /// PSD・XCF を slot の欄に選んだ。同じ名前の付け方のファイル（夜のファイルなど）も探して、レイヤーを振り分ける画面を開く。
     /// すでに画像を選んである欄は、チェックしない限りそのまま。
     /// </summary>
     public void AssignPsd(int slot, string path)
@@ -156,7 +156,7 @@ public partial class ImagePanelWindow : Window
         var paths = new List<string>();
         void Add(string? p)
         {
-            if (p != null && IsPsd(p) && File.Exists(p) && !paths.Any(x => string.Equals(Path.GetFullPath(x), Path.GetFullPath(p), StringComparison.OrdinalIgnoreCase)))
+            if (p != null && IsLayerFile(p) && File.Exists(p) && !paths.Any(x => string.Equals(Path.GetFullPath(x), Path.GetFullPath(p), StringComparison.OrdinalIgnoreCase)))
                 paths.Add(p);
         }
         var colPsd = new string?[4];
@@ -170,7 +170,7 @@ public partial class ImagePanelWindow : Window
             colPsd[slot] = path;
             colLayers[slot] = null;
             for (int i = 0; i < 4; i++)
-                if (i != slot && _paths[i] == null && guess[i] != null && IsPsd(guess[i]!)) colPsd[i] = guess[i];
+                if (i != slot && _paths[i] == null && guess[i] != null && IsLayerFile(guess[i]!)) colPsd[i] = guess[i];
             // 空いている欄は、同じ時間帯（昼／夜）のもう一方と同じ PSD、それもなければ選んだ PSD
             // （名前から振り分けて、夜らしいレイヤーがなければ夜の欄は空のまま）
             for (int i = 0; i < 4; i++)
@@ -193,7 +193,7 @@ public partial class ImagePanelWindow : Window
             var refPx = _px.Where((p, i) => p != null && i != k && picks[i] == null).FirstOrDefault()
                 ?? picks.FirstOrDefault(p => p != null && p != pick)?.Pixels;
             if (refPx != null && (refPx.Width != pick.Pixels.Width || refPx.Height != pick.Pixels.Height))
-                MessageBox.Show(this, $"{SlotLabels[k]}の PSD の大きさ（{pick.Pixels.Width}×{pick.Pixels.Height}）が、ほかの画像（{refPx.Width}×{refPx.Height}）と違います。\n位置がずれるので、同じ大きさの画像を使ってください。",
+                MessageBox.Show(this, $"{SlotLabels[k]}のファイルの大きさ（{pick.Pixels.Width}×{pick.Pixels.Height}）が、ほかの画像（{refPx.Width}×{refPx.Height}）と違います。\n位置がずれるので、同じ大きさの画像を使ってください。",
                     Title, MessageBoxButton.OK, MessageBoxImage.Warning);
             SetSlot(k, pick.PsdPath, pick.Layers, pick.Pixels, ImageLoader.ToBitmap(pick.Pixels));
         }
@@ -204,9 +204,9 @@ public partial class ImagePanelWindow : Window
 
     private void OnAssignLayers(object sender, RoutedEventArgs e)
     {
-        if (!_paths.Any(p => p != null && IsPsd(p)))
+        if (!_paths.Any(p => p != null && IsLayerFile(p)))
         {
-            var dlg = new OpenFileDialog { AddToRecent = false, Title = "レイヤーを振り分ける PSD を選ぶ", Filter = "Photoshop|*.psd" };
+            var dlg = new OpenFileDialog { AddToRecent = false, Title = "レイヤーを振り分ける PSD・XCF を選ぶ", Filter = "PSD・XCF|*.psd;*.xcf|Photoshop|*.psd|GIMP|*.xcf" };
             var known = _paths.FirstOrDefault(p => p != null);
             if (known != null) dlg.InitialDirectory = Path.GetDirectoryName(known);
             if (dlg.ShowDialog(this) != true) return;
@@ -899,7 +899,7 @@ public partial class ImagePanelWindow : Window
         var dlg = new OpenFileDialog
         {
             AddToRecent = false, Multiselect = true, Title = "重ねる画像を選ぶ",
-            Filter = "画像・PSD|*.png;*.bmp;*.jpg;*.jpeg;*.gif;*.tif;*.tiff;*.psd|すべて|*.*",
+            Filter = "画像・PSD・XCF|*.png;*.bmp;*.jpg;*.jpeg;*.gif;*.tif;*.tiff;*.psd;*.xcf|すべて|*.*",
         };
         var known = _overlays.Select(x => x.Overlay.DayPath).Concat(_paths.OfType<string>()).FirstOrDefault();
         if (known != null) dlg.InitialDirectory = Path.GetDirectoryName(known);
@@ -915,7 +915,7 @@ public partial class ImagePanelWindow : Window
         var dlg = new OpenFileDialog
         {
             AddToRecent = false, Multiselect = true, Title = "部品用の画像を選ぶ",
-            Filter = "画像・PSD|*.png;*.bmp;*.jpg;*.jpeg;*.gif;*.tif;*.tiff;*.psd|すべて|*.*",
+            Filter = "画像・PSD・XCF|*.png;*.bmp;*.jpg;*.jpeg;*.gif;*.tif;*.tiff;*.psd;*.xcf|すべて|*.*",
         };
         var known = _overlays.Select(x => x.Overlay.DayPath).Concat(_paths.OfType<string>()).FirstOrDefault();
         if (known != null) dlg.InitialDirectory = Path.GetDirectoryName(known);
@@ -924,7 +924,7 @@ public partial class ImagePanelWindow : Window
     }
 
     /// <summary>
-    /// 画像（PSD ならレイヤーを振り分ける）を足す。位置 0, 0・レイヤー自動・状態量 true。夜の画像は名前から探す（_N など）。
+    /// 画像（PSD・XCF ならレイヤーを振り分ける）を足す。位置 0, 0・レイヤー自動・状態量 true。夜の画像は名前から探す（_N など）。
     /// after があればそのすぐ手前に入れる。最後に足したものを選ぶ。
     /// </summary>
     public void AddOverlayFiles(IReadOnlyList<string> files, bool below, OverlayItem? after = null, bool crop = false)
@@ -961,11 +961,11 @@ public partial class ImagePanelWindow : Window
         var item = new OverlayItem { Overlay = o };
         try
         {
-            if (IsPsd(path))
+            if (IsLayerFile(path))
             {
                 var guess = Guess(path);
                 var night = guess[NightUnlit] ?? guess[NightLit];
-                bool nightPsd = night != null && IsPsd(night);
+                bool nightPsd = night != null && IsLayerFile(night);
                 var paths = new List<string> { path };
                 if (nightPsd) paths.Add(night!);
                 var aw = new LayerAssignWindow(this, paths, ["昼の画像", "夜の画像"], [new(false, false), new(true, false)],
@@ -978,7 +978,7 @@ public partial class ImagePanelWindow : Window
             {
                 item.DayPx = ImageLoader.Load(path).Pixels;
                 var guess = Guess(path);
-                if ((guess[NightUnlit] ?? guess[NightLit]) is { } night && !IsPsd(night) && !string.Equals(night, path, StringComparison.OrdinalIgnoreCase))
+                if ((guess[NightUnlit] ?? guess[NightLit]) is { } night && !IsLayerFile(night) && !string.Equals(night, path, StringComparison.OrdinalIgnoreCase))
                 {
                     o.NightPath = night;
                     item.NightPx = ImageLoader.TryLoadPixels(night);
@@ -995,7 +995,7 @@ public partial class ImagePanelWindow : Window
 
     // ---- ドロップ ----
 
-    private static readonly string[] OverlayExtensions = [".png", ".bmp", ".jpg", ".jpeg", ".gif", ".tif", ".tiff", ".psd"];
+    private static readonly string[] OverlayExtensions = [".png", ".bmp", ".jpg", ".jpeg", ".gif", ".tif", ".tiff", ".psd", ".xcf"];
 
     private void OnOverlayDragOver(object sender, DragEventArgs e)
     {

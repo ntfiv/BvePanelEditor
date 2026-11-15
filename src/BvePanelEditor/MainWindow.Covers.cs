@@ -114,7 +114,7 @@ public partial class MainWindow
     {
         var known = _doc?.CropSets.Where(c => c.HasLayers).Select(c => FullOf(c.Day)).FirstOrDefault(File.Exists)
             ?? _doc?.PsdSources.Select(p => p.Day).Where(d => d.Length > 0).Select(FullOf).FirstOrDefault(File.Exists);
-        var dlg = new OpenFileDialog { Filter = "PSD (*.psd)|*.psd", Title = "ふたのレイヤーがある PSD を選ぶ" };
+        var dlg = new OpenFileDialog { Filter = "PSD・XCF (*.psd;*.xcf)|*.psd;*.xcf", Title = "ふたのレイヤーがある PSD・XCF を選ぶ" };
         if (known != null) { dlg.InitialDirectory = Path.GetDirectoryName(known); dlg.FileName = Path.GetFileName(known); }
         else if (PanelDir != null) dlg.InitialDirectory = PanelDir;
         if (dlg.ShowDialog(this) != true) return null;
@@ -128,7 +128,7 @@ public partial class MainWindow
         var night = aw.Result[1];
         return new CoverSource
         {
-            Label = $"PSD のレイヤー（{Path.GetFileName(day.PsdPath)}: {string.Join("・", day.Layers.Select(l => l.Split('/')[^1]))}）",
+            Label = $"PSD・XCF のレイヤー（{Path.GetFileName(day.PsdPath)}: {string.Join("・", day.Layers.Select(l => l.Split('/')[^1]))}）",
             DayPath = day.PsdPath, DayLayers = day.Layers, Day = day.Pixels,
             NightPath = night?.PsdPath, NightLayers = night?.Layers, Night = night?.Pixels,
         };
