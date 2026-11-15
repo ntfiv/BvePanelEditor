@@ -17,10 +17,11 @@ public sealed class XcfTests : IDisposable
 
     private string WriteXcf(string name, int w, int h, IReadOnlyList<TestXcfLayer> layersTopFirst,
         int version = 3, int compression = 1, int baseType = 0, uint precision = 150,
-        IReadOnlyList<(string Name, byte[] Data)>? parasites = null, byte[]? parasitesRaw = null)
+        IReadOnlyList<(string Name, byte[] Data)>? parasites = null, byte[]? parasitesRaw = null,
+        bool badUserUnit = false)
     {
         var p = Path.Combine(_dir, name);
-        TestXcfWriter.Write(p, w, h, layersTopFirst, version, compression, baseType, precision, parasites, parasitesRaw);
+        TestXcfWriter.Write(p, w, h, layersTopFirst, version, compression, baseType, precision, parasites, parasitesRaw, badUserUnit);
         return p;
     }
 
@@ -469,5 +470,19 @@ public sealed class XcfTests : IDisposable
         Assert.Equal(0, xcf.CacheBytes); // 上限を超える 1 枚は残さない
         var px2 = xcf.GetPixels(xcf.PixelLayers.Single());
         Assert.Equal(px!.Bgra, px2!.Bgra);
+    }
+
+    [Fact]
+    public void BadUserUnitLengthIsTolerated()
+    {
+        // 昔の GIMP は PROP_USER_UNIT の長さを実際より短く書いた（実ファイルで確認）。
+        // 長さを鵜呑みにすると後続のプロパティが全部ずれるので、中身の形で読み進める。
+        // USER_UNIT の後ろにある Parasite（ICC）まで正しく届くことで、ずれていないことを確かめる
+        var layer = TestXcfLayer.Solid("x", 1, 1, 3, 4, 5);
+        var p = WriteXcf("userunit.xcf", 1, 1, [layer], version: 0, badUserUnit: true,
+            parasites: [("icc-profile", new byte[] { 1 })]);
+        using var xcf = XcfFile.Open(p);
+        Assert.True(xcf.HasIccProfile);
+        Assert.NotNull(xcf.GetPixels(xcf.PixelLayers.Single()));
     }
 }

@@ -67,6 +67,7 @@ public static class TestXcfWriter
             U8(0);
         }
         public void Prop(uint type, byte[] payload) { U32(type); U32((uint)payload.Length); Bytes(payload); }
+        public void PropDeclared(uint type, uint declaredLen, byte[] payload) { U32(type); U32(declaredLen); Bytes(payload); }
         public byte[] Done() => s.ToArray();
     }
 
@@ -82,7 +83,8 @@ public static class TestXcfWriter
 
     public static void Write(string path, int width, int height, IReadOnlyList<TestXcfLayer> layersTopFirst,
         int version = 3, int compression = 1, int baseType = 0, uint precision = 150,
-        IReadOnlyList<(string Name, byte[] Data)>? parasites = null, byte[]? parasitesRaw = null)
+        IReadOnlyList<(string Name, byte[] Data)>? parasites = null, byte[]? parasitesRaw = null,
+        bool badUserUnit = false)
     {
         int ptr = version >= 11 ? 8 : 4;
         byte[]? parasitePayload = parasitesRaw;
@@ -98,8 +100,18 @@ public static class TestXcfWriter
             }
             parasitePayload = pw.Done();
         }
+        byte[]? userUnitPayload = null;
+        if (badUserUnit)
+        {
+            var uw = new W(new MemoryStream(), ptr);
+            uw.U32((uint)BitConverter.SingleToInt32Bits(2.54f));
+            uw.U32(2);
+            foreach (var t in new[] { "centimeters", "cm", "cm", "centimeter", "centimeters" }) uw.Str(t);
+            userUnitPayload = uw.Done();
+        }
         int headerLen = 14 + 12 + (version >= 4 ? 4 : 0); // 精度は版 4 から 32bit 整数
-        int propsLen = 9 + 8 + (parasitePayload != null ? 8 + parasitePayload.Length : 0); // COMPRESSION + END (+ PARASITES)
+        int propsLen = 9 + 8 + (parasitePayload != null ? 8 + parasitePayload.Length : 0)
+            + (userUnitPayload != null ? 8 + userUnitPayload.Length : 0); // COMPRESSION + END (+ PARASITES + USER_UNIT)
         int ptrArrayLen = (layersTopFirst.Count + 1) * ptr + ptr;
         long pos = headerLen + propsLen + ptrArrayLen;
         var blobs = new List<byte[]>();
@@ -122,6 +134,7 @@ public static class TestXcfWriter
         head.U32((uint)baseType);
         if (version >= 4) head.U32(precision);
         head.Prop(17, [(byte)compression]);
+        if (userUnitPayload != null) head.PropDeclared(24, 16, userUnitPayload); // 昔の GIMP の書き間違いを再現（長さ 16 と偽る）
         if (parasitePayload != null) head.Prop(21, parasitePayload);
         head.Prop(0, []);
         foreach (var b in bases) head.Ptr(b);

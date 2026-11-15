@@ -41,7 +41,7 @@ public sealed class XcfFile : IDisposable
 {
     // プロパティ番号（xcf-private.h）
     private const int PropEnd = 0, PropParasites = 21, PropOpacity = 6, PropMode = 7, PropVisible = 8, PropApplyMask = 11,
-        PropOffsets = 15, PropCompression = 17, PropTextLayerFlags = 26, PropGroupItem = 29,
+        PropOffsets = 15, PropCompression = 17, PropUserUnit = 24, PropTextLayerFlags = 26, PropGroupItem = 29,
         PropItemPath = 30, PropGroupItemFlags = 31, PropFloatOpacity = 33, PropFloatingSelection = 5,
         PropCompositeMode = 35, PropCompositeSpace = 36, PropBlendSpace = 37;
 
@@ -213,8 +213,31 @@ public sealed class XcfFile : IDisposable
             long start = _fs.Position;
             if (start + len > _fs.Length) throw new InvalidDataException("プロパティの長さがファイルの範囲外です");
             known((int)type, start, len);
-            _fs.Position = start + len;
+            _fs.Position = start + EffectiveLength((int)type, start, len);
         }
+    }
+
+    /// <summary>
+    /// プロパティの実際の長さ。昔の GIMP は PROP_USER_UNIT の長さを実際より短く書いた
+    /// （中身は「float＋単位 id＋文字列 5 つ」なのに 16 など）。GIMP 本体は長さを見ずに
+    /// 中身の形で読むので、それに合わせる。形として読めなければ書かれた長さを使う。
+    /// </summary>
+    private long EffectiveLength(int type, long start, uint storedLen)
+    {
+        if (type != PropUserUnit) return storedLen;
+        try
+        {
+            long pos = start + 8;
+            for (int i = 0; i < 5; i++)
+            {
+                _fs.Position = pos;
+                uint n = U32();
+                if (n > 1 << 16) return storedLen;
+                pos += 4 + n;
+            }
+            return pos <= _fs.Length ? pos - start : storedLen;
+        }
+        catch (InvalidDataException) { return storedLen; }
     }
 
     private void ReadStructure()
