@@ -485,4 +485,16 @@ public sealed class XcfTests : IDisposable
         Assert.True(xcf.HasIccProfile);
         Assert.NotNull(xcf.GetPixels(xcf.PixelLayers.Single()));
     }
+
+    [Fact]
+    public void TextLayerDetectedByParasite()
+    {
+        // GIMP 3 の文字レイヤーは PROP_TEXT_LAYER_FLAGS ではなく
+        // レイヤーの Parasite「gimp-text-layer」で見分ける（実ファイルで確認）
+        var t = TestXcfLayer.Solid("文字", 1, 1, 1, 2, 3);
+        t.Parasites = [("gimp-text-layer", new byte[] { 1 })];
+        var p = WriteXcf("textpara.xcf", 1, 1, [t], version: 19);
+        using var xcf = XcfFile.Open(p);
+        Assert.Equal(PsdLayerKind.Text, xcf.Layers.Single().Kind);
+    }
 }

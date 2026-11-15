@@ -407,14 +407,21 @@ public sealed class XcfFile : IDisposable
                 case PropGroupItem: rec.IsGroup = true; break;
                 case PropGroupItemFlags: if (len >= 4) l.Closed = (U32() & 1) == 0; break; // bit0 = 開いている
                 case PropItemPath:
-                    if (len >= 4)
+                    // ペイロードは添字の並びそのもの（先頭に個数は無い。実ファイルで確認）
+                    if (len >= 4 && len % 4 == 0 && len <= 256)
                     {
-                        int n = I32();
-                        if (n is >= 0 and <= 64 && len >= 4 + 4 * n)
-                        {
-                            rec.ItemPath = new int[n];
-                            for (int i = 0; i < n; i++) rec.ItemPath[i] = I32();
-                        }
+                        int n = (int)(len / 4);
+                        rec.ItemPath = new int[n];
+                        for (int i = 0; i < n; i++) rec.ItemPath[i] = I32();
+                    }
+                    break;
+                case PropParasites:
+                    // GIMP 3 の文字レイヤーは、レイヤーの Parasite「gimp-text-layer」で見分ける
+                    if (len is >= 4 and < (1 << 24))
+                    {
+                        var payload = new byte[len];
+                        Read(payload);
+                        if (ParasiteNames(payload).Contains("gimp-text-layer")) isText = true;
                     }
                     break;
                 case PropTextLayerFlags: isText = true; break;

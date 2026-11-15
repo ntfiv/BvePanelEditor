@@ -25,6 +25,7 @@ public sealed class TestXcfLayer
     public int? CompositeMode;        // PROP_COMPOSITE_MODE
     public int? CompositeSpace;       // PROP_COMPOSITE_SPACE
     public int? BlendSpace;           // PROP_BLEND_SPACE
+    public IReadOnlyList<(string Name, byte[] Data)>? Parasites; // レイヤーの Parasite（gimp-text-layer など）
     public int? BppOverride;          // 階層の bpp を偽る（破損データのテスト用）
     public byte[]? TileOverride;      // 最初のタイルの符号化済みバイト列を差し替える（破損データのテスト用）
 
@@ -169,8 +170,14 @@ public static class TestXcfWriter
                 w.Prop(29, []);
                 w.Prop(31, U32Bytes(l.Closed ? 0u : 1u));
             }
-            if (l.ItemPath != null) w.Prop(30, U32Bytes([(uint)l.ItemPath.Length, .. l.ItemPath.Select(x => (uint)x)]));
+            if (l.ItemPath != null) w.Prop(30, U32Bytes([.. l.ItemPath.Select(x => (uint)x)])); // 添字の並びのみ（個数なし）
             if (l.IsText) w.Prop(26, U32Bytes(0));
+            if (l.Parasites is { Count: > 0 } lps)
+            {
+                var pw = new W(new MemoryStream(), ptr);
+                foreach (var (name, data) in lps) { pw.Str(name); pw.U32(1); pw.U32((uint)data.Length); pw.Bytes(data); }
+                w.Prop(21, pw.Done());
+            }
             w.Prop(0, []);
             w.Ptr(hierarchyPtr);
             w.Ptr(maskPtr);
