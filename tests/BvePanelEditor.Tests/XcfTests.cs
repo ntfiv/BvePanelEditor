@@ -1,4 +1,4 @@
-﻿using BvePanelEditor.Core.Psd;
+using BvePanelEditor.Core.Psd;
 using BvePanelEditor.Core.Xcf;
 using Xunit;
 
