@@ -37,7 +37,7 @@ public sealed class XcfLayerInfo
 /// 合成・取り込みの既存コードをそのまま使えるようにする。画素は必要になったときに読む。
 /// 仕様: GIMP 公式の XCF 仕様書（devel-docs/xcf.txt）と GIMP 2.10/3 の読み書きコードを参照。
 /// </summary>
-public sealed class XcfFile : IDisposable
+public sealed class XcfFile : ILayerImage
 {
     // プロパティ番号（xcf-private.h）
     private const int PropEnd = 0, PropParasites = 21, PropOpacity = 6, PropMode = 7, PropVisible = 8, PropApplyMask = 11,
@@ -62,6 +62,10 @@ public sealed class XcfFile : IDisposable
     /// <summary>レイヤー（0 がいちばん下）。フォルダの開始・終了の印も含む。</summary>
     public List<PsdLayer> Layers { get; } = [];
     public List<string> Warnings { get; } = [];
+
+    /// <summary>ファイル全体への注意（△／× つき）。<see cref="Warnings"/> と同じ内容を、読み込みの警告表示用に種類つきで持つ。</summary>
+    public IReadOnlyList<PsdWarning> FileWarnings => _fileWarnings;
+    private readonly List<PsdWarning> _fileWarnings = [];
     /// <summary>レイヤーごとの追加情報（描画モードの写像結果など）。</summary>
     public IReadOnlyDictionary<PsdLayer, XcfLayerInfo> LayerInfo => _info;
 
@@ -162,6 +166,15 @@ public sealed class XcfFile : IDisposable
         if (_byBasePath!.TryGetValue(basePath, out var sameBase) && sameBase.Count > 0) return sameBase[^1];
         var leaf = basePath.Contains('/') ? basePath[(basePath.LastIndexOf('/') + 1)..] : basePath;
         return _byName!.TryGetValue(leaf, out var byName) && byName.Count == 1 ? byName[0] : null;
+    }
+
+    /// <summary>「#2」を除いた名前が同じレイヤーを全部（下から順）。なければ Find と同じ探し方で 1 つ。</summary>
+    public List<PsdLayer> FindAllSameName(string path)
+    {
+        EnsureIndex();
+        var basePath = PsdFile.StripDuplicateMark(path);
+        if (_byBasePath!.TryGetValue(basePath, out var all) && all.Count > 0) return all;
+        return Find(path) is { } one ? [one] : [];
     }
 
     // ================= 構造 =================
@@ -280,7 +293,10 @@ public sealed class XcfFile : IDisposable
         if (_compression is not (0 or 1 or 2))
             throw new NotSupportedException($"XCF の圧縮方式 {_compression} は読めません");
         if (HasIccProfile)
+        {
             Warnings.Add("ICC プロファイルは反映されません（色の数値をそのまま読みます）");
+            _fileWarnings.Add(new PsdWarning(PsdWarningKind.Approx, "ICC プロファイルは反映されません（色の数値をそのまま読みます）"));
+        }
 
         var layerPtrs = new List<long>();
         while (true)
@@ -326,7 +342,10 @@ public sealed class XcfFile : IDisposable
             _ => raw,
         };
         if (Precision == 100)
+        {
             Warnings.Add("8bit リニア精度のファイルです。明るさの解釈が GIMP と少し違うことがあります");
+            _fileWarnings.Add(new PsdWarning(PsdWarningKind.Approx, "8bit リニア精度のファイルです。明るさの解釈が GIMP と少し違うことがあります"));
+        }
         else if (Precision is not (150 or 175))
             throw new NotSupportedException($"精度（{PrecisionName(Precision)}）の XCF は読めません。8bit で保存し直してください");
     }
@@ -437,6 +456,7 @@ public sealed class XcfFile : IDisposable
         long maskPtr = Ptr();
         long nextPosition = _fs.Position; // マスク構造は別の場所にあるので、読み終わったら構造の続きに戻る
         if (maskPtr != 0) rec.Raw.MaskHierarchy = ReadMaskHierarchy(maskPtr, l);
+        l.MaskDisabled = !rec.Raw.ApplyMask; // 適用しないマスクは「無効なマスク」として扱う（PSD と同じ見せ方）
         _fs.Position = nextPosition;
         if (Version >= 20) ReadEffectPointers(rec);
         if (!rec.IsGroup)
@@ -497,6 +517,7 @@ public sealed class XcfFile : IDisposable
             if (r.Floating)
             {
                 Warnings.Add($"浮動選択「{r.Layer.Name}」は読み飛ばしました");
+                _fileWarnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"浮動選択「{r.Layer.Name}」は読み飛ばしました"));
                 continue;
             }
             kept.Add(r);
@@ -546,6 +567,8 @@ public sealed class XcfFile : IDisposable
                 Layers.Add(r.Layer);
                 _raw[r.Layer] = r.Raw;
                 _info[r.Layer] = r.Info;
+                var cautions = BuildCautions(r.Info);
+                if (cautions.Count > 0) r.Layer.ExtraCautions = cautions;
             }
         }
         Emit(roots);
@@ -885,13 +908,39 @@ public sealed class XcfFile : IDisposable
     public static string ModeName(int mode) => mode switch
     {
         2 or 29 => "背後",
+        14 => "明度（HSV・旧）",
         20 or 46 => "グレイン抽出",
         21 or 47 => "グレイン統合",
         22 or 57 => "カラー消去",
+        24 => "色相（LCh）",
         25 => "クロマ（LCh）",
+        26 => "色（LCh）",
+        27 => "明度（LCh）",
+        40 => "明度（HSV）",
+        54 => "比較（暗・輝度）",
+        55 => "比較（明・輝度）",
         58 => "消去",
         59 => "統合（置き換え）",
         60 => "分割（反消去）",
         _ => $"モード {mode}",
     };
+
+    /// <summary>
+    /// XCF 固有の注意（描画モード・レイヤー効果・色空間）を、PSD と同じ △／× の形で作る。
+    /// レイヤーに持たせておき、PsdImport.CautionItems が取り込む。
+    /// ディザ合成（モード 1）の △ は、描画モード "diss" への注意として PSD 側が付けるのでここでは付けない。
+    /// </summary>
+    private static List<PsdWarning> BuildCautions(XcfLayerInfo info)
+    {
+        var n = new List<PsdWarning>();
+        if (info.ModeUnsupported)
+            n.Add(new PsdWarning(PsdWarningKind.Unsupported, $"描画モード（{ModeName(info.Mode)}）は再現しません（通常として重ねます）"));
+        else if (info.ModeApprox && info.Mode != 1)
+            n.Add(new PsdWarning(PsdWarningKind.Approx, $"描画モード（{ModeName(info.Mode)}）は近似です"));
+        if (info.HasEffects)
+            n.Add(new PsdWarning(PsdWarningKind.Unsupported, "レイヤー効果（非破壊フィルター）は再現しません"));
+        if (info.SpaceNonDefault)
+            n.Add(new PsdWarning(PsdWarningKind.Approx, "合成・描画の色空間は近似です"));
+        return n;
+    }
 }

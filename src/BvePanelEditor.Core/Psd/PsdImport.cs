@@ -13,8 +13,8 @@ public sealed class PsdNumberSpec
 /// <summary>読み込みの指定。レイヤーは「フォルダ/レイヤー」の形の名前で指す。</summary>
 public sealed class PsdImportSpec
 {
-    public required PsdFile Day;
-    public PsdFile? Night;
+    public required ILayerImage Day;
+    public ILayerImage? Night;
     /// <summary>パネルファイルのあるフォルダ（画像のパスはここからの相対にする）。</summary>
     public required string PanelDir;
     /// <summary>PNG を書き出すフォルダ。</summary>
@@ -53,6 +53,9 @@ public static class PsdImport
     public static PsdImportResult Build(PsdImportSpec spec)
     {
         var r = new PsdImportResult();
+        // ファイル全体への注意（XCF の ICC プロファイルなど）。昼夜の区別をつけて含める
+        foreach (var w in spec.Day.FileWarnings) r.Warnings.Add(new PsdWarning(w.Kind, $"昼: {w.Text}"));
+        if (spec.Night != null) foreach (var w in spec.Night.FileWarnings) r.Warnings.Add(new PsdWarning(w.Kind, $"夜: {w.Text}"));
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // 昼「名前.png」と夜「名前_N.png」の両方がほかとぶつからない名前にする（「戸」と「戸_N」が両方あっても上書きしない）
         string Unique(string baseName)
@@ -157,13 +160,13 @@ public static class PsdImport
     /// <param name="allSameName">
     /// true なら、同じ名前（「#2」を除く）のレイヤーを全部重ねる。夜の PSD のように、昼で選んだ名前から探すときに使う。
     /// </param>
-    public static PsdPixels? ComposeBase(PsdFile psd, IEnumerable<string> paths, List<PsdWarning> warnings, string label, bool allSameName = false)
+    public static PsdPixels? ComposeBase(ILayerImage psd, IEnumerable<string> paths, List<PsdWarning> warnings, string label, bool allSameName = false)
     {
         var layers = new List<PsdLayer>();
         foreach (var p in paths)
         {
             var found = allSameName ? psd.FindAllSameName(p) : psd.Find(p) is { } f ? [f] : new List<PsdLayer>();
-            if (found.Count == 0) { if (label == "昼") warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"ベースのレイヤー「{p}」が{label}の PSD にありません")); continue; }
+            if (found.Count == 0) { if (label == "昼") warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"ベースのレイヤー「{p}」が{label}のファイルにありません")); continue; }
             foreach (var l in found)
             {
                 if (l.IsFolder) layers.AddRange(psd.ComposableLayers.Where(x => IsInside(x, l)));
@@ -188,7 +191,7 @@ public static class PsdImport
     /// <summary>
     /// 表示灯 1 つぶん。昼と夜で範囲を合わせた同じ大きさで切り出す。夜にしかなければ昼は透明。
     /// </summary>
-    public static LampImages? RenderLamp(PsdFile day, PsdFile? night, string path, List<PsdWarning> warnings)
+    public static LampImages? RenderLamp(ILayerImage day, ILayerImage? night, string path, List<PsdWarning> warnings)
     {
         var d = day.Find(path);
         var n = night?.Find(path);
@@ -208,7 +211,7 @@ public static class PsdImport
     public sealed record NumberImages(PsdRect Rect, int Frames, PsdPixels Day, PsdPixels? Night);
 
     /// <summary>デジタル数字のコマ画像。全コマの範囲を合わせた大きさで、上から順に縦に並べる。</summary>
-    public static NumberImages? RenderNumber(PsdFile day, PsdFile? night, IReadOnlyList<string> frames, List<PsdWarning> warnings)
+    public static NumberImages? RenderNumber(ILayerImage day, ILayerImage? night, IReadOnlyList<string> frames, List<PsdWarning> warnings)
     {
         var dl = frames.Select(f => day.Find(f) is { HasPixels: true } x ? x : null).ToList();
         var nl = frames.Select(f => night?.Find(f) is { HasPixels: true } x ? x : null).ToList();
@@ -225,7 +228,7 @@ public static class PsdImport
         return new NumberImages(rect, frames.Count, dayImg, nightImg);
     }
 
-    private static PsdPixels Strip(PsdFile psd, List<PsdLayer?> layers, PsdRect rect, List<PsdWarning> warnings)
+    private static PsdPixels Strip(ILayerImage psd, List<PsdLayer?> layers, PsdRect rect, List<PsdWarning> warnings)
     {
         int fw = rect.Width, fh = rect.Height;
         var bgra = new byte[fw * fh * layers.Count * 4];
@@ -314,6 +317,7 @@ public static class PsdImport
             }
         }
         if (!l.IsFolder && l.BlendMode == "diss" && l.Kind != PsdLayerKind.Adjustment) n.Add(new PsdWarning(PsdWarningKind.Approx, "ディザ合成は通常として重ねます"));
+        if (l.ExtraCautions != null) n.AddRange(l.ExtraCautions);
         return n;
     }
 

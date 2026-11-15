@@ -9,6 +9,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using BvePanelEditor.Core.Psd;
+using BvePanelEditor.Core.Xcf;
 using Microsoft.Win32;
 
 namespace BvePanelEditor.Views;
@@ -163,12 +164,12 @@ public sealed class FrameRow
     public override string ToString() => Label;
 }
 
-/// <summary>PSD から読み込む画面。レイヤーごとに役割を選ぶ。</summary>
+/// <summary>PSD・XCF から読み込む画面。レイヤーごとに役割を選ぶ。</summary>
 public partial class PsdImportWindow : Window
 {
     private readonly string _panelDir;
-    private PsdFile? _day;
-    private PsdFile? _night;
+    private ILayerImage? _day;
+    private ILayerImage? _night;
     private List<PsdLayerNode> _roots = [];
     private readonly Dictionary<string, List<string>> _frameOrder = [];
     private readonly DispatcherTimer _previewTimer;
@@ -176,7 +177,7 @@ public partial class PsdImportWindow : Window
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly int _layer;
 
-    /// <summary>読み込むと決まったときの指定（PSD はここで開いたものを渡すので、使い終わったら呼んだ側で閉じる）。</summary>
+    /// <summary>読み込むと決まったときの指定（ファイルはここで開いたものを渡すので、使い終わったら呼んだ側で閉じる）。</summary>
     public PsdImportSpec? Spec { get; private set; }
     public string? DayPath => _day?.FilePath ?? Spec?.Day.FilePath;
     public string? NightPath => _night?.FilePath ?? Spec?.Night?.FilePath;
@@ -209,18 +210,18 @@ public partial class PsdImportWindow : Window
     {
         try
         {
-            var psd = PsdFile.Open(path);
+            var psd = LayerImage.Open(path);
             _day?.Dispose();
             _day = psd;
             DayBox.Text = path;
-            Title = $"PSD から読み込み - {System.IO.Path.GetFileName(path)}（{psd.Width}×{psd.Height}）";
+            Title = $"PSD・XCF から読み込み - {System.IO.Path.GetFileName(path)}（{psd.Width}×{psd.Height}）";
             var night = nightPath ?? GuessNight(path);
             if (night != null && File.Exists(night)) LoadNight(night, rebuild: false);
             BuildTree();
         }
         catch (Exception e) when (e is IOException or InvalidDataException or NotSupportedException or UnauthorizedAccessException)
         {
-            MessageBox.Show(this, $"PSD を読めませんでした:\n{e.Message}", "PSD から読み込み", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, $"ファイルを読めませんでした:\n{e.Message}", "PSD・XCF から読み込み", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -228,22 +229,22 @@ public partial class PsdImportWindow : Window
     {
         try
         {
-            var psd = PsdFile.Open(path);
+            var psd = LayerImage.Open(path);
             _night?.Dispose();
             _night = psd;
             NightBox.Text = path;
             if (_day != null && (psd.Width != _day.Width || psd.Height != _day.Height))
-                MessageBox.Show(this, $"昼と夜の PSD の大きさが違います（昼 {_day.Width}×{_day.Height}、夜 {psd.Width}×{psd.Height}）。同じ座標として読み込みます。",
-                    "PSD から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(this, $"昼と夜の画像の大きさが違います（昼 {_day.Width}×{_day.Height}、夜 {psd.Width}×{psd.Height}）。同じ座標として読み込みます。",
+                    "PSD・XCF から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
             if (rebuild) BuildTree();
         }
         catch (Exception e) when (e is IOException or InvalidDataException or NotSupportedException or UnauthorizedAccessException)
         {
-            MessageBox.Show(this, $"夜の PSD を読めませんでした:\n{e.Message}", "PSD から読み込み", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, $"夜のファイルを読めませんでした:\n{e.Message}", "PSD・XCF から読み込み", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
-    /// <summary>昼の PSD の名前から夜の PSD を探す（昼→夜、_d→_n、day→night）。</summary>
+    /// <summary>昼のファイルの名前から夜のファイルを探す（昼→夜、_d→_n、day→night）。拡張子は昼と同じものだけ。</summary>
     public static string? GuessNight(string dayPath)
     {
         var dir = System.IO.Path.GetDirectoryName(dayPath) ?? "";
@@ -267,7 +268,7 @@ public partial class PsdImportWindow : Window
 
     private void OnBrowseDay(object sender, RoutedEventArgs e)
     {
-        var dlg = new OpenFileDialog { AddToRecent = false, Title = "昼の PSD を選ぶ", Filter = "Photoshop|*.psd|すべて|*.*" };
+        var dlg = new OpenFileDialog { AddToRecent = false, Title = "昼の PSD・XCF を選ぶ", Filter = "PSD・XCF|*.psd;*.xcf|Photoshop|*.psd|GIMP|*.xcf|すべて|*.*" };
         if (_day != null) dlg.InitialDirectory = System.IO.Path.GetDirectoryName(_day.FilePath);
         if (dlg.ShowDialog(this) == true) { NightBox.Text = ""; _night?.Dispose(); _night = null; LoadDay(dlg.FileName); }
         else if (_day == null) Close();
@@ -275,7 +276,7 @@ public partial class PsdImportWindow : Window
 
     private void OnBrowseNight(object sender, RoutedEventArgs e)
     {
-        var dlg = new OpenFileDialog { AddToRecent = false, Title = "夜の PSD を選ぶ", Filter = "Photoshop|*.psd|すべて|*.*" };
+        var dlg = new OpenFileDialog { AddToRecent = false, Title = "夜の PSD・XCF を選ぶ", Filter = "PSD・XCF|*.psd;*.xcf|Photoshop|*.psd|GIMP|*.xcf|すべて|*.*" };
         if (_day != null) dlg.InitialDirectory = System.IO.Path.GetDirectoryName(_day.FilePath);
         if (dlg.ShowDialog(this) == true) LoadNight(dlg.FileName);
     }
@@ -394,7 +395,7 @@ public partial class PsdImportWindow : Window
         // 使うレイヤーのうち、Photoshop と見た目が変わるもの（赤い字の知らせがあるもの）を数える
         int caution = leaves.Count(l => l.Role != PsdRole.None && l.Cautions.Length > 0);
         SummaryText.Text = $"ベース {bases} 枚を重ねる・表示灯 {lamps} 個・数字 {_frameOrder.Count} 個"
-            + (caution > 0 ? $"　※ Photoshop と見た目が変わるレイヤー {caution} 個（赤い字の知らせ）" : "");
+            + (caution > 0 ? $"　※ 元のソフトと見た目が変わるレイヤー {caution} 個（赤い字の知らせ）" : "");
         _previewTimer.Stop();
         _previewTimer.Start();
         DrawOverlay();
@@ -548,7 +549,7 @@ public partial class PsdImportWindow : Window
         };
         if (spec.BaseLayers.Count + spec.LampLayers.Count + spec.Numbers.Count == 0)
         {
-            MessageBox.Show(this, "役割を選んだレイヤーがありません。", "PSD から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "役割を選んだレイヤーがありません。", "PSD・XCF から読み込み", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         // 見本づくりを止めて、PSD を読み終わるのを待つ（このあと同じ PSD から書き出すため）

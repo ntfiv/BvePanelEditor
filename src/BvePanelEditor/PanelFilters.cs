@@ -4,7 +4,7 @@ namespace BvePanelEditor;
 public static class PanelFilters
 {
     /// <summary>開く: パネル・車両・シナリオ（.txt と .cfg）。</summary>
-    public const string Open = "BVE のファイル（*.txt, *.cfg）|*.txt;*.cfg|画像・PSD（パネルを作る）|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff;*.psd|すべて|*.*";
+    public const string Open = "BVE のファイル（*.txt, *.cfg）|*.txt;*.cfg|画像・PSD・XCF（パネルを作る）|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff;*.psd;*.xcf|すべて|*.*";
 
     /// <summary>保存: 1 番目は両方、2 番目 .txt、3 番目 .cfg。</summary>
     public const string Save = "パネルファイル（*.txt, *.cfg）|*.txt;*.cfg|テキスト（*.txt）|*.txt|設定ファイル（*.cfg）|*.cfg";
