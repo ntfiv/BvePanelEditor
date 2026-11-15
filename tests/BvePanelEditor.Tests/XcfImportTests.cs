@@ -112,6 +112,22 @@ public sealed class XcfImportTests : IDisposable
     }
 
     [Fact]
+    public void NoIccProfileMeansNoIccWarning()
+    {
+        // ICC の無い普通の XCF では、ICC 警告（文字列・種類つきの両方）が出ないこと
+        var p = WriteXcf("plain.xcf", 4, 2, [TestXcfLayer.Solid("背景", 4, 2, 30, 30, 30)]);
+        using var day = XcfFile.Open(p);
+        Assert.False(day.HasIccProfile);
+        Assert.DoesNotContain(day.Warnings, w => w.Contains("ICC"));
+        Assert.Empty(day.FileWarnings);
+        var r = PsdImport.Build(new PsdImportSpec
+        {
+            Day = day, PanelDir = _dir, OutputDir = Path.Combine(_dir, "out"), BaseLayers = ["背景"],
+        });
+        Assert.DoesNotContain(r.Warnings, w => w.Text.Contains("ICC"));
+    }
+
+    [Fact]
     public void XcfLayerCautionsAreClassified()
     {
         var grain = TestXcfLayer.Solid("粒", 2, 2, 9, 9, 9);

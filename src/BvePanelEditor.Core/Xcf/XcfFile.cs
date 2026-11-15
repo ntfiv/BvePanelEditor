@@ -293,8 +293,10 @@ public sealed class XcfFile : ILayerImage
         if (_compression is not (0 or 1 or 2))
             throw new NotSupportedException($"XCF の圧縮方式 {_compression} は読めません");
         if (HasIccProfile)
+        {
             Warnings.Add("ICC プロファイルは反映されません（色の数値をそのまま読みます）");
             _fileWarnings.Add(new PsdWarning(PsdWarningKind.Approx, "ICC プロファイルは反映されません（色の数値をそのまま読みます）"));
+        }
 
         var layerPtrs = new List<long>();
         while (true)
