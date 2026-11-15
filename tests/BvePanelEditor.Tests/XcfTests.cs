@@ -16,10 +16,11 @@ public sealed class XcfTests : IDisposable
     }
 
     private string WriteXcf(string name, int w, int h, IReadOnlyList<TestXcfLayer> layersTopFirst,
-        int version = 3, int compression = 1, int baseType = 0, uint precision = 150)
+        int version = 3, int compression = 1, int baseType = 0, uint precision = 150,
+        IReadOnlyList<(string Name, byte[] Data)>? parasites = null, byte[]? parasitesRaw = null)
     {
         var p = Path.Combine(_dir, name);
-        TestXcfWriter.Write(p, w, h, layersTopFirst, version, compression, baseType, precision);
+        TestXcfWriter.Write(p, w, h, layersTopFirst, version, compression, baseType, precision, parasites, parasitesRaw);
         return p;
     }
 
@@ -370,5 +371,103 @@ public sealed class XcfTests : IDisposable
         var pxB2 = xcf.GetPixels(xcf.Find("下")!);
         Assert.Equal(pxB!.Bgra, pxB2!.Bgra);
         Assert.NotNull(pxT);
+    }
+
+    [Fact]
+    public void MaskAndEffectsCombinations()
+    {
+        // 版 20: マスクの読みでファイル位置がずれると、効果ポインタ列を変な場所から読んでしまう。
+        // 4 通りの組み合わせで、効果の有無とマスク適用がそれぞれ正しいことを確かめる
+        var both = TestXcfLayer.Solid("両方", 2, 2, 200, 100, 50, 255);
+        both.Mask = [128, 128, 128, 128];
+        both.Effects = 2;
+        var maskOnly = TestXcfLayer.Solid("マスクのみ", 2, 2, 200, 100, 50, 255);
+        maskOnly.Mask = [128, 128, 128, 128];
+        var fxOnly = TestXcfLayer.Solid("効果のみ", 2, 2, 200, 100, 50, 255);
+        fxOnly.Effects = 1;
+        var neither = TestXcfLayer.Solid("なし", 2, 2, 200, 100, 50, 255);
+        var p = WriteXcf("maskfx.xcf", 2, 2, [both, maskOnly, fxOnly, neither], version: 20);
+        using var xcf = XcfFile.Open(p);
+        Assert.True(xcf.LayerInfo[xcf.Find("両方")!].HasEffects);
+        Assert.False(xcf.LayerInfo[xcf.Find("マスクのみ")!].HasEffects);
+        Assert.True(xcf.LayerInfo[xcf.Find("効果のみ")!].HasEffects);
+        Assert.False(xcf.LayerInfo[xcf.Find("なし")!].HasEffects);
+        // マスクは効果つきでも効く（α が 128 になる）
+        var px = xcf.GetPixels(xcf.Find("両方")!);
+        Assert.Equal(128, px!.Bgra[3]);
+        var pxFx = xcf.GetPixels(xcf.Find("効果のみ")!);
+        Assert.Equal(255, pxFx!.Bgra[3]);
+    }
+
+    [Fact]
+    public void ParasitesDetectIccProfile()
+    {
+        var layer = TestXcfLayer.Solid("x", 1, 1, 1, 1, 1);
+        using (var x = XcfFile.Open(WriteXcf("icc.xcf", 1, 1, [layer], version: 11,
+            parasites: [("icc-profile", new byte[] { 1, 2, 3 })])))
+        {
+            Assert.True(x.HasIccProfile);
+            Assert.Contains(x.Warnings, w => w.Contains("ICC"));
+        }
+        using (var x = XcfFile.Open(WriteXcf("noicc.xcf", 1, 1, [layer], version: 11,
+            parasites: [("gimp-comment", new byte[] { 65 })])))
+            Assert.False(x.HasIccProfile);
+        using (var x = XcfFile.Open(WriteXcf("multi.xcf", 1, 1, [layer], version: 11,
+            parasites: [("gimp-comment", new byte[] { 65 }), ("icc-profile", new byte[] { 9 })])))
+            Assert.True(x.HasIccProfile);
+        // 大きさが壊れた parasite があっても、開くこと自体は失敗しない
+        var raw = new List<byte>();
+        void U32(uint v) { raw.Add((byte)(v >> 24)); raw.Add((byte)(v >> 16)); raw.Add((byte)(v >> 8)); raw.Add((byte)v); }
+        var nameBytes = System.Text.Encoding.UTF8.GetBytes("icc-profile\0");
+        U32((uint)nameBytes.Length);
+        raw.AddRange(nameBytes);
+        U32(1);
+        U32(9999); // 実データより大きい
+        raw.AddRange(new byte[] { 1, 2 });
+        using var x2 = XcfFile.Open(WriteXcf("badpara.xcf", 1, 1, [layer], version: 11, parasitesRaw: raw.ToArray()));
+        Assert.NotNull(x2);
+    }
+
+    [Fact]
+    public void NegativeSpaceMeansAuto()
+    {
+        var auto = TestXcfLayer.Solid("自動", 1, 1, 1, 1, 1);
+        auto.BlendSpace = -3; // 負数 = 自動（絶対値は保存時点の解決値）
+        var expl = TestXcfLayer.Solid("明示", 1, 1, 2, 2, 2);
+        expl.CompositeSpace = 2;
+        var p = WriteXcf("negspace.xcf", 1, 1, [auto, expl], version: 11);
+        using var xcf = XcfFile.Open(p);
+        Assert.False(xcf.LayerInfo[xcf.Find("自動")!].SpaceNonDefault);
+        Assert.True(xcf.LayerInfo[xcf.Find("明示")!].SpaceNonDefault);
+    }
+
+    [Fact]
+    public void Version24IsRejected()
+    {
+        var p = WriteXcf("v24.xcf", 1, 1, [TestXcfLayer.Solid("x", 1, 1, 0, 0, 0)], version: 24);
+        var ex = Assert.Throws<NotSupportedException>(() => XcfFile.Open(p));
+        Assert.Contains("24", ex.Message);
+    }
+
+    [Fact]
+    public void LayerTypeMustMatchImageType()
+    {
+        var gray = new TestXcfLayer { Name = "灰", Type = 2, Width = 1, Height = 1, Pixels = [7] };
+        var p = WriteXcf("typemix.xcf", 1, 1, [gray], baseType: 0); // RGB 画像にグレーのレイヤー
+        Assert.Throws<InvalidDataException>(() => XcfFile.Open(p));
+    }
+
+    [Fact]
+    public void OversizeItemIsNotCached()
+    {
+        var layer = TestXcfLayer.Solid("大", 64, 64, 5, 5, 5);
+        var p = WriteXcf("big1.xcf", 64, 64, [layer]);
+        using var xcf = XcfFile.Open(p);
+        xcf.CacheLimitBytes = 100; // 1 枚にも満たない上限
+        var px = xcf.GetPixels(xcf.PixelLayers.Single());
+        Assert.NotNull(px);
+        Assert.Equal(0, xcf.CacheBytes); // 上限を超える 1 枚は残さない
+        var px2 = xcf.GetPixels(xcf.PixelLayers.Single());
+        Assert.Equal(px!.Bgra, px2!.Bgra);
     }
 }

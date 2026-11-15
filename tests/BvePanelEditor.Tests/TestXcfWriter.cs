@@ -81,11 +81,25 @@ public static class TestXcfWriter
     }
 
     public static void Write(string path, int width, int height, IReadOnlyList<TestXcfLayer> layersTopFirst,
-        int version = 3, int compression = 1, int baseType = 0, uint precision = 150)
+        int version = 3, int compression = 1, int baseType = 0, uint precision = 150,
+        IReadOnlyList<(string Name, byte[] Data)>? parasites = null, byte[]? parasitesRaw = null)
     {
         int ptr = version >= 11 ? 8 : 4;
+        byte[]? parasitePayload = parasitesRaw;
+        if (parasitePayload == null && parasites is { Count: > 0 })
+        {
+            var pw = new W(new MemoryStream(), ptr);
+            foreach (var (name, data) in parasites)
+            {
+                pw.Str(name);
+                pw.U32(1); // フラグ（永続）
+                pw.U32((uint)data.Length);
+                pw.Bytes(data);
+            }
+            parasitePayload = pw.Done();
+        }
         int headerLen = 14 + 12 + (version >= 4 ? 4 : 0); // 精度は版 4 から 32bit 整数
-        int propsLen = 9 + 8; // COMPRESSION + END
+        int propsLen = 9 + 8 + (parasitePayload != null ? 8 + parasitePayload.Length : 0); // COMPRESSION + END (+ PARASITES)
         int ptrArrayLen = (layersTopFirst.Count + 1) * ptr + ptr;
         long pos = headerLen + propsLen + ptrArrayLen;
         var blobs = new List<byte[]>();
@@ -108,6 +122,7 @@ public static class TestXcfWriter
         head.U32((uint)baseType);
         if (version >= 4) head.U32(precision);
         head.Prop(17, [(byte)compression]);
+        if (parasitePayload != null) head.Prop(21, parasitePayload);
         head.Prop(0, []);
         foreach (var b in bases) head.Ptr(b);
         head.Ptr(0);

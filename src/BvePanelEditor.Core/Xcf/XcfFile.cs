@@ -17,13 +17,18 @@ public sealed class XcfLayerInfo
     public bool HasEffects;
     /// <summary>合成モード（PROP_COMPOSITE_MODE）。null は「書かれていない＝自動」。</summary>
     public int? CompositeMode;
-    /// <summary>合成空間（PROP_COMPOSITE_SPACE）。0=自動、1=RGB リニア、2=RGB 知覚的、3=Lab。null は自動。</summary>
+    /// <summary>
+    /// 合成空間（PROP_COMPOSITE_SPACE）。GIMP 3 世代の値付け: 1=RGB リニア、2=RGB（カラープロファイル由来）、
+    /// 3=Lab、4=RGB 知覚的。負数は「自動」を表し、絶対値は保存時点で自動が対応していた値。
+    /// </summary>
     public int? CompositeSpace;
-    /// <summary>描画モードの計算空間（PROP_BLEND_SPACE）。値の意味は合成空間と同じ。null は自動。</summary>
+    /// <summary>描画モードの計算空間（PROP_BLEND_SPACE）。値の意味は合成空間と同じ。</summary>
     public int? BlendSpace;
-    /// <summary>合成空間・描画空間が自動以外に指定されていて、パネルくんの重ね方と色が少し違う可能性がある。</summary>
-    public bool SpaceNonDefault =>
-        (CompositeSpace is not null and not 0) || (BlendSpace is not null and not 0) || (CompositeMode is not null and not 0);
+    /// <summary>
+    /// 合成空間・描画空間・合成モードが明示指定（正の値）されていて、パネルくんの重ね方と色が少し違う可能性がある。
+    /// 負数は自動の符号化なので、明示指定には数えない。
+    /// </summary>
+    public bool SpaceNonDefault => CompositeSpace is > 0 || BlendSpace is > 0 || CompositeMode is > 0;
 }
 
 /// <summary>
@@ -221,7 +226,8 @@ public sealed class XcfFile : IDisposable
         Version = verText == "file" ? 0 : verText.StartsWith('v') && int.TryParse(verText[1..], out var v) ? v : -1;
         if (Version < 0) throw new InvalidDataException($"XCF の版（{verText}）が読めません");
         if (Version >= 100) throw new NotSupportedException("CinePaint の XCF は読めません");
-        if (Version > 23) Warnings.Add($"想定より新しい XCF の版（{Version}）です。読める範囲で読みます");
+        if (Version > 23)
+            throw new NotSupportedException($"XCF の版（{Version}）は未対応です（対応は版 23 まで）。新しい機能を含むファイルは、見た目が変わる読み方をしないため読み込みません");
         _ptrSize = Version >= 11 ? 8 : 4;
 
         Width = I32();
@@ -230,7 +236,7 @@ public sealed class XcfFile : IDisposable
         if (BaseType == 2) throw new NotSupportedException("インデックスカラーの XCF は読めません。RGB に変換して保存し直してください");
         if (BaseType is not (0 or 1)) throw new InvalidDataException($"色の種類（{BaseType}）が不正です");
         if (Width is < 1 or > 30000 || Height is < 1 or > 30000)
-            throw new InvalidDataException($"キャンバスの大きさ（{Width}×{Height}）が不正です");
+            throw new InvalidDataException($"キャンバスの大きさ（{Width}×{Height}）が、パネルくんで扱える上限（30000×30000）を超えています");
         ReadPrecision();
 
         ReadProps((type, start, len) =>
@@ -313,23 +319,26 @@ public sealed class XcfFile : IDisposable
         _ => $"番号 {p}",
     };
 
-    /// <summary>寄生データ（parasites）の名前一覧。壊れていたら途中で打ち切る。</summary>
+    /// <summary>
+    /// 寄生データ（parasites）の名前一覧。形式は「名前（文字列）、フラグ、大きさ、本体」の繰り返しで、
+    /// 件数フィールドは無い（ペイロードを使い切ったら終わり）。壊れていたら途中で打ち切る。
+    /// </summary>
     private static List<string> ParasiteNames(byte[] payload)
     {
         var names = new List<string>();
         int pos = 0;
         uint U32At() => pos + 4 <= payload.Length ? (uint)(payload[pos] << 24 | payload[pos + 1] << 16 | payload[pos + 2] << 8 | payload[pos + 3]) : 0u;
-        if (payload.Length < 4) return names;
-        uint count = U32At();
-        pos += 4;
-        for (uint i = 0; i < count && pos < payload.Length; i++)
+        while (pos < payload.Length)
         {
             uint n = U32At();
-            if (n == 0 || pos + 4 + n + 8 > payload.Length) break;
+            if (n == 0 || n > (uint)(payload.Length - pos - 4)) break;
             pos += 4;
             names.Add(Encoding.UTF8.GetString(payload, pos, (int)n - 1));
-            pos += (int)n + 4; // 名前＋フラグ
+            pos += (int)n;
+            if (pos + 8 > payload.Length) break;
+            pos += 4; // フラグ
             uint size = U32At();
+            if (size > (uint)(payload.Length - pos - 4)) break;
             pos += 4 + (int)size;
         }
         return names;
@@ -396,8 +405,16 @@ public sealed class XcfFile : IDisposable
         if (floatOpacity is { } fo) l.Opacity = (byte)Math.Clamp((int)Math.Round(fo * 255), 0, 255);
         rec.Raw.Hierarchy = Ptr();
         long maskPtr = Ptr();
+        long nextPosition = _fs.Position; // マスク構造は別の場所にあるので、読み終わったら構造の続きに戻る
         if (maskPtr != 0) rec.Raw.MaskHierarchy = ReadMaskHierarchy(maskPtr, l);
+        _fs.Position = nextPosition;
         if (Version >= 20) ReadEffectPointers(rec);
+        if (!rec.IsGroup)
+        {
+            bool typeOk = BaseType == 0 ? type is 0 or 1 : type is 2 or 3;
+            if (!typeOk)
+                throw new InvalidDataException($"レイヤー「{l.Name}」の色形式（{type}）が画像全体の色形式と合いません");
+        }
         if (rec.IsGroup) l.Kind = PsdLayerKind.FolderOpen;
         else if (isText) l.Kind = PsdLayerKind.Text;
         l.BlendMode = MapBlendMode(mode, out bool approx, out bool unsupported);
@@ -574,9 +591,12 @@ public sealed class XcfFile : IDisposable
                 }
         }
         var px = new PsdPixels(layer.Bounds, bgra);
-        _cache.AddFirst((layer, px));
-        _cacheBytes += px.Bgra.Length;
-        TrimCache(null);
+        if (px.Bgra.Length <= CacheLimitBytes)
+        {
+            _cache.AddFirst((layer, px));
+            _cacheBytes += px.Bgra.Length;
+            TrimCache(null);
+        }
         return px;
     }
 
