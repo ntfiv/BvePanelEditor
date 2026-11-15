@@ -22,6 +22,13 @@ public static class ImageLoader
             var merged = psd.ReadMerged();
             return (merged, ToBitmap(merged));
         }
+        if (Path.GetExtension(path).Equals(".xcf", StringComparison.OrdinalIgnoreCase))
+        {
+            // XCF には統合画像が入っていないので、表示中のレイヤーを重ねた絵を 1 枚の画像として使う
+            using var xcf = LayerImage.Open(path);
+            var composed = PsdCompose.Compose(xcf, xcf.ComposableLayers.Where(l => !l.EffectivelyHidden), xcf.Canvas);
+            return (composed, ToBitmap(composed));
+        }
         var bytes = File.ReadAllBytes(path);
         var bi = new BitmapImage();
         bi.BeginInit();

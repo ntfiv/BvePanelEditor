@@ -1,3 +1,5 @@
+using BvePanelEditor.Core;
+using BvePanelEditor.Core.Crop;
 using BvePanelEditor.Core.Psd;
 using BvePanelEditor.Core.Xcf;
 using Xunit;
@@ -256,6 +258,80 @@ public sealed class XcfImportTests : IDisposable
         var lOn = xcf.Find("入")!;
         Assert.False(lOn.MaskDisabled);
         Assert.NotNull(xcf.GetMask(lOn));
+    }
+
+    private static readonly CropSlotKind[] Four = [new(false, false), new(false, true), new(true, false), new(true, true)];
+    private static readonly PsdRect Lamp = new(10, 10, 20, 16);
+
+    /// <summary>振り分け用の XCF（上から: 夜の点灯、夜の板、ATS_TT（隠れ）、板）。板の赤だけ変えられる。</summary>
+    private string AssignXcf(byte boardRed = 50)
+    {
+        var lamp = TestXcfLayer.Solid("ATS_TT", 10, 6, 255, 0, 0);
+        lamp.OffsetX = 10; lamp.OffsetY = 10; lamp.Visible = false;
+        var nightLamp = TestXcfLayer.Solid("夜の点灯", 10, 6, 200, 0, 0);
+        nightLamp.OffsetX = 10; nightLamp.OffsetY = 10;
+        return WriteXcf("panel.xcf", 100, 60,
+        [
+            nightLamp,
+            TestXcfLayer.Solid("夜の板", 100, 60, 10, 10, 10),
+            lamp,
+            TestXcfLayer.Solid("板", 100, 60, boardRed, 50, 50),
+        ]);
+    }
+
+    [Fact]
+    public void AssignGuessAndComposeWorkOnXcf()
+    {
+        var p = AssignXcf();
+        using var xcf = XcfFile.Open(p);
+        var g = CropLayers.Guess(xcf, Four);
+        Assert.Equal(["板"], g[0]);
+        Assert.Equal(["板", "ATS_TT"], g[1]);
+        Assert.Equal(["板", "夜の板"], g[2]);
+        Assert.Equal(["板", "夜の板", "夜の点灯"], g[3]);
+        var day = CropLayers.Compose(xcf, g[1]);
+        Assert.Equal((byte)50, At(day, 0, 0).R);
+        Assert.Equal((byte)255, At(day, 15, 13).R);
+        var night = CropLayers.Compose(xcf, g[2]);
+        Assert.Equal((byte)10, At(night, 0, 0).R);
+        // 数字のコマにも使える（画像レイヤー 4 枚）
+        Assert.Equal(4, DigitStrip.FrameLayers(xcf).Count);
+    }
+
+    [Fact]
+    public void CropUpdateRecomposesFromXcf()
+    {
+        var path = AssignXcf();
+        CropBuildResult r;
+        using (var xcf = XcfFile.Open(path))
+        {
+            var g = CropLayers.Guess(xcf, Four);
+            var px = g.Select(l => CropLayers.Compose(xcf, l)).ToArray();
+            r = CropBuild.Build(new CropBuildSpec
+            {
+                PanelDir = _dir, OutputDir = Path.Combine(_dir, "crop"),
+                UnlitDayPath = path, UnlitDayLayers = g[0], UnlitDay = px[0],
+                UnlitNightPath = path, UnlitNightLayers = g[2], UnlitNight = px[2],
+                Width = 100, Height = 60,
+                Sets = [new CropSetImages { DayPath = path, Day = px[1], DayLayers = g[1], NightPath = path, Night = px[3], NightLayers = g[3] }],
+                Regions = [new CropRegion { Rect = Lamp, Name = "ATS", Subject = "ats0" }],
+            });
+        }
+        foreach (var f in r.Files) { Directory.CreateDirectory(Path.GetDirectoryName(f.FullPath)!); File.WriteAllBytes(f.FullPath, f.Png); }
+        var doc = PanelDocument.CreateNew(null, 100, 60);
+        doc.CropSets.AddRange(r.Sets);
+        doc.Sections.AddRange(r.Sections);
+
+        var same = CropUpdate.Plan(doc, _dir, _ => null);
+        Assert.Empty(same.Missing);
+        Assert.Equal(4, same.Files.Count);
+
+        // XCF の板の色を変えると、切り抜き元から更新で作り直す
+        AssignXcf(boardRed: 120);
+        var plan = CropUpdate.Plan(doc, _dir, _ => null);
+        Assert.Equal(4, plan.Files.Count);
+        var day = TestPngReader.Read(plan.Files.First(f => f.FullPath.EndsWith("panel.png")).Png);
+        Assert.Equal(120, day.Rgba[0]);
     }
 
     [Fact]

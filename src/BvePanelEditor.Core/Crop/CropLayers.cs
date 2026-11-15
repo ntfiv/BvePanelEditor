@@ -6,14 +6,14 @@ namespace BvePanelEditor.Core.Crop;
 /// <summary>4 点の画像の 1 つ（昼・無発光など）が、どの時間帯・発光か。</summary>
 public readonly record struct CropSlotKind(bool Night, bool Lit);
 
-/// <summary>PSD のレイヤーを選んで重ね、4 点の画像の 1 つにする。</summary>
+/// <summary>レイヤー画像（PSD・XCF）のレイヤーを選んで重ね、4 点の画像の 1 つにする。</summary>
 public static partial class CropLayers
 {
     /// <summary>
     /// 選んだレイヤー（パス。「#2」まで含めて完全一致）をキャンバス大に重ねる。フォルダを選んだら中の画像レイヤー全部。
     /// 表示・非表示は見ない。見つからないレイヤーは missing に入れる。
     /// </summary>
-    public static PsdPixels Compose(PsdFile psd, IEnumerable<string> layers, ICollection<PsdWarning>? warnings = null, ICollection<string>? missing = null)
+    public static PsdPixels Compose(ILayerImage psd, IEnumerable<string> layers, ICollection<PsdWarning>? warnings = null, ICollection<string>? missing = null)
     {
         var picked = new List<PsdLayer>();
         foreach (var p in layers)
@@ -72,12 +72,12 @@ public static partial class CropLayers
     private static partial Regex SeparatorRegex();
 
     /// <summary>
-    /// 1 つの PSD を slots の欄に使うときの、欄ごとのレイヤーの初期値（画像レイヤーのパス、下から順）。
-    /// 発光と無発光の両方に使う PSD なら名前で発光のレイヤーを分け、昼と夜の両方に使う PSD なら名前で夜のレイヤーを分ける。
-    /// どちらでもなければ、表示されているレイヤーをそのまま使う。空の欄は「この PSD からは作れない」。
-    /// 発光のレイヤーが絵全体の大きさなら（発光した絵をまるごと入れてある PSD）、発光の欄はそのレイヤーだけにする。
+    /// 1 つのレイヤー画像を slots の欄に使うときの、欄ごとのレイヤーの初期値（画像レイヤーのパス、下から順）。
+    /// 発光と無発光の両方に使うファイルなら名前で発光のレイヤーを分け、昼と夜の両方に使うファイルなら名前で夜のレイヤーを分ける。
+    /// どちらでもなければ、表示されているレイヤーをそのまま使う。空の欄は「このファイルからは作れない」。
+    /// 発光のレイヤーが絵全体の大きさなら（発光した絵をまるごと入れてあるファイル）、発光の欄はそのレイヤーだけにする。
     /// </summary>
-    public static List<string>[] Guess(PsdFile psd, IReadOnlyList<CropSlotKind> slots)
+    public static List<string>[] Guess(ILayerImage psd, IReadOnlyList<CropSlotKind> slots)
     {
         bool splitLit = slots.Any(s => s.Lit) && slots.Any(s => !s.Lit);
         bool splitNight = slots.Any(s => s.Night) && slots.Any(s => !s.Night);
@@ -97,7 +97,7 @@ public static partial class CropLayers
         for (int k = 0; k < slots.Count; k++)
         {
             var slot = slots[k];
-            // 昼と夜の両方に使う PSD でも、夜らしいレイヤーがなければ夜の欄は空（別の画像を選んでもらう）
+            // 昼と夜の両方に使うファイルでも、夜らしいレイヤーがなければ夜の欄は空（別の画像を選んでもらう）
             if (splitNight && slot.Night && !anyNight) { result[k] = []; continue; }
             var picked = layers.Where(Include).OrderBy(l => l.Index).ToList();
             // 発光のレイヤーが絵全体の半分以上なら、上に重ねる灯ではなく発光した絵そのもの（下に隠れないよう、それだけを使う）
@@ -124,7 +124,7 @@ public static partial class CropLayers
                 }
                 if (n) return !anyVisibleNight || !l.EffectivelyHidden;
                 if (!l.EffectivelyHidden) return true;
-                // 発光らしい名前がない PSD では、隠れている小さいレイヤーを表示灯とみなす
+                // 発光らしい名前がないファイルでは、隠れている小さいレイヤーを表示灯とみなす
                 if (slot.Lit && splitLit && !anyLit && PsdImport.DefaultRole(l, psd.Canvas) == PsdRole.Lamp) return true;
                 return false;
             }

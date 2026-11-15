@@ -5,15 +5,15 @@ namespace BvePanelEditor.Core.Crop;
 /// <summary>「切り抜き元から更新」: 今の位置と画像の大きさの範囲で、切り抜き元から切り出し直す。</summary>
 public static class CropUpdate
 {
-    /// <param name="load">フルパスから画像を読む（読めなければ null）。PSD のレイヤーを重ねるときは使わない。</param>
+    /// <param name="load">フルパスから画像を読む（読めなければ null）。レイヤーを重ねるときは使わない。</param>
     public static PsdUpdatePlan Plan(PanelDocument doc, string panelDir, Func<string, PsdPixels?> load)
     {
         var plan = new PsdUpdatePlan();
         var cache = new Dictionary<string, PsdPixels?>(StringComparer.OrdinalIgnoreCase);
-        var psds = new Dictionary<string, PsdFile?>(StringComparer.OrdinalIgnoreCase);
+        var psds = new Dictionary<string, ILayerImage?>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            // 切り抜き元の絵。レイヤーがあれば PSD から重ね、なければ画像として読む
+            // 切り抜き元の絵。レイヤーがあればレイヤー画像から重ね、なければ画像として読む
             PsdPixels? Source(string full, List<string>? layers, string label)
             {
                 var key = layers == null ? full : full + "\n" + string.Join("\n", layers);
@@ -23,11 +23,11 @@ public static class CropUpdate
                 {
                     if (!psds.TryGetValue(full, out var psd))
                     {
-                        try { psd = File.Exists(full) ? PsdFile.Open(full) : null; }
+                        try { psd = File.Exists(full) ? LayerImage.Open(full) : null; }
                         catch (Exception e) when (e is IOException or InvalidDataException or NotSupportedException or UnauthorizedAccessException)
                         {
                             psd = null;
-                            plan.Warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"PSD「{Path.GetFileName(full)}」を読めません: {e.Message}"));
+                            plan.Warnings.Add(new PsdWarning(PsdWarningKind.Unsupported, $"「{Path.GetFileName(full)}」を読めません: {e.Message}"));
                         }
                         psds[full] = psd;
                     }
@@ -56,7 +56,7 @@ public static class CropUpdate
                 return CropCompose.Over(under, src, (int)mx, (int)my);
             }
 
-            // パネル本体（PSD のレイヤーから重ねたもの）
+            // パネル本体（レイヤー画像のレイヤーから重ねたもの）
             // パネル本体を表示灯として置いているとき（下に敷く画像がある）は、その表示灯として下で作り直す
             var baseSet = doc.CropSets.FirstOrDefault(c => c.Name == CropSetNames.Base && c.HasLayers);
             if (doc.Sections.Any(s => s.CropSet == CropSetNames.Base)) baseSet = null;
@@ -72,7 +72,7 @@ public static class CropUpdate
                 {
                     if (File.Exists(image) && !PngWriter.IsPanelKunPng(image)) { plan.Skipped.Add($"{label}: {Path.GetFileName(image)}"); continue; }
                     var src = Source(source, layers, label);
-                    if (src == null) { plan.Missing.Add($"{label}: 切り抜き元の PSD「{Path.GetFileName(source)}」がありません"); continue; }
+                    if (src == null) { plan.Missing.Add($"{label}: 切り抜き元のファイル「{Path.GetFileName(source)}」がありません"); continue; }
                     plan.Files.Add(new(image, PngWriter.EncodePow2(src)));
                 }
             }

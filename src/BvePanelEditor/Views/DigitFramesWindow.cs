@@ -79,7 +79,7 @@ public sealed class DigitFramesWindow : Window
         var top = new TextBlock
         {
             Text = "デジタル数字の 1 コマずつの画像から、コマ割の画像を作ります。上から 0 番、1 番…の順に並べます。"
-                + "画像を足す（ここへドロップしても足せます。連番の画像は自動で読み込みます）・PSD はレイヤーを 1 コマずつ足します。"
+                + "画像を足す（ここへドロップしても足せます。連番の画像は自動で読み込みます）・PSD・XCF はレイヤーを 1 コマずつ足します。"
                 + "夜の画像は名前（_N・night・dark など）から自動で割り当て、「夜の画像を選ぶ…」でも指定できます。昼と夜は同じ大きさ・同じ並びにします。",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8),
         };
@@ -115,7 +115,7 @@ public sealed class DigitFramesWindow : Window
             b.Click += (_, _) => act();
             tools.Children.Add(b);
         }
-        B("画像を足す…", OnAddImages, "PNG などの画像は 1 枚 1 コマ（連番の画像も自動で読み込みます）、PSD はレイヤーを 1 コマずつ足します");
+        B("画像を足す…", OnAddImages, "PNG などの画像は 1 枚 1 コマ（連番の画像も自動で読み込みます）、PSD・XCF はレイヤーを 1 コマずつ足します");
         B("透明なコマを足す", () => Insert([new DigitFrame { Label = "（透明なコマ）" }]), "何も表示しないコマ（数字を出さない桁など）");
         B("↑", () => MoveSelected(-1), "前（上）へ");
         B("↓", () => MoveSelected(1), "後ろ（下）へ");
@@ -157,13 +157,13 @@ public sealed class DigitFramesWindow : Window
         var dlg = new OpenFileDialog
         {
             Title = "コマにする画像（複数選べます）", Multiselect = true,
-            Filter = "画像・PSD|*.png;*.bmp;*.jpg;*.jpeg;*.gif;*.tif;*.tiff;*.psd|すべてのファイル|*.*",
+            Filter = "画像・PSD・XCF|*.png;*.bmp;*.jpg;*.jpeg;*.gif;*.tif;*.tiff;*.psd;*.xcf|すべてのファイル|*.*",
         };
         if (dlg.ShowDialog(this) == true) AddFiles(dlg.FileNames, withSequence: true);
     }
 
     /// <summary>
-    /// 画像・PSD をコマとして足す（選んでいるコマのあと。なければ末尾）。PSD はレイヤーを 1 コマずつ（完全に透明なレイヤーも）。
+    /// 画像・PSD・XCF をコマとして足す（選んでいるコマのあと。なければ末尾）。PSD・XCF はレイヤーを 1 コマずつ（完全に透明なレイヤーも）。
     /// withSequence なら、連番の画像（ID_motor_0.png → _1・_2…）も足す。夜の画像は名前から探して割り当てる（夜の画像そのものはコマにしない）。
     /// </summary>
     public void AddFiles(IEnumerable<string> files, bool withSequence)
@@ -172,7 +172,7 @@ public sealed class DigitFramesWindow : Window
         var list = new List<string>();
         foreach (var f in given.OrderBy(f => f, NaturalComparer.Instance))
         {
-            bool psd = Path.GetExtension(f).Equals(".psd", StringComparison.OrdinalIgnoreCase);
+            bool psd = LayerImage.IsSupported(f);
             var seq = withSequence && !psd ? ImageNames.FindSequence(f) : [f];
             if (seq.Count > 1 && seq.Count(s => !given.Contains(s, StringComparer.OrdinalIgnoreCase)) > 0)
                 _notes.Add($"連番の画像を {seq.Count} 枚読み込みました（{Path.GetFileName(seq[0])} 〜 {Path.GetFileName(seq[^1])}）");
@@ -189,7 +189,7 @@ public sealed class DigitFramesWindow : Window
         {
             try
             {
-                if (Path.GetExtension(f).Equals(".psd", StringComparison.OrdinalIgnoreCase)) added.AddRange(FramesFromPsd(f, errors));
+                if (LayerImage.IsSupported(f)) added.AddRange(FramesFromPsd(f, errors));
                 else
                 {
                     var frame = new DigitFrame { Label = Path.GetFileName(f), Pixels = ImageLoader.Load(f).Pixels, Source = f };
@@ -216,20 +216,20 @@ public sealed class DigitFramesWindow : Window
     }
 
     /// <summary>
-    /// PSD のレイヤーを 1 コマずつ（名前の末尾が数字なら数の順、そうでなければレイヤーパネルの上から順）。同じ PSD のコマは大きさ・位置をそろえる。
-    /// 夜の PSD（名前に _N・night・dark など）があれば、同じ名前のレイヤーを夜のコマにする。
+    /// PSD・XCF のレイヤーを 1 コマずつ（名前の末尾が数字なら数の順、そうでなければレイヤーパネルの上から順）。同じファイルのコマは大きさ・位置をそろえる。
+    /// 夜のファイル（名前に _N・night・dark など）があれば、同じ名前のレイヤーを夜のコマにする。
     /// </summary>
     private List<DigitFrame> FramesFromPsd(string path, List<string> errors)
     {
-        using var psd = PsdFile.Open(path);
+        using var psd = LayerImage.Open(path);
         var nightPath = ImageNames.FindNight(path);
-        using var nightPsd = nightPath != null ? PsdFile.Open(nightPath) : null;
+        using var nightPsd = nightPath != null ? LayerImage.Open(nightPath) : null;
         var layers = DigitStrip.FrameOrder(DigitStrip.FrameLayers(psd));
         if (layers.Count == 0) { errors.Add($"「{Path.GetFileName(path)}」にコマにできるレイヤーがありません"); return []; }
         var warn = new List<PsdWarning>();
         var num = PsdImport.RenderNumber(psd, nightPsd, layers.Select(l => l.Path).ToList(), warn);
         int fh = num != null ? num.Day.Height / layers.Count : 0;
-        if (nightPsd != null) _notes.Add($"夜の PSD「{Path.GetFileName(nightPath)}」の同じ名前のレイヤーを夜のコマにしました");
+        if (nightPsd != null) _notes.Add($"夜のファイル「{Path.GetFileName(nightPath)}」の同じ名前のレイヤーを夜のコマにしました");
         return layers.Select((l, i) => new DigitFrame
         {
             Label = $"{Path.GetFileName(path)} / {PsdFile.StripDuplicateMark(l.Path)}",

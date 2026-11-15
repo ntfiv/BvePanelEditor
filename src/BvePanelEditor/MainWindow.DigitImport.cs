@@ -16,7 +16,7 @@ public partial class MainWindow
     /// <summary>デジタル数字の状態量の初期値（テスト画面で直せる）。点灯を確かめる仮の状態量と同じ。</summary>
     public const string DigitDefaultSubject = ImagePanelWindow.TemporarySubject;
 
-    private static bool IsPsdFile(string f) => Path.GetExtension(f).Equals(".psd", StringComparison.OrdinalIgnoreCase);
+    private static bool IsLayerFile(string f) => LayerImage.IsSupported(f);
 
     /// <summary>読み込んだ画像・PSD をどう使うか聞いて、今のパネルに置く。</summary>
     /// <summary>
@@ -40,13 +40,13 @@ public partial class MainWindow
         }
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            AddToRecent = false, Multiselect = true, Title = "読み込む画像・PSD",
-            Filter = "画像・PSD|" + string.Join(";", ImageExtensions.Append(".psd").Select(x => "*" + x)) + "|すべて|*.*",
+            AddToRecent = false, Multiselect = true, Title = "読み込む画像・PSD・XCF",
+            Filter = "画像・PSD・XCF|" + string.Join(";", ImageExtensions.Append(".psd").Append(".xcf").Select(x => "*" + x)) + "|すべて|*.*",
         };
         if (PanelDir != null) dlg.InitialDirectory = PanelDir;
         if (dlg.ShowDialog(this) != true) return;
-        var files = dlg.FileNames.Where(f => IsImageFile(f) || IsPsdFile(f)).ToList();
-        if (files.Count == 0) { Message("画像・PSD を選んでください"); return; }
+        var files = dlg.FileNames.Where(f => IsImageFile(f) || IsLayerFile(f)).ToList();
+        if (files.Count == 0) { Message("画像・PSD・XCF を選んでください"); return; }
         ImportImagesToPanel(files, null);
     }
 
@@ -84,10 +84,10 @@ public partial class MainWindow
     /// <summary>常点灯の表示灯として置く。画像はそのまま、PSD は使うレイヤーを選んで 1 枚に重ね、PNG に書き出す。</summary>
     private void ImportAsLamps(IReadOnlyList<string> files, Point? at)
     {
-        var images = files.Where(f => !IsPsdFile(f)).ToList();
+        var images = files.Where(f => !IsLayerFile(f)).ToList();
         if (images.Count > 0) PlaceImageParts(images, SectionKind.PilotLamp, at);
         int k = images.Count;
-        foreach (var psd in files.Where(IsPsdFile))
+        foreach (var psd in files.Where(IsLayerFile))
         {
             if (PanelDir == null) { Warn("先にパネルファイルを保存してください（画像をパネルからの場所で指すため）。"); return; }
             if (PickPsdLayers(psd, "常点灯画像") is not { } pick) continue;
@@ -125,7 +125,7 @@ public partial class MainWindow
     {
         try
         {
-            using (var psd = PsdFile.Open(path))
+            using (var psd = LayerImage.Open(path))
             {
                 var layers = psd.ComposableLayers.ToList();
                 if (layers.Count == 0) { Warn($"「{Path.GetFileName(path)}」に使えるレイヤーがありません。"); return null; }
@@ -166,7 +166,7 @@ public partial class MainWindow
         PsdPixels day;
         PsdPixels? night = null;
         string? nightFile = null;
-        bool fromPsd = IsPsdFile(path);
+        bool fromPsd = IsLayerFile(path);
         int contentH;
         if (fromPsd)
         {
@@ -203,7 +203,7 @@ public partial class MainWindow
         int interval = found?.Interval ?? (contentH >= 10 ? contentH / 10 : contentH);
         var note = found == null ? "画像から 1 コマの高さを求められなかったので、仮に 10 コマとしています" : $"画像から求めた値です（{(found.Confident ? "確定" : "推定")}: {found.Reason}）";
         var test = new DigitTestWindow(this, name, day, night, contentH, interval, note, DigitDefaultSubject,
-            allowNightPick: !fromPsd, nightName: nightFile != null ? Path.GetFileName(nightFile) : fromPsd && night != null ? "PSD の夜のレイヤー" : null);
+            allowNightPick: !fromPsd, nightName: nightFile != null ? Path.GetFileName(nightFile) : fromPsd && night != null ? "PSD・XCF の夜のレイヤー" : null);
         if (!test.Ask()) return false;
         if (test.NightChanged) { night = test.Night; nightFile = test.NightPath; }
 

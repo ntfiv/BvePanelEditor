@@ -11,21 +11,21 @@ using Microsoft.Win32;
 
 namespace BvePanelEditor.Views;
 
-/// <summary>振り分けの結果 1 欄ぶん。Pixels は選んだレイヤーをキャンバス大に重ねた絵。</summary>
+/// <summary>振り分けの結果 1 欄ぶん。Pixels は選んだレイヤーをキャンバス大に重ねた絵。PsdPath は元のレイヤー画像（PSD・XCF）のパス。</summary>
 public sealed record LayerPick(string PsdPath, List<string> Layers, PsdPixels Pixels);
 
 /// <summary>
-/// PSD のレイヤーを、画像からパネルを作るの各欄（昼・無発光など）に振り分ける画面。
-/// 1 つの欄は 1 つの PSD から作る（ほかの PSD のレイヤーにチェックすると、その欄はそちらの PSD に移る）。
+/// PSD・XCF のレイヤーを、画像からパネルを作るの各欄（昼・無発光など）に振り分ける画面。
+/// 1 つの欄は 1 つのファイルから作る（ほかのファイルのレイヤーにチェックすると、その欄はそちらのファイルに移る）。
 /// </summary>
 public sealed class LayerAssignWindow : Window
 {
-    private readonly List<PsdFile> _psds = [];
+    private readonly List<ILayerImage> _psds = [];
     private readonly string[] _columns;
     private readonly CropSlotKind[] _kinds;
-    private readonly int[] _colPsd;                    // 欄ごとの PSD（-1 = なし）
+    private readonly int[] _colPsd;                    // 欄ごとのファイル（-1 = なし）
     private readonly HashSet<string>[] _colLayers;     // 欄ごとの画像レイヤーのパス
-    private int _shown;                                // 一覧に出している PSD
+    private int _shown;                                // 一覧に出しているファイル
     private int _previewCol;
     private bool _suppress;
 
@@ -48,15 +48,15 @@ public sealed class LayerAssignWindow : Window
     /// <summary>［OK］で決まった欄ごとの結果。何も選ばなかった欄は null。</summary>
     public LayerPick?[]? Result { get; private set; }
 
-    /// <param name="psdPaths">最初に読む PSD。</param>
-    /// <param name="columnPsd">欄ごとに使う PSD（psdPaths のどれか、なければ null）。</param>
+    /// <param name="psdPaths">最初に読む PSD・XCF。</param>
+    /// <param name="columnPsd">欄ごとに使うファイル（psdPaths のどれか、なければ null）。</param>
     /// <param name="columnLayers">欄ごとのレイヤー。null なら名前から振り分ける。</param>
     /// <param name="subject">何の画像を作るか（題名に出す。例: 重ねる画像の名前）。</param>
     public LayerAssignWindow(Window owner, IReadOnlyList<string> psdPaths, string[] columns, CropSlotKind[] kinds,
         IReadOnlyList<string?> columnPsd, IReadOnlyList<List<string>?> columnLayers, string? subject = null)
     {
         Owner = owner;
-        Title = "PSD のレイヤーを振り分ける" + (string.IsNullOrWhiteSpace(subject) ? "" : $" - {subject}");
+        Title = "PSD・XCF のレイヤーを振り分ける" + (string.IsNullOrWhiteSpace(subject) ? "" : $" - {subject}");
         Width = 1250; Height = 860;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Yu Gothic UI");
@@ -98,17 +98,17 @@ public sealed class LayerAssignWindow : Window
         if (_psds.Any(p => SamePath(p.FilePath, path))) return true;
         try
         {
-            _psds.Add(PsdFile.Open(path));
+            _psds.Add(LayerImage.Open(path));
             return true;
         }
         catch (Exception e) when (e is IOException or InvalidDataException or NotSupportedException or UnauthorizedAccessException)
         {
-            if (showError) MessageBox.Show(Owner ?? this, $"PSD を読めませんでした:\n{path}\n{e.Message}", "パネルくん", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (showError) MessageBox.Show(Owner ?? this, $"ファイルを読めませんでした:\n{path}\n{e.Message}", "パネルくん", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
     }
 
-    /// <summary>名前から振り分ける（PSD i を cols の欄に使う）。何も選べなかった欄は空にする。</summary>
+    /// <summary>名前から振り分ける（ファイル i を cols の欄に使う）。何も選べなかった欄は空にする。</summary>
     private void ApplyGuess(int i, List<int> cols)
     {
         var g = CropLayers.Guess(_psds[i], cols.Select(k => _kinds[k]).ToList());
@@ -129,29 +129,29 @@ public sealed class LayerAssignWindow : Window
         var root = new DockPanel { Margin = new Thickness(8) };
 
         var top = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
-        top.Children.Add(new TextBlock { Text = "PSD", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold });
+        top.Children.Add(new TextBlock { Text = "PSD・XCF", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold });
         top.Children.Add(_psdCombo);
-        var add = new Button { Content = "PSD を足す…", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(0, 0, 6, 0) };
+        var add = new Button { Content = "PSD・XCF を足す…", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(0, 0, 6, 0) };
         add.Click += (_, _) => OnAddPsd();
         top.Children.Add(add);
         var guess = new Button
         {
             Content = "名前から振り分け直す", Padding = new Thickness(8, 2, 8, 2),
-            ToolTip = "この PSD を使っている欄を、レイヤー名（発光・光・点灯・_TT／夜・night・_N）と表示・非表示から振り分け直します",
+            ToolTip = "このファイルを使っている欄を、レイヤー名（発光・光・点灯・_TT／夜・night・_N）と表示・非表示から振り分け直します",
         };
         guess.Click += (_, _) => OnGuess();
         top.Children.Add(guess);
         var clear = new Button
         {
             Content = "チェックをすべて外す", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(6, 0, 0, 0),
-            ToolTip = "この PSD を使っている欄のチェックを、すべて外します（そのあと、使うレイヤーだけにチェックできます）",
+            ToolTip = "このファイルを使っている欄のチェックを、すべて外します（そのあと、使うレイヤーだけにチェックできます）",
         };
         clear.Click += (_, _) => ClearChecks();
         top.Children.Add(clear);
         top.Children.Add(new TextBlock
         {
             Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.Gray, TextWrapping = TextWrapping.Wrap,
-            Text = "チェックしたレイヤーを重ねて、その欄の画像にします（PSD の表示・非表示は関係ありません）。1 つの欄は 1 つの PSD から作ります。",
+            Text = "チェックしたレイヤーを重ねて、その欄の画像にします（元のファイルでの表示・非表示は関係ありません）。1 つの欄は 1 つのファイルから作ります。",
         });
         _psdCombo.SelectionChanged += (_, _) => { if (!_suppress && _psdCombo.SelectedIndex >= 0) ShowPsd(_psdCombo.SelectedIndex); };
         DockPanel.SetDock(top, Dock.Top);
@@ -234,7 +234,7 @@ public sealed class LayerAssignWindow : Window
                 Foreground = other ? Brushes.Gray : Brushes.Black,
                 FontWeight = k == _previewCol ? FontWeights.SemiBold : FontWeights.Normal,
             };
-            _heads[k].ToolTip = other ? $"この欄はほかの PSD（{src}）から作ります。ここでチェックすると、この PSD に切り替わります" : "右に見本を出す欄";
+            _heads[k].ToolTip = other ? $"この欄はほかのファイル（{src}）から作ります。ここでチェックすると、このファイルに切り替わります" : "右に見本を出す欄";
         }
     }
 
@@ -332,8 +332,8 @@ public sealed class LayerAssignWindow : Window
             var byPath = _psds[_colPsd[k]].ComposableLayers.ToDictionary(x => x.Path);
             caution += _colLayers[k].Count(p => byPath.TryGetValue(p, out var x) && PsdImport.Cautions(x).Length > 0);
         }
-        _status.Text = $"{total} / {_columns.Length} 欄に PSD を振り分けています。チェックのない欄は、今の画像のまま変えません。"
-            + (caution > 0 ? $"　※ Photoshop と見た目が変わるレイヤー {caution} 個（赤い字の知らせ）" : "");
+        _status.Text = $"{total} / {_columns.Length} 欄にファイルを振り分けています。チェックのない欄は、今の画像のまま変えません。"
+            + (caution > 0 ? $"　※ 元のソフトと見た目が変わるレイヤー {caution} 個（赤い字の知らせ）" : "");
     }
 
     private void OnCheck(PsdLayer layer, int col)
@@ -341,7 +341,7 @@ public sealed class LayerAssignWindow : Window
         if (_suppress) return;
         if (_colPsd[col] != _shown)
         {
-            // ほかの PSD から作っていた欄を、この PSD に切り替える
+            // ほかのファイルから作っていた欄を、このファイルに切り替える
             _colPsd[col] = _shown;
             _colLayers[col].Clear();
         }
@@ -356,14 +356,14 @@ public sealed class LayerAssignWindow : Window
 
     private void OnAddPsd()
     {
-        var dlg = new OpenFileDialog { AddToRecent = false, Title = "PSD を足す", Filter = "Photoshop|*.psd" };
+        var dlg = new OpenFileDialog { AddToRecent = false, Title = "PSD・XCF を足す", Filter = "PSD・XCF|*.psd;*.xcf|Photoshop|*.psd|GIMP|*.xcf" };
         if (_psds.Count > 0) dlg.InitialDirectory = Path.GetDirectoryName(_psds[0].FilePath);
         if (dlg.ShowDialog(this) != true || !AddPsd(dlg.FileName, showError: true)) return;
         RefreshPsdCombo();
         ShowPsd(_psds.FindIndex(p => SamePath(p.FilePath, dlg.FileName)));
     }
 
-    /// <summary>今出している PSD を使っている欄のチェックを、すべて外す。</summary>
+    /// <summary>今出しているファイルを使っている欄のチェックを、すべて外す。</summary>
     public void ClearChecks()
     {
         for (int k = 0; k < _columns.Length; k++)
@@ -386,7 +386,7 @@ public sealed class LayerAssignWindow : Window
         if (cols.Count == 0) cols = Enumerable.Range(0, _columns.Length).Where(k => _colPsd[k] < 0).ToList();
         if (cols.Count == 0)
         {
-            MessageBox.Show(this, "どの欄もほかの PSD から作っています。この PSD に切り替えたい欄のレイヤーにチェックしてください。", Title, MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "どの欄もほかのファイルから作っています。このファイルに切り替えたい欄のレイヤーにチェックしてください。", Title, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         ApplyGuess(_shown, cols);
@@ -462,7 +462,7 @@ public sealed class LayerAssignWindow : Window
 
     // ================= 確認用 =================
 
-    /// <summary>確認用: 今の振り分け（欄ごとの PSD のファイル名とレイヤー数）。</summary>
+    /// <summary>確認用: 今の振り分け（欄ごとのファイル名とレイヤー数）。</summary>
     public string DescribeForTest() => string.Join(" / ", Enumerable.Range(0, _columns.Length)
         .Select(k => $"{_columns[k]}={(_colPsd[k] >= 0 ? Path.GetFileName(_psds[_colPsd[k]].FilePath) + ":" + _colLayers[k].Count : "なし")}"));
 

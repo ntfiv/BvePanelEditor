@@ -3,7 +3,7 @@ using BvePanelEditor.Core.Psd;
 namespace BvePanelEditor.Views;
 
 /// <summary>
-/// PSD の注意（△ 近似／× 再現不可）を種類ごとに分けたダイアログ文にする。
+/// レイヤー画像の注意（△ 近似／× 再現不可）を種類ごとに分けたダイアログ文にする。
 /// 読み込み画面とレイヤー振り分け画面で、出し方をそろえるための共通部品。
 /// </summary>
 internal static class PsdWarningMessage
@@ -20,7 +20,7 @@ internal static class PsdWarningMessage
             parts.Add(head + "\n" + string.Join("\n", ws.Take(15).Select(w => "・" + w))
                 + (ws.Count > 15 ? $"\n…ほか {ws.Count - 15} 件" : ""));
         }
-        Group(PsdWarningKind.Approx, "△ 近似して再現（Photoshop と見た目が少し変わります）");
+        Group(PsdWarningKind.Approx, "△ 近似して再現（元のソフトと見た目が少し変わります）");
         Group(PsdWarningKind.Unsupported, "× 再現不可（その部分は出ません）");
         return string.Join("\n\n", parts);
     }

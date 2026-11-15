@@ -82,8 +82,8 @@ public static class DigitStrip
         interval <= 0 ? (0, contentHeight) : (contentHeight / interval, contentHeight % interval);
 
     /// <summary>
-    /// PSD のレイヤーをコマにする順: 名前の末尾が全部数字（「0」「motor_3」など）で重ならなければ数の小さい順、
-    /// そうでなければ Photoshop のレイヤーパネルと同じ上から順。
+    /// レイヤーをコマにする順: 名前の末尾が全部数字（「0」「motor_3」など）で重ならなければ数の小さい順、
+    /// そうでなければ元のソフトのレイヤーパネルと同じ上から順。
     /// </summary>
     public static List<PsdLayer> FrameOrder(IEnumerable<PsdLayer> layers)
     {
@@ -103,7 +103,7 @@ public static class DigitStrip
         return i < t.Length && i > t.Length - 10 && long.TryParse(t[i..], out var v) ? v : null;
     }
 
-    /// <summary>PSD の中で、コマにできるレイヤー（画像・文字・スマートオブジェクト。完全に透明なレイヤーも含む。フォルダや調整レイヤーは除く）。</summary>
-    public static List<PsdLayer> FrameLayers(PsdFile psd) =>
+    /// <summary>レイヤー画像の中で、コマにできるレイヤー（画像・文字・スマートオブジェクト。完全に透明なレイヤーも含む。フォルダや調整レイヤーは除く）。</summary>
+    public static List<PsdLayer> FrameLayers(ILayerImage psd) =>
         psd.Layers.Where(l => l.Kind is PsdLayerKind.Pixel or PsdLayerKind.Text or PsdLayerKind.Smart).ToList();
 }
