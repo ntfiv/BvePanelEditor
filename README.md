@@ -9,9 +9,15 @@
 
 BVE Trainsim 5 / 6 の運転台パネルファイル（`BveTs Instrument Panel 2.00 / 2.01`）を、画面で見ながら編集するツールです。画像を読みこんで部品を作ることもできます。
 
-- 版: **0.4α**（試験版です。大事なパネルは、コピーをとってから使ってください）
+- 版: **0.4.1α**（試験版です。大事なパネルは、コピーをとってから使ってください）
 - ライセンス: MIT License（[LICENSE](LICENSE)）。使っているライブラリ・同梱素材は [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)
-- ダウンロード: [Releases](https://github.com/ntfiv/BvePanelEditor/releases) の `BvePanelEditor-0.4alpha-win-x64.zip`（標準の針・サンプルはこちらに入っています。このリポジトリのソースには入っていません）
+- ダウンロード: [Releases](https://github.com/ntfiv/BvePanelEditor/releases) の `BvePanelEditor-0.4.1alpha-win-x64.zip`（標準の針・サンプルはこちらに入っています。このリポジトリのソースには入っていません）
+
+## 0.4.1α での変更
+
+- **パネル画面の背景**: 表示 → 背景 で、グレー・市松模様（透明）・グラデーション・ピンクから選べます
+- **画像のプレビュー**: オブジェクト一覧の下に、選んだオブジェクトの昼・夜の画像を出します（透明な所は市松模様）。ファイル名と大きさも出します。見出しをクリックすると畳めます
+- **見た目**: Windows 11 風の見た目（Fluent）にし、ボタンや一覧の余白を詰めました
 
 ## 0.4α での変更
 
