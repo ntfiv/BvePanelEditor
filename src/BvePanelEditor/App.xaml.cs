@@ -9,6 +9,11 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // 見た目は Fluent（Themes/Theme.xaml）。ライト固定にして、Windows がダークでも明るいまま使う
+#pragma warning disable WPF0001 // ThemeMode は .NET 10 ではまだ試験扱い
+        ThemeMode = ThemeMode.Light;
+#pragma warning restore WPF0001
+        Themes.FluentTweaks.Register();
         BveText.EnsureInitialized();
 #if DEBUG
         // 確認用の起動オプション（--selftest など）はデバッグ版だけ。リリース版では使えない
