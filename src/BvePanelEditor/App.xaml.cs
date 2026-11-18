@@ -88,6 +88,7 @@ public partial class App : Application
             else if (e.Args[i] == "--select" && i + 1 < e.Args.Length && int.TryParse(e.Args[++i], out var n)) select = n;
             else if (e.Args[i] == "--view" && i + 1 < e.Args.Length) w.StartupView = e.Args[++i];
             else if (e.Args[i] == "--state" && i + 1 < e.Args.Length) w.StartupState = e.Args[++i];
+            else if (e.Args[i] == "--background" && i + 1 < e.Args.Length && Enum.TryParse<Rendering.CanvasBackground>(e.Args[++i], true, out var bg)) w.SetCanvasBackground(bg, save: false); // 確認用（設定には書かない）
             else if (e.Args[i] == "--selftest" && i + 1 < e.Args.Length) selftest = e.Args[++i];
             else if (e.Args[i] == "--psdtest" && i + 4 < e.Args.Length) psdtest = (e.Args[++i], e.Args[++i], e.Args[++i], e.Args[++i]);
             else if (e.Args[i] == "--psdwindow" && i + 3 < e.Args.Length) psdwindow = (e.Args[++i], e.Args[++i], e.Args[++i]);

@@ -91,7 +91,33 @@ public sealed class PanelCanvas : FrameworkElement
     private int _valueSection = -1;
     private TimeSpan _lastFrame;
 
-    private static readonly Brush Background = Freeze(new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2E)));
+    private static readonly Brush GrayBackground = Freeze(new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x2E)));
+    private static readonly Brush CheckerBackground = MakeChecker();
+    private static readonly Brush GradientBackground = Freeze(new LinearGradientBrush(Color.FromRgb(0x70, 0x70, 0x78), Color.FromRgb(0x18, 0x18, 0x1C), 90));
+    private static readonly Brush PinkBackground = Freeze(new SolidColorBrush(Color.FromRgb(0xFF, 0x69, 0xB4)));
+
+    /// <summary>パネル画面の背景（表示メニューで選ぶ）。</summary>
+    public CanvasBackground BackgroundKind { get => _backgroundKind; set { _backgroundKind = value; InvalidateVisual(); } }
+    private CanvasBackground _backgroundKind = CanvasBackground.Gray;
+
+    /// <summary>透明を表す市松模様（白と薄い灰色の 8 ピクセル角。画面の大きさのまま並べる）。</summary>
+    public static Brush MakeChecker()
+    {
+        var g = new DrawingGroup();
+        g.Children.Add(new GeometryDrawing(Brushes.White, null, new RectangleGeometry(new Rect(0, 0, 16, 16))));
+        var light = new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC));
+        g.Children.Add(new GeometryDrawing(light, null, new RectangleGeometry(new Rect(0, 0, 8, 8))));
+        g.Children.Add(new GeometryDrawing(light, null, new RectangleGeometry(new Rect(8, 8, 8, 8))));
+        return Freeze(new DrawingBrush(g) { TileMode = TileMode.Tile, Viewport = new Rect(0, 0, 16, 16), ViewportUnits = BrushMappingMode.Absolute, Stretch = Stretch.None });
+    }
+
+    private Brush BackgroundBrush => _backgroundKind switch
+    {
+        CanvasBackground.Checker => CheckerBackground,
+        CanvasBackground.Gradient => GradientBackground,
+        CanvasBackground.Pink => PinkBackground,
+        _ => GrayBackground,
+    };
     /// <summary>選んでいるオブジェクトの枠（動かせるとき: 黄色の実線）。</summary>
     private static readonly Pen SelPen = Freeze(new Pen(new SolidColorBrush(Color.FromRgb(0xFF, 0xD8, 0x40)), 1.5));
     /// <summary>選んでいるオブジェクトの枠（位置ロックで動かせないとき: 黄色の点線）。</summary>
@@ -445,7 +471,7 @@ public sealed class PanelCanvas : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        dc.DrawRectangle(Background, null, new Rect(RenderSize));
+        dc.DrawRectangle(BackgroundBrush, null, new Rect(RenderSize));
         if (Scene == null)
         {
             var ft = new FormattedText("ファイル → 開く でパネルファイルか車両ファイルを開いてください（ドラッグ＆ドロップでも開けます）",
@@ -1470,3 +1496,6 @@ public sealed class PanelCanvas : FrameworkElement
         }
     }
 }
+
+/// <summary>パネル画面の背景の種類。</summary>
+public enum CanvasBackground { Gray, Checker, Gradient, Pink }

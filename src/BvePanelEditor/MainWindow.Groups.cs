@@ -122,6 +122,7 @@ public partial class MainWindow
         UpdateStateHighlight();
         RefreshVariationUi();
         ShowRag();
+        UpdateImagePreview();
     }
 
     /// <summary>オブジェクトの Location のいちばん左上（位置のないオブジェクトは飛ばす）。</summary>

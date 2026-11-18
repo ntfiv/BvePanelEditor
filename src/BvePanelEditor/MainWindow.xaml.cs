@@ -603,6 +603,7 @@ public partial class MainWindow : Window
             CropUpdateMenu.IsEnabled = false;
             _props.Show(null, -1);
             _states.Update(null);
+            UpdateImagePreview();
             return;
         }
         var baseDir = _path != null ? Path.GetDirectoryName(_path) : null;

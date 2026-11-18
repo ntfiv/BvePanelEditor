@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using BvePanelEditor.Core;
+using BvePanelEditor.Rendering;
 using BvePanelEditor.Views;
 
 namespace BvePanelEditor;
@@ -33,6 +34,8 @@ public partial class MainWindow
                     else if (kv[0] == "ListOrder") SetListOrder(kv[1] == "layer", save: false);
                     else if (kv[0] == "CompactList") SetCompactList(kv[1] == "1", save: false);
                     else if (kv[0] == "ProblemsFolded") SetProblemsFolded(kv[1] == "1", save: false);
+                    else if (kv[0] == "Background" && Enum.TryParse<CanvasBackground>(kv[1], true, out var bg)) Canvas.BackgroundKind = bg;
+                    else if (kv[0] == "ImagePreviewFolded") SetImagePreviewFolded(kv[1] == "1", save: false);
                 }
         }
         catch (IOException) { }
@@ -46,7 +49,8 @@ public partial class MainWindow
             Directory.CreateDirectory(SettingsDir);
             File.WriteAllLines(ViewSettingsFile,
                 [$"Aspects={string.Join(",", Canvas.FrameAspects.Select(f => f.Label))}", $"Bleed={PanelValues.Num(Canvas.ShakeMarginPercent)}", $"ListOrder={(_layerOrder ? "layer" : "file")}",
-                 $"CompactList={(_compactList ? 1 : 0)}", $"ProblemsFolded={(_problemsFolded ? 1 : 0)}"]);
+                 $"CompactList={(_compactList ? 1 : 0)}", $"ProblemsFolded={(_problemsFolded ? 1 : 0)}",
+                 $"Background={Canvas.BackgroundKind}", $"ImagePreviewFolded={(_imagePreviewFolded ? 1 : 0)}"]);
         }
         catch (IOException) { }
     }
@@ -112,6 +116,18 @@ public partial class MainWindow
         if (save) SaveViewSettings();
     }
 
+    private static readonly (CanvasBackground Kind, string Label)[] BackgroundChoices =
+        [(CanvasBackground.Gray, "グレー"), (CanvasBackground.Checker, "市松模様（透明）"), (CanvasBackground.Gradient, "グラデーション"), (CanvasBackground.Pink, "ピンク")];
+
+    /// <summary>パネル画面の背景を変える（次に起動したときも使う）。</summary>
+    public void SetCanvasBackground(CanvasBackground kind, bool save)
+    {
+        Canvas.BackgroundKind = kind;
+        foreach (var mi in BackgroundMenu.Items.OfType<MenuItem>())
+            mi.IsChecked = BackgroundChoices.Any(c => c.Kind == kind && c.Label == (string)mi.Header);
+        if (save) SaveViewSettings();
+    }
+
     private void BuildViewMenus()
     {
         AspectMenu.Items.Clear();
@@ -144,6 +160,15 @@ public partial class MainWindow
         var reset = new MenuItem { Header = "16:9・16:10・4:3 に戻す" };
         reset.Click += (_, _) => { SetAspects(DefaultAspects, save: false); AfterAspectsChanged("画面枠を 16:9・16:10・4:3 にしました"); };
         AspectMenu.Items.Add(reset);
+
+        BackgroundMenu.Items.Clear();
+        foreach (var (kind, label) in BackgroundChoices)
+        {
+            var mi = new MenuItem { Header = label, IsCheckable = true, IsChecked = Canvas.BackgroundKind == kind };
+            var k = kind;
+            mi.Click += (_, _) => SetCanvasBackground(k, save: true);
+            BackgroundMenu.Items.Add(mi);
+        }
 
         BleedMenu.Items.Clear();
         bool known = false;

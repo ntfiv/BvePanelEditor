@@ -96,6 +96,7 @@
                           ToolTip="ズーム 1 倍のとき画面に入る範囲（横幅は Resolution）。チェックした比率を同時に描きます（16:9 は水色、16:10 は緑、4:3 は橙）" />
                 <MenuItem x:Name="BleedMenu" Header="揺れの余白（点線）"
                           ToolTip="画面枠の外側に、揺れたときに見えるかもしれない範囲を点線で描きます（印刷の塗り足しと同じ考え方）。画面の横幅に対する % で指定します" />
+                <MenuItem x:Name="BackgroundMenu" Header="背景" />
                 <MenuItem x:Name="ShowTextMenu" Header="パネルファイルの内容を表示" IsCheckable="True" IsChecked="True" Click="OnToggleText" />
             </MenuItem>
             <MenuItem Header="ヘルプ(_H)">
@@ -156,6 +157,32 @@
 
                 <DockPanel Grid.Row="1">
                 <StackPanel DockPanel.Dock="Bottom">
+                <!-- 選んだオブジェクトの画像（昼・夜） -->
+                <DockPanel Margin="4,4,4,0">
+                    <DockPanel DockPanel.Dock="Top" Background="Transparent" Cursor="Hand" MouseLeftButtonUp="OnImagePreviewHeader" Margin="0,0,0,2">
+                        <TextBlock x:Name="ImagePreviewFold" Text="▼" Width="14" FontSize="10" Foreground="Gray" VerticalAlignment="Center" />
+                        <TextBlock Text="画像" FontWeight="Bold" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <Grid x:Name="ImagePreviewBody">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <DockPanel Grid.Column="0">
+                            <TextBlock x:Name="PreviewDayText" DockPanel.Dock="Bottom" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                            <Border x:Name="PreviewDayBox" Height="110" BorderBrush="#C0C0C0" BorderThickness="1">
+                                <Image x:Name="PreviewDayImage" Stretch="Uniform" />
+                            </Border>
+                        </DockPanel>
+                        <DockPanel Grid.Column="2">
+                            <TextBlock x:Name="PreviewNightText" DockPanel.Dock="Bottom" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                            <Border x:Name="PreviewNightBox" Height="110" BorderBrush="#C0C0C0" BorderThickness="1">
+                                <Image x:Name="PreviewNightImage" Stretch="Uniform" />
+                            </Border>
+                        </DockPanel>
+                    </Grid>
+                </DockPanel>
                 <WrapPanel Margin="4">
                     <Button x:Name="AddButton" Content="＋ オブジェクトの追加 ▾" Padding="6,2" Margin="0,0,4,0" Click="OnAddButton" />
                     <Button Content="複製" Padding="6,2" Margin="0,0,4,0" Click="OnDuplicate" />
