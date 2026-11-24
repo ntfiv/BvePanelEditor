@@ -5,8 +5,8 @@ using System.Xml;
 namespace BvePanelEditor.Core.Imaging;
 
 /// <summary>
-/// SVG を描く前の下ごしらえ。外の資源（http・https・file などの href・src、CSS の url()・image-set()・image()・src()・@import、xml-stylesheet）を
-/// 参照していたら取り除く（人から受け取った作業ファイルを開いただけで、外へ取りに行かないように）。文書の中の参照（#id）と data: は残す。
+/// SVG を描く前の下ごしらえ。外の資源（http・https・file などの href・src、CSS の url()・@import、image-set()・image()・src() の中の文字列、
+/// xml-stylesheet）を参照していたら取り除く（人から受け取った作業ファイルを開いただけで、外へ取りに行かないように）。文書の中の参照（#id）と data: は残す。
 /// CSS は style 属性・style 要素のほか、すべての属性の値で見る（fill="url(...)" など）。CSS のエスケープ（\75 rl( など）で書いたものは、
 /// ほどいた形でも確かめる。中に埋め込んだ SVG 画像（data:image/svg+xml）も取り除く。
 /// 描く側（SharpVectors）でも外の資源は読まない設定にしてあり、これはその手前の守り。
@@ -20,9 +20,67 @@ public static partial class SvgSafety
     [GeneratedRegex(@"url\((?>\s*['""]?\s*)(?!#|data:)[^)]*\)", RegexOptions.IgnoreCase)]
     private static partial Regex UrlPattern();
 
-    // 文字列で画像の場所を書ける CSS の関数（url() と違い、中に引用符の文字列を書く）
-    [GeneratedRegex(@"(?<![\w-])(?:-webkit-)?(?:image-set|image|src)\([^)]*\)", RegexOptions.IgnoreCase)]
-    private static partial Regex StringUrlFunctionPattern();
+    // 文字列で画像の場所を書ける CSS の関数の始まり（url() と違い、中に引用符の文字列で場所を書く）
+    [GeneratedRegex(@"(?<![\w-])(?:-webkit-)?(?:image-set|image|src)\(", RegexOptions.IgnoreCase)]
+    private static partial Regex StringUrlFunctionStart();
+
+    [GeneratedRegex(@"[\w-]+$")]
+    private static partial Regex TrailingIdentifier();
+
+    /// <summary>
+    /// image-set()・image()・src() の中の引用符の文字列のうち、外を指すものだけを空の文字列にする（#id・data: は残す）。
+    /// 中の type("image/png") の文字列は場所ではないので残す。外したら removed を増やす。
+    /// </summary>
+    private static string StripStringUrls(string css, ref int removed)
+    {
+        var sb = new StringBuilder(css.Length);
+        int pos = 0;
+        foreach (Match m in StringUrlFunctionStart().Matches(css))
+        {
+            if (m.Index < pos) continue; // 前の関数の中（image-set の中の image() など）は、前の関数でまとめて見た
+            sb.Append(css, pos, m.Index + m.Length - pos);
+            int i = m.Index + m.Length;
+            var funcs = new Stack<string>();
+            funcs.Push(m.Value.TrimEnd('(').ToLowerInvariant());
+            while (i < css.Length && funcs.Count > 0)
+            {
+                char c = css[i];
+                // エスケープした文字（\) など）と注釈（/* ) */ など）は、括弧として数えない
+                if (c == '\\' && i + 1 < css.Length) { sb.Append(css, i, 2); i += 2; continue; }
+                if (c == '/' && i + 1 < css.Length && css[i + 1] == '*')
+                {
+                    int close = css.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                    int stop = close < 0 ? css.Length : close + 2;
+                    sb.Append(css, i, stop - i);
+                    i = stop;
+                    continue;
+                }
+                if (c is '"' or '\'')
+                {
+                    int j = i + 1;
+                    while (j < css.Length && css[j] != c) j += css[j] == '\\' && j + 1 < css.Length ? 2 : 1;
+                    int end = Math.Min(j, css.Length);
+                    string inner = css[(i + 1)..end];
+                    if (funcs.Peek() != "type" && IsExternal(UnescapeCss(inner))) { sb.Append(c).Append(c); removed++; }
+                    else sb.Append(css, i, Math.Min(j + 1, css.Length) - i);
+                    i = j + 1;
+                    continue;
+                }
+                if (c == '(')
+                {
+                    // 中の関数の名前（type など）を覚える
+                    var name = TrailingIdentifier().Match(sb.ToString(Math.Max(0, sb.Length - 32), Math.Min(32, sb.Length))).Value.ToLowerInvariant();
+                    funcs.Push(name);
+                }
+                else if (c == ')') funcs.Pop();
+                sb.Append(c);
+                i++;
+            }
+            pos = Math.Min(i, css.Length);
+        }
+        sb.Append(css, pos, css.Length - pos);
+        return sb.ToString();
+    }
 
     /// <summary>CSS のエスケープ（\ と 16 進 1〜6 桁、または \ と 1 文字）をほどく。</summary>
     public static string UnescapeCss(string s)
@@ -104,7 +162,7 @@ public static partial class SvgSafety
         {
             string s = ImportPattern().Replace(css, m => { count++; return ""; });
             s = UrlPattern().Replace(s, m => { count++; return "none"; });
-            return StringUrlFunctionPattern().Replace(s, m => { count++; return "none"; });
+            return StripStringUrls(s, ref count);
         }
         string Clean(string css)
         {

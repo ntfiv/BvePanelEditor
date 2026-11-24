@@ -51,6 +51,12 @@ public sealed class MonitorPartsTests
         // 囲む範囲が大きすぎる（1 辺 8192 画素まで）
         Assert.Throws<InvalidOperationException>(() => Warp.ToQuad(src, (0, 0), (9000, 0), (9000, 10), (0, 10)));
         Assert.Throws<InvalidOperationException>(() => Warp.ToQuad(src, (0, 0), (double.NaN, 0), (10, 10), (0, 10)));
+        // 囲む範囲は小さくても、座標そのものが大きすぎる（整数にするとあふれる）
+        Assert.Throws<InvalidOperationException>(() => Warp.ToQuad(src, (3e9, 0), (3e9 + 10, 0), (3e9 + 10, 10), (3e9, 10)));
+        Assert.Throws<InvalidOperationException>(() => Warp.ToQuad(src, (-200000, 0), (-199990, 0), (-199990, 10), (-200000, 10)));
+        // 上限の内側なら、離れた所でも置ける
+        var far = Warp.ToQuad(src, (-99990, 99990), (-99980, 99990), (-99980, 100000), (-99990, 100000));
+        Assert.Equal(new PsdRect(-99990, 99990, -99980, 100000), far.Bounds);
         // DigitalNumber も同じ
         Assert.Throws<InvalidOperationException>(() => Warp.FramesToQuad(Solid(10, 20, 0, 0, 0), 10, (0, 0), (100, 100), (100, 0), (0, 100)));
         // 裏返し（反時計回りの並び）は変形できる
@@ -146,6 +152,34 @@ public sealed class MonitorPartsTests
         Assert.Equal(10, interval);
         Assert.Equal(30, strip.Height);
         Assert.DoesNotContain(Enumerable.Range(0, strip.Width * strip.Height), i => strip.Bgra[i * 4 + 2] > 0);
+    }
+
+    [Theory]
+    // 極端に小さい 1 コマの高さで、コマ数がとても多い（高さ 100000 を 1 コマ 1 で 100000 コマ、変形後 1 コマ 10）
+    [InlineData(10, 100000, 1, 10, 10)]
+    // 変形後の 1 コマが大きい（8 コマ、変形後 1 コマ 8192 画素四方）
+    [InlineData(8, 64, 8, 8192, 8192)]
+    // コマ数が多く、変形後の 1 コマもそこそこ大きい（1000 コマ × 高さ 40）
+    [InlineData(20, 20000, 20, 300, 40)]
+    public void DigitFramesTooTallAreRejectedBeforeWarping(int w, int h, int interval, double qw, double qh)
+    {
+        // 並べた絵の高さが 16384 画素を超えるなら、配列を作る前・コマを変形する前に断る（すぐ戻る）
+        var src = new PsdPixels(new PsdRect(0, 0, w, h), new byte[w * h * 4]);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var ex = Assert.Throws<InvalidOperationException>(() => Warp.FramesToQuad(src, interval, (0, 0), (qw, 0), (qw, qh), (0, qh)));
+        Assert.Contains("大きすぎます", ex.Message);
+        Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public void DigitFramesUpToStripLimitAreWarped()
+    {
+        // ちょうど上限（1 コマ 16 画素 × 1024 コマ = 16384）は並べられる
+        var src = Solid(1, 1024, 0, 0, 0);
+        var (strip, interval) = Warp.FramesToQuad(src, 1, (0, 0), (1, 0), (1, 16), (0, 16));
+        Assert.Equal(16, interval);
+        Assert.Equal(Warp.MaxStripHeight, strip.Height);
+        Assert.Equal(strip.Width * strip.Height * 4, strip.Bgra.Length);
     }
 
     // ---- パネルファイルの一部 ----
@@ -421,6 +455,40 @@ public sealed class MonitorPartsTests
         var bytes = Encoding.UTF8.GetBytes(svg);
         Assert.Same(bytes, SvgSafety.StripExternal(bytes, out int removed));
         Assert.Equal(0, removed);
+    }
+
+    [Theory]
+    // image-set()・image()・src() の中の、文書の中の参照・data: は残す（変えない）
+    [InlineData("""background-image: image-set("data:image/png;base64,AAAA" 1x)""")]
+    [InlineData("""background-image: image-set(url(#local) 1x)""")]
+    [InlineData("""background-image: image-set(url("data:image/png;base64,AAAA") 1x, "#b" 2x)""")]
+    [InlineData("""fill: image("#local")""")]
+    [InlineData("""background-image: image-set("data:image/png;base64,AAAA" type("image/png") 1x)""")]
+    [InlineData("""fill: src("#local")""")]
+    public void SvgStringUrlFunctionsKeepLocalReferences(string css)
+    {
+        var svg = $"""<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="1" height="1" style='{css}'/></svg>""";
+        var bytes = Encoding.UTF8.GetBytes(svg);
+        Assert.Same(bytes, SvgSafety.StripExternal(bytes, out int removed));
+        Assert.Equal(0, removed);
+    }
+
+    [Theory]
+    // 外を指す文字列だけを空にし、ほかの候補・type()・関数の形は残す
+    [InlineData("""image-set("http://example.com/a.png" 1x, "data:image/png;base64,AAAA" 2x)""", """image-set("" 1x, "data:image/png;base64,AAAA" 2x)""")]
+    [InlineData("""image-set('http://example.com/a.png' type("image/png") 1x, url(#b) 2x)""", """image-set('' type("image/png") 1x, url(#b) 2x)""")]
+    [InlineData("""image("http://example.com/a.png", "#local")""", """image("", "#local")""")]
+    [InlineData("""-webkit-image-set("http://example.com/a.png" 1x)""", """-webkit-image-set("" 1x)""")]
+    // 文字列の中のエスケープ・注釈の中の括弧でも見落とさない
+    [InlineData("""image-set("\68ttp://example.com/a.png" 1x)""", """image-set("" 1x)""")]
+    [InlineData("""image-set(/*)*/ "http://example.com/a.png" 1x)""", """image-set(/*)*/ "" 1x)""")]
+    public void SvgStringUrlFunctionsDropOnlyExternalStrings(string css, string expected)
+    {
+        var svg = $"""<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><style>rect {"{"} background-image: {css} {"}"}</style></svg>""";
+        var clean = Encoding.UTF8.GetString(SvgSafety.StripExternal(Encoding.UTF8.GetBytes(svg), out int removed));
+        Assert.Equal(1, removed);
+        Assert.DoesNotContain("example.com", clean);
+        Assert.Contains(expected, clean);
     }
 
     [Fact]

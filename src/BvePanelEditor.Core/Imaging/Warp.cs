@@ -14,15 +14,24 @@ public static class Warp
     /// <summary>1 画素の中で取る点の数（縦・横それぞれ）の上限。</summary>
     public const int MaxSamples = 8;
 
+    /// <summary>4 隅の座標の絶対値の上限（画素）。整数の座標・画像の大きさの計算があふれないように。</summary>
+    public const int MaxCoordinate = 100_000;
+
+    /// <summary>DigitalNumber の、変形したコマを縦に並べた画像の高さの上限（画素）。</summary>
+    public const int MaxStripHeight = 16384;
+
     /// <summary>
     /// 4 隅（左上・右上・右下・左下の順）で変形できるか確かめる。できなければ InvalidOperationException。
     /// 辺が交差した形・へこんだ形・一直線に近い形は、射影変換で絵が裏返ったり、限りなく伸びたりするので断る。
-    /// 時計回り・反時計回り（裏返し）のどちらの並びでもよい。囲む範囲が 1 辺 MaxSide を超えるものも断る。
+    /// 時計回り・反時計回り（裏返し）のどちらの並びでもよい。囲む範囲が 1 辺 MaxSide を超えるもの、
+    /// 座標の絶対値が MaxCoordinate を超えるものも断る。
     /// </summary>
     public static void CheckQuad((double X, double Y) tl, (double X, double Y) tr, (double X, double Y) br, (double X, double Y) bl)
     {
         (double X, double Y)[] p = [tl, tr, br, bl];
         if (p.Any(q => !double.IsFinite(q.X) || !double.IsFinite(q.Y))) throw new InvalidOperationException("4 隅の座標が数になっていません。");
+        if (p.Any(q => Math.Abs(q.X) > MaxCoordinate || Math.Abs(q.Y) > MaxCoordinate))
+            throw new InvalidOperationException($"4 隅の座標が大きすぎます（-{MaxCoordinate}〜{MaxCoordinate} 画素まで）。");
         double l = p.Min(q => q.X), t = p.Min(q => q.Y), r = p.Max(q => q.X), b = p.Max(q => q.Y);
         if (r - l > MaxSide || b - t > MaxSide) throw new InvalidOperationException($"4 隅で囲む範囲が大きすぎます（1 辺 {MaxSide} 画素まで）。");
         // 隣り合う辺の向きの変わり方（外積）が、4 つの角でみな同じ向きなら、へこみも交差もない
@@ -51,6 +60,7 @@ public static class Warp
     /// <summary>
     /// DigitalNumber のコマ割済の絵（1 コマの高さ interval で縦に並ぶ）を、1 コマずつ同じ 4 隅で写して縦に並べ直す。
     /// 返すのは並べ直した絵（Bounds の左上が置く位置）と、変形後の 1 コマの高さ。絵の高さが interval で割り切れなければ、余りの所は使わない。
+    /// 並べた絵の高さ（変形後の 1 コマの高さ × コマ数）が MaxStripHeight を超えるなら、コマを変形する前に InvalidOperationException。
     /// </summary>
     public static (PsdPixels Strip, int Interval) FramesToQuad(PsdPixels src, int interval, (double X, double Y) tl, (double X, double Y) tr, (double X, double Y) br, (double X, double Y) bl)
     {
@@ -58,30 +68,46 @@ public static class Warp
         CheckQuad(tl, tr, br, bl);
         int frames = src.Height / interval;
         var h = Homography.FromRectToQuad(src.Width, interval, tl, tr, br, bl);
-        PsdPixels? first = null;
-        byte[]? strip = null;
+        // どのコマも同じ変換なので、変形後の 1 コマの大きさは先に決まる。並べた絵の大きさを、配列を作る前に確かめる
+        var (x0, y0, fw, fh) = OutputRect(h, src.Width, interval);
+        long totalHeight = (long)fh * frames;
+        if (totalHeight > MaxStripHeight)
+            throw new InvalidOperationException($"変形したコマ（高さ {fh} 画素 × {frames} コマ）を縦に並べると高さが {totalHeight} 画素になり、大きすぎます（{MaxStripHeight} 画素まで）。1 コマの高さ・コマ数・4 隅の大きさを見直してください。");
+        long frameBytes = (long)fw * fh * 4;
+        var strip = new byte[checked(frameBytes * frames)];
         for (int f = 0; f < frames; f++)
         {
             var w = Apply(Crop(src, 0, f * interval, src.Width, interval), h);
-            if (first == null)
-            {
-                first = w;
-                strip = new byte[w.Bgra.Length * frames];
-            }
-            Buffer.BlockCopy(w.Bgra, 0, strip!, f * w.Bgra.Length, w.Bgra.Length);
+            Buffer.BlockCopy(w.Bgra, 0, strip, checked((int)(f * frameBytes)), w.Bgra.Length);
         }
-        var b = first!.Bounds;
-        return (new PsdPixels(new PsdRect(b.Left, b.Top, b.Right, b.Top + b.Height * frames), strip!), b.Height);
+        return (new PsdPixels(new PsdRect(x0, y0, x0 + fw, y0 + (int)totalHeight), strip), fh);
     }
 
-    /// <summary>絵 src（左上を (0, 0) として）を h で写す。maxSamples は 1 画素の中で取る点の数の上限（縦・横それぞれ）。</summary>
-    public static PsdPixels Apply(PsdPixels src, Homography h, int maxSamples = MaxSamples)
+    /// <summary>
+    /// 絵（幅 w・高さ hgt）を h で写した先を囲む整数の四角（左上と大きさ）。座標が MaxCoordinate を大きく超える、
+    /// 大きさが MaxSide を超えるなど、画像にできない大きさなら InvalidOperationException。
+    /// </summary>
+    private static (int X0, int Y0, int W, int H) OutputRect(Homography h, int w, int hgt)
     {
-        var (l, t, r, btm) = h.MapBounds(0, 0, src.Width, src.Height);
+        var (l, t, r, btm) = h.MapBounds(0, 0, w, hgt);
+        const double Limit = MaxCoordinate + MaxSide;
+        if (!double.IsFinite(l) || !double.IsFinite(t) || !double.IsFinite(r) || !double.IsFinite(btm)
+            || Math.Abs(l) > Limit || Math.Abs(t) > Limit || Math.Abs(r) > Limit || Math.Abs(btm) > Limit
+            || r - l > MaxSide + 2 || btm - t > MaxSide + 2)
+            throw new InvalidOperationException("変形した先が大きすぎて画像にできません。");
         int x0 = (int)Math.Floor(l + 1e-6), y0 = (int)Math.Floor(t + 1e-6);
         int x1 = (int)Math.Ceiling(r - 1e-6), y1 = (int)Math.Ceiling(btm - 1e-6);
-        int w = Math.Max(0, x1 - x0), hgt = Math.Max(0, y1 - y0);
-        var dst = new byte[w * hgt * 4];
+        return (x0, y0, Math.Max(0, x1 - x0), Math.Max(0, y1 - y0));
+    }
+
+    /// <summary>
+    /// 絵 src（左上を (0, 0) として）を h で写す。maxSamples は 1 画素の中で取る点の数の上限（縦・横それぞれ）。
+    /// 写した先が画像にできない大きさなら InvalidOperationException。
+    /// </summary>
+    public static PsdPixels Apply(PsdPixels src, Homography h, int maxSamples = MaxSamples)
+    {
+        var (x0, y0, w, hgt) = OutputRect(h, src.Width, src.Height);
+        var dst = new byte[checked((long)w * hgt * 4)];
         if (w == 0 || hgt == 0 || src.Width == 0 || src.Height == 0) return new PsdPixels(new PsdRect(x0, y0, x0 + w, y0 + hgt), dst);
 
         var inv = h.Inverse();
