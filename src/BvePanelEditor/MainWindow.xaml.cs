@@ -33,6 +33,8 @@ public sealed class ElementRow
     public Visibility BveExVisibility { get; init; } = Visibility.Collapsed;
     /// <summary>RealAnalogGauge が動かす針（「RAG」の印）。</summary>
     public Visibility RagVisibility { get; init; } = Visibility.Collapsed;
+    /// <summary>4 隅で変形して貼りこんだオブジェクト（「変形」の印）。</summary>
+    public Visibility WarpVisibility { get; init; } = Visibility.Collapsed;
     public string RagTip { get; init; } = "";
     /// <summary>パネルくんの画面で隠している（グループの見出しなら、中のオブジェクトが全部）。</summary>
     public bool Hidden { get; init; }
@@ -155,6 +157,8 @@ public partial class MainWindow : Window
         _props.ResolutionFromMainRequested += OnResolutionFromMain;
         _props.ThisToMainRequested += () => ThisToMainPanel();
         _props.IntervalRequested += OnIntervalRequested;
+        _props.WarpImageRequested += OnWarpChangeImage;
+        _props.WarpCornersRequested += OnWarpEditCorners;
         Canvas.ActivePointChanged += p => _props.SetPanelPoints(p == Rendering.PanelCanvas.PanelPoint.Both);
         _props.AlignPointsRequested += originToCenter =>
         {
@@ -223,6 +227,14 @@ public partial class MainWindow : Window
             return;
         }
         if (ext == ".psd") { OpenPsd(path); return; }
+        if (IsMonitaKunFile(path)) { NoticeMonitaKunFile(path); return; }
+        if (SvgImage.IsSvg(path))
+        {
+            // SVG はパネルを開いているときだけ、画像として読み込む（倍率を聞いて PNG にする）
+            if (_doc == null) { Warn("SVG は、パネルを開いてから読み込んでください（オブジェクトを追加 → 画像を読み込む、またはパネルの上へドロップ）。"); return; }
+            ImportImagesToPanel([path], null);
+            return;
+        }
         if (ext == ".xcf") { StartPsdImport(path); return; }
         if (!ConfirmDiscard()) return;
         try
@@ -664,6 +676,7 @@ public partial class MainWindow : Window
                 ProblemVisibility = problemSections.Contains(i) ? Visibility.Visible : Visibility.Collapsed,
                 BveExVisibility = bveExSections.Contains(i) ? Visibility.Visible : Visibility.Collapsed,
                 RagVisibility = RagOf(s) != null ? Visibility.Visible : Visibility.Collapsed,
+                WarpVisibility = s.Warp != null ? Visibility.Visible : Visibility.Collapsed,
                 RagTip = RagOf(s) is { } rg ? RagRowTip(rg) : "",
                 Hidden = s.ViewHidden,
                 VariationMode = _viewVariation != null,
@@ -988,6 +1001,9 @@ public partial class MainWindow : Window
             ToolTip = "画像・PSD を選ぶと、ドロップしたときと同じく、常点灯画像・DigitalNumber（コマ割済）・DigitalNumber（単コマ）のどれとして読み込むかを聞きます" };
         images.Click += OnAddImages;
         menu.Items.Add(images);
+        var warp = new MenuItem { Header = "画像を 4 隅で変形して貼りこむ…" };
+        warp.Click += OnWarpImport;
+        menu.Items.Add(warp);
         menu.Items.Add(new Separator());
         foreach (var (kind, label) in new[] { (SectionKind.PilotLamp, "表示灯"), (SectionKind.Needle, "指針"), (SectionKind.DigitalNumber, "デジタル数字"), (SectionKind.DigitalGauge, "円形ゲージ") })
         {
@@ -1607,7 +1623,14 @@ public partial class MainWindow : Window
         MessageText.ToolTip = string.IsNullOrEmpty(text) ? null : text; // 長い案内はカーソルを載せると全文が読める
     }
 
-    private void Warn(string text) => MessageBox.Show(this, text, AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+    /// <summary>確認用: 知らせる画面の代わりに受け取る（null なら画面で知らせる）。</summary>
+    public static Action<string>? WarnTestHook;
+
+    private void Warn(string text)
+    {
+        if (WarnTestHook != null) { WarnTestHook(text); return; }
+        MessageBox.Show(this, text, AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
 }
 
 /// <summary>行などの上に入力欄を重ねて出す（ウィンドウの中に描くので、日本語入力の変換の枠が入力欄の所に出る）。</summary>

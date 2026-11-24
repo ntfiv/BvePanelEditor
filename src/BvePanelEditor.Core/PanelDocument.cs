@@ -187,6 +187,9 @@ public sealed class PanelSection
     /// <summary>切り抜く形（丸・多角形。画像の左上から）。空なら四角のまま。ファイルでは「;@切り抜き形: 丸 32,32 r=28」。</summary>
     public List<Crop.CropShape> CropShapes { get; } = [];
 
+    /// <summary>4 隅で変形して貼りこんだときの変形の方法（なければ null）。ファイルでは見出しのすぐ下の「;@変形: 元=… | 隅=…」。</summary>
+    public WarpInfo? Warp { get; set; }
+
     public string Name
     {
         get
@@ -361,6 +364,7 @@ public sealed class PanelSection
         s.After.AddRange(After.Select(l => l.Clone()));
         s.PsdLayers.AddRange(PsdLayers);
         s.CropShapes.AddRange(CropShapes.Select(c => c.Clone()));
+        s.Warp = Warp?.Clone();
         s.Leading.AddRange(Leading.Select(l => l.Clone()));
         s.Lines.AddRange(Lines.Select(l => l.Clone()));
         return s;
@@ -578,6 +582,12 @@ public sealed partial class PanelDocument
             {
                 if (doc.Sections.Count > 0 && ReferenceEquals(current, doc.Sections[^1].Lines)) doc.Sections[^1].CropShapes.Add(cropShape);
                 else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どのオブジェクトのものかわからない「@切り抜き形」の行があります（無視します）"));
+                continue;
+            }
+            if (TryWarpLine(raw, out var warp))
+            {
+                if (doc.Sections.Count > 0 && ReferenceEquals(current, doc.Sections[^1].Lines)) doc.Sections[^1].Warp = warp;
+                else doc.GroupWarnings.Add(new(-1, $"{i + 1} 行目: どのオブジェクトのものかわからない「@変形」の行があります（無視します）"));
                 continue;
             }
             if (TryCropLine(raw, out var cropName))
@@ -913,6 +923,7 @@ public sealed partial class PanelDocument
             if (s.PsdLayers.Count > 0) yield return (PsdLayersLine(s.PsdLayers, s.PsdSource), i, LineRole.Body);
             if (s.CropSet != null) yield return (CropLine(s.CropSet), i, LineRole.Body);
             foreach (var c in s.CropShapes) yield return (CropShapeLine(c), i, LineRole.Body);
+            if (s.Warp != null) yield return (WarpLine(s.Warp), i, LineRole.Body);
 
             int tail = s.Lines.Count;
             if (ends) while (tail > 0 && s.Lines[tail - 1].Kind == PanelLineKind.Blank) tail--;

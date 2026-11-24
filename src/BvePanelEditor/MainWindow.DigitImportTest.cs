@@ -71,7 +71,7 @@ public partial class MainWindow
             ChoiceDialog.TestAnswer = (msg, items) => { first ??= string.Join(" | ", items); return -1; };
             HandleDrop([framed], new Point(100, 100));
             log.Add("     選択肢: " + first);
-            Check("選択肢は「常点灯画像」「DigitalNumber（コマ割済）」「DigitalNumber（単コマ）」の 3 つ", first != null && first.Split(" | ").Length == 3
+            Check("選択肢は「常点灯画像」「DigitalNumber（コマ割済）」「DigitalNumber（単コマ）」と 4 隅で変形する 2 つ", first != null && first.Split(" | ").Length == 5
                 && first.Contains("常点灯画像として読み込む") && first.Contains("（コマ割済）") && first.Contains("（単コマ）"));
 
             // ---- コマ割済: 大きさを直す → テスト画面 ----

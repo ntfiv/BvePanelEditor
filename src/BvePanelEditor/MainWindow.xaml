@@ -35,6 +35,7 @@
                 <MenuItem x:Name="CropUpdateMenu" Header="切り抜き元から更新" Click="OnCropUpdate" IsEnabled="False"
                           ToolTip="画像から作った表示灯を、今の位置と大きさで切り抜き元から切り出し直します" />
                 <Separator />
+                <MenuItem Header="パネルファイルの一部を取り込む…" Click="OnImportFragment" />
                 <MenuItem Header="画像を読み込み直す" Click="OnReloadImages" InputGestureText="F5" />
                 <Separator />
                 <MenuItem Header="RealAnalogGauge の設定ファイルを選ぶ…" Click="OnPickRag"
@@ -50,6 +51,7 @@
                 <MenuItem Header="オブジェクトを追加">
                     <MenuItem Header="画像を読み込む（常点灯画像・DigitalNumber）…" Click="OnAddImages"
                               ToolTip="画像・PSD を選ぶと、ドロップしたときと同じく、常点灯画像・DigitalNumber（コマ割済）・DigitalNumber（単コマ）のどれとして読み込むかを聞きます" />
+                    <MenuItem Header="画像を 4 隅で変形して貼りこむ…" Click="OnWarpImport" />
                     <Separator />
                     <MenuItem Header="表示灯 [PilotLamp]" Tag="PilotLamp" Click="OnAddElement" />
                     <MenuItem Header="指針 [Needle]" Tag="Needle" Click="OnAddElement" />
@@ -287,6 +289,9 @@
                                     </Border>
                                     <TextBlock Text="BVE 非表示" Foreground="DimGray" FontSize="10" Visibility="{Binding DisabledVisibility}" Margin="0,0,4,0" VerticalAlignment="Center"
                                                ToolTip="コメントアウトして無効にしたオブジェクトです（BVE でも表示されません）。右クリック→「BVE で表示する」で戻せます" />
+                                    <Border Background="#7A4FB0" CornerRadius="2" Padding="2,0" Margin="0,0,4,0" VerticalAlignment="Center" Visibility="{Binding WarpVisibility}">
+                                        <TextBlock Text="変形" Foreground="White" FontSize="9" FontWeight="Bold" />
+                                    </Border>
                                     <Border Background="#2E7D4F" CornerRadius="2" Padding="2,0" Margin="0,0,4,0" VerticalAlignment="Center" Visibility="{Binding RagVisibility}"
                                             ToolTip="{Binding RagTip}">
                                         <TextBlock Text="RAG" Foreground="White" FontSize="9" FontWeight="Bold" />

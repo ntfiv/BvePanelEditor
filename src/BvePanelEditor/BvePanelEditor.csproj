@@ -10,8 +10,8 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>BvePanelEditor</RootNamespace>
     <AssemblyName>BvePanelEditor</AssemblyName>
-    <!-- 画面に出す版は Views/AboutWindow.cs の DisplayVersion（0.4.1α） -->
-    <Version>0.4.1-alpha</Version>
+    <!-- 画面に出す版は Views/AboutWindow.cs の DisplayVersion（0.4.2α） -->
+    <Version>0.4.2-alpha</Version>
     <Product>パネルくん</Product>
     <AssemblyTitle>パネルくん</AssemblyTitle>
     <Description>BVE Trainsim 5/6 運転台パネル編集ツール</Description>
@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
+    <PackageReference Include="SharpVectors.Wpf" Version="1.8.6" />
   </ItemGroup>
 
   <!-- 確認用の起動オプション（selftest など）の中身は、デバッグ版だけに入れる（リリース版の App は使わない） -->

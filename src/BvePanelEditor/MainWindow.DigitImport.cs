@@ -41,12 +41,12 @@ public partial class MainWindow
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             AddToRecent = false, Multiselect = true, Title = "読み込む画像・PSD・XCF",
-            Filter = "画像・PSD・XCF|" + string.Join(";", ImageExtensions.Append(".psd").Append(".xcf").Select(x => "*" + x)) + "|すべて|*.*",
+            Filter = "画像・SVG・PSD・XCF|" + string.Join(";", ImageExtensions.Append(".svg").Append(".psd").Append(".xcf").Select(x => "*" + x)) + "|すべて|*.*",
         };
         if (PanelDir != null) dlg.InitialDirectory = PanelDir;
         if (dlg.ShowDialog(this) != true) return;
         var files = dlg.FileNames.Where(f => IsImageFile(f) || IsLayerFile(f)).ToList();
-        if (files.Count == 0) { Message("画像・PSD・XCF を選んでください"); return; }
+        if (files.Count == 0) { Message("画像・SVG・PSD・XCF を選んでください"); return; }
         ImportImagesToPanel(files, null);
     }
 
@@ -58,7 +58,20 @@ public partial class MainWindow
             "常点灯画像として読み込む（表示灯・Subject = true）",
             "DigitalNumber として読み込む（コマ割済）… BVE 用にコマを縦に並べてある画像",
             "DigitalNumber として読み込む（単コマ）… 1 コマずつの画像から、コマ割を作る",
+            "常点灯画像として 4 隅で変形して貼りこむ",
+            "DigitalNumber（コマ割済）として 4 隅で変形して貼りこむ … 1 コマずつ同じ形に変形します",
         ]);
+        if (pick < 0) return;
+        if (pick >= 3)
+        {
+            // 4 隅の変形は 1 枚ずつ（SVG の PNG にするのも WarpImport の中で）
+            for (int k = 0; k < files.Count; k++)
+                if (!WarpImport(files[k], pick - 3, OffsetAt(at, k))) break;
+            return;
+        }
+        // SVG は倍率を聞いて PNG にしてから読み込む（BVE は SVG を読めない）
+        if (ConvertSvgs(files) is not { } converted) return;
+        files = converted;
         switch (pick)
         {
             case 0: ImportAsLamps(files, at); break;

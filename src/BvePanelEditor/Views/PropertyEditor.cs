@@ -120,6 +120,9 @@ public sealed class PropertyEditor
     public bool ThisIsBlank { get; set; }
     /// <summary>デジタル数字の「1 コマの高さを画像から求める」。</summary>
     public event Action? IntervalRequested;
+    /// <summary>4 隅で変形して貼りこんだオブジェクトの「画像を変える…」「4 隅を直す…」。</summary>
+    public event Action? WarpImageRequested;
+    public event Action? WarpCornersRequested;
     /// <summary>中心と消失点の横の位置をそろえる（true: 消失点を中心に合わせる）。</summary>
     public event Action<bool>? AlignPointsRequested;
 
@@ -226,6 +229,27 @@ public sealed class PropertyEditor
             };
             iv.Click += (_, _) => IntervalRequested?.Invoke();
             _host.Children.Add(iv);
+        }
+        if (s.Warp is { } warp)
+        {
+            // 4 隅で変形して貼りこんだもの: 元の画像と、変形し直す操作
+            _host.Children.Add(new TextBlock { Text = "変形", FontWeight = FontWeights.SemiBold, Margin = new Thickness(4, 10, 4, 2) });
+            var srcRow = new DockPanel { Margin = new Thickness(4, 2, 4, 0) };
+            srcRow.Children.Add(new TextBlock { Text = "元の画像", Width = 110, VerticalAlignment = VerticalAlignment.Center });
+            srcRow.Children.Add(new TextBlock
+            {
+                Text = System.IO.Path.GetFileName(warp.Source) + (warp.Interval > 0 ? $"（1 コマ {warp.Interval}）" : ""),
+                ToolTip = warp.Source + (warp.Night != null ? "\n夜: " + warp.Night : ""), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            });
+            _host.Children.Add(srcRow);
+            var buttons = new WrapPanel { Margin = new Thickness(4, 6, 4, 0) };
+            var change = new Button { Content = "画像を変える…", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(0, 0, 6, 0) };
+            change.Click += (_, _) => WarpImageRequested?.Invoke();
+            var corners = new Button { Content = "4 隅を直す…", Padding = new Thickness(8, 2, 8, 2) };
+            corners.Click += (_, _) => WarpCornersRequested?.Invoke();
+            buttons.Children.Add(change);
+            buttons.Children.Add(corners);
+            _host.Children.Add(buttons);
         }
         if (s.Kind == SectionKind.This)
         {

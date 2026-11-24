@@ -25,12 +25,12 @@
 name: build-and-test
 
 on:
-  # main 向け PR の作成・更新のたびに実行
+  # main 向け・release/ 向け (0.4 系など、公開版から続けるブランチ) の PR の作成・更新のたびに実行
   pull_request:
-    branches: [main]
-  # main へマージ (push) されたあとの状態でも 1 回確認する
+    branches: [main, 'release/**']
+  # main・release/ へマージ (push) されたあとの状態でも 1 回確認する
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   # Actions 画面から手動でも実行できるようにする
   workflow_dispatch:
 
