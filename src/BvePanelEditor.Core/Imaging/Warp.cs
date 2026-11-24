@@ -8,20 +8,54 @@ namespace BvePanelEditor.Core.Imaging;
 /// </summary>
 public static class Warp
 {
+    /// <summary>4 隅で囲む範囲の 1 辺の上限（画素）。</summary>
+    public const int MaxSide = 8192;
+
+    /// <summary>1 画素の中で取る点の数（縦・横それぞれ）の上限。</summary>
+    public const int MaxSamples = 8;
+
+    /// <summary>
+    /// 4 隅（左上・右上・右下・左下の順）で変形できるか確かめる。できなければ InvalidOperationException。
+    /// 辺が交差した形・へこんだ形・一直線に近い形は、射影変換で絵が裏返ったり、限りなく伸びたりするので断る。
+    /// 時計回り・反時計回り（裏返し）のどちらの並びでもよい。囲む範囲が 1 辺 MaxSide を超えるものも断る。
+    /// </summary>
+    public static void CheckQuad((double X, double Y) tl, (double X, double Y) tr, (double X, double Y) br, (double X, double Y) bl)
+    {
+        (double X, double Y)[] p = [tl, tr, br, bl];
+        if (p.Any(q => !double.IsFinite(q.X) || !double.IsFinite(q.Y))) throw new InvalidOperationException("4 隅の座標が数になっていません。");
+        double l = p.Min(q => q.X), t = p.Min(q => q.Y), r = p.Max(q => q.X), b = p.Max(q => q.Y);
+        if (r - l > MaxSide || b - t > MaxSide) throw new InvalidOperationException($"4 隅で囲む範囲が大きすぎます（1 辺 {MaxSide} 画素まで）。");
+        // 隣り合う辺の向きの変わり方（外積）が、4 つの角でみな同じ向きなら、へこみも交差もない
+        int sign = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            var a = p[i]; var c = p[(i + 1) % 4]; var d = p[(i + 2) % 4];
+            double z = (c.X - a.X) * (d.Y - c.Y) - (c.Y - a.Y) * (d.X - c.X);
+            int s = Math.Abs(z) < 1e-9 ? 0 : Math.Sign(z);
+            if (s == 0 || (sign != 0 && s != sign))
+                throw new InvalidOperationException("4 隅を結んだ辺が交差しているか、へこんだ形か、一直線に並んでいて変形できません。");
+            sign = s;
+        }
+    }
+
     /// <summary>
     /// 絵 src（左上を (0, 0) として）を、4 隅（左上・右上・右下・左下、パネルの座標）に写す。
-    /// 返す絵の Bounds は、写した先を囲む整数の四角（パネルの座標）。
+    /// 返す絵の Bounds は、写した先を囲む整数の四角（パネルの座標）。maxSamples は 1 画素の中で取る点の数の上限（縦・横それぞれ。下書きは 1）。
     /// </summary>
-    public static PsdPixels ToQuad(PsdPixels src, (double X, double Y) tl, (double X, double Y) tr, (double X, double Y) br, (double X, double Y) bl) =>
-        Apply(src, Homography.FromRectToQuad(src.Width, src.Height, tl, tr, br, bl));
+    public static PsdPixels ToQuad(PsdPixels src, (double X, double Y) tl, (double X, double Y) tr, (double X, double Y) br, (double X, double Y) bl, int maxSamples = MaxSamples)
+    {
+        CheckQuad(tl, tr, br, bl);
+        return Apply(src, Homography.FromRectToQuad(src.Width, src.Height, tl, tr, br, bl), maxSamples);
+    }
 
     /// <summary>
     /// DigitalNumber のコマ割済の絵（1 コマの高さ interval で縦に並ぶ）を、1 コマずつ同じ 4 隅で写して縦に並べ直す。
-    /// 返すのは並べ直した絵（Bounds の左上が置く位置）と、変形後の 1 コマの高さ。
+    /// 返すのは並べ直した絵（Bounds の左上が置く位置）と、変形後の 1 コマの高さ。絵の高さが interval で割り切れなければ、余りの所は使わない。
     /// </summary>
     public static (PsdPixels Strip, int Interval) FramesToQuad(PsdPixels src, int interval, (double X, double Y) tl, (double X, double Y) tr, (double X, double Y) br, (double X, double Y) bl)
     {
         if (interval <= 0 || interval > src.Height) throw new ArgumentOutOfRangeException(nameof(interval));
+        CheckQuad(tl, tr, br, bl);
         int frames = src.Height / interval;
         var h = Homography.FromRectToQuad(src.Width, interval, tl, tr, br, bl);
         PsdPixels? first = null;
@@ -40,8 +74,8 @@ public static class Warp
         return (new PsdPixels(new PsdRect(b.Left, b.Top, b.Right, b.Top + b.Height * frames), strip!), b.Height);
     }
 
-    /// <summary>絵 src（左上を (0, 0) として）を h で写す。</summary>
-    public static PsdPixels Apply(PsdPixels src, Homography h)
+    /// <summary>絵 src（左上を (0, 0) として）を h で写す。maxSamples は 1 画素の中で取る点の数の上限（縦・横それぞれ）。</summary>
+    public static PsdPixels Apply(PsdPixels src, Homography h, int maxSamples = MaxSamples)
     {
         var (l, t, r, btm) = h.MapBounds(0, 0, src.Width, src.Height);
         int x0 = (int)Math.Floor(l + 1e-6), y0 = (int)Math.Floor(t + 1e-6);
@@ -51,7 +85,7 @@ public static class Warp
         if (w == 0 || hgt == 0 || src.Width == 0 || src.Height == 0) return new PsdPixels(new PsdRect(x0, y0, x0 + w, y0 + hgt), dst);
 
         var inv = h.Inverse();
-        int s = Math.Clamp((int)Math.Ceiling(h.ShrinkFactor(src.Width, src.Height) - 1e-6), 1, 8);
+        int s = Math.Clamp((int)Math.Ceiling(h.ShrinkFactor(src.Width, src.Height) - 1e-6), 1, Math.Clamp(maxSamples, 1, MaxSamples));
         float invCount = 1f / (s * s);
         var p = src.Bgra;
         int sw = src.Width, sh = src.Height;

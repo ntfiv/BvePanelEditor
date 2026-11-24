@@ -34,7 +34,8 @@ public static class PanelFragment
     /// <summary>
     /// fragment のオブジェクトを、master に足せる形にする（master は変えない）。
     /// 全体を groupName（重なれば「名前 2」など）のグループに入れ、中のグループはその中の入れ子にする（名前は master と重ならないよう直す）。
-    /// パネルくんの付属情報のうち、元のファイルの中でしか意味がないもの（PSD・切り抜き元とのつながり、メインパネルの印）は外す。
+    /// パネルくんの付属情報のうち、元のファイルの中でしか意味がないもの（PSD・切り抜き元とのつながり、メインパネルの印、
+    /// バリエーションの印）は外す。バリエーションの一覧は取り込まないので、元のファイルのバリエーション名は master では意味が違うか、ないため。
     /// </summary>
     public static Prepared Prepare(PanelDocument master, PanelDocument fragment, string groupName)
     {
@@ -50,7 +51,7 @@ public static class PanelFragment
             rename[name] = n;
             used.Add(n);
         }
-        bool linkDropped = false, mainDropped = false;
+        bool linkDropped = false, mainDropped = false, variationDropped = false;
         foreach (var s in fragment.Sections)
         {
             var c = s.Clone();
@@ -61,11 +62,13 @@ public static class PanelFragment
             c.CropSet = null;
             c.CropShapes.Clear();
             if (c.IsMainPanel) { c.IsMainPanel = false; mainDropped = true; }
+            if (c.VariationCond != null) { c.VariationCond = null; variationDropped = true; }
             c.ViewHidden = false;
             r.Sections.Add(c);
         }
         if (mainDropped) r.Notes.Add("メインパネルの印は外しました（取り込んだパネルのメインパネルは、ふつうの表示灯になります）");
         if (linkDropped) r.Notes.Add("PSD・切り抜き元とのつながりは外しました");
+        if (variationDropped) r.Notes.Add("取り込んだファイルのバリエーションの印は外しました");
         return r;
     }
 

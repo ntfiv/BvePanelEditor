@@ -166,11 +166,21 @@ public partial class MainWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Warn($"画像をパネルのフォルダにコピーできませんでした:\n{ex.Message}");
+            // 取り込みはやめるので、この取り込みで新しくコピーした画像は消す（コピーなので元の画像は残っている。前からあった画像はそのまま）
+            foreach (var f in copied)
+            {
+                var full = Path.GetFullPath(f);
+                try { File.Delete(full); }
+                catch (Exception e2) when (e2 is IOException or UnauthorizedAccessException) { continue; }
+                _pendingFiles.RemoveAll(p => p.Equals(full, StringComparison.OrdinalIgnoreCase));
+            }
+            Warn($"画像をパネルのフォルダにコピーできませんでした（取り込みはやめました）:\n{ex.Message}");
             return;
         }
 
         int first = _doc.Sections.Count;
+        // ほかの追加と同じく、バリエーションを表示しているときはそのバリエーションだけに入れる
+        foreach (var s in prepared.Sections) JoinViewVariation(s);
         _doc.Sections.AddRange(prepared.Sections);
         var added = Enumerable.Range(first, prepared.Sections.Count).ToList();
         CommitModel();
@@ -181,7 +191,7 @@ public partial class MainWindow
         var notes = new List<string>(prepared.Notes);
         if (copied.Count > 0) notes.Add($"画像 {copied.Count} 枚をパネルのフォルダにコピーしました");
         if (missing.Count > 0) notes.Add($"見つからない画像があります（{string.Join("、", missing.Distinct().Take(3))}{(missing.Distinct().Count() > 3 ? " ほか" : "")}）");
-        Message($"「{Path.GetFileName(file)}」のオブジェクト {added.Count} 個を、グループ「{prepared.Group}」として取り込みました。"
+        Message($"「{Path.GetFileName(file)}」のオブジェクト {added.Count} 個を、グループ「{prepared.Group}」として取り込みました{ViewVariationNote}。"
             + (notes.Count > 0 ? string.Join("。", notes) + "。" : ""));
     }
 }

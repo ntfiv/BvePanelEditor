@@ -1623,7 +1623,14 @@ public partial class MainWindow : Window
         MessageText.ToolTip = string.IsNullOrEmpty(text) ? null : text; // 長い案内はカーソルを載せると全文が読める
     }
 
-    private void Warn(string text) => MessageBox.Show(this, text, AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+    /// <summary>確認用: 知らせる画面の代わりに受け取る（null なら画面で知らせる）。</summary>
+    public static Action<string>? WarnTestHook;
+
+    private void Warn(string text)
+    {
+        if (WarnTestHook != null) { WarnTestHook(text); return; }
+        MessageBox.Show(this, text, AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
 }
 
 /// <summary>行などの上に入力欄を重ねて出す（ウィンドウの中に描くので、日本語入力の変換の枠が入力欄の所に出る）。</summary>

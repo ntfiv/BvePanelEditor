@@ -15,6 +15,8 @@ namespace BvePanelEditor.Views;
 /// 画像を 4 隅で変形して貼りこむ位置を決める（モニタくんの「変形とパネル上の位置」と同じ操作）。
 /// パネルの絵を敷き、変形した画像を重ねて見せる。4 隅をドラッグ（クリックした隅は矢印キーで 1 画素、Shift で 10 画素）、
 /// 形の中をドラッグすると 4 隅をまとめて動かす。
+/// 重ねて見せる絵は、ドラッグの間は粗く（1 画素に 1 点、縮めて表示しているときはその倍率で）作り、手を離したら細かく作り直す。
+/// 作り直しは画面の操作がひと区切りついてからまとめて 1 回にする（マウスの動きのたびに全体を作り直さない）。
 /// </summary>
 public sealed class WarpPlaceWindow : Window
 {
@@ -22,9 +24,12 @@ public sealed class WarpPlaceWindow : Window
     private readonly TextBox[] _corner = new TextBox[8];
     private readonly Slider _opacity = new() { Minimum = 0.1, Maximum = 1, Value = 0.85, Width = 140, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly PsdPixels _source;
+    /// <summary>重ねて見せる絵の元（DigitalNumber なら最初のコマ）。</summary>
+    private readonly PsdPixels _previewSource;
     private readonly int _interval;
     private readonly Point[] _initial;
     private bool _sync;
+    private bool _warpQueued, _queuedDraft;
 
     /// <summary>決めた 4 隅（左上・右上・右下・左下、パネルの座標）。</summary>
     public Point[] Corners { get; } = new Point[4];
@@ -32,6 +37,14 @@ public sealed class WarpPlaceWindow : Window
     internal BitmapSource? PanelBitmap { get; }
     internal BitmapSource? Warped { get; private set; }
     internal Point WarpedAt { get; private set; }
+    /// <summary>Warped を作った倍率（下書きで縮めて作ったときは 1 未満。表示は 1/倍率 に広げる）。</summary>
+    internal double WarpedScale { get; private set; } = 1;
+    /// <summary>Warped が下書き（粗く作ったもの）か。</summary>
+    internal bool WarpedIsDraft { get; private set; }
+    /// <summary>確認用: 重ねる絵を作った回数。</summary>
+    internal int WarpBuildCount { get; private set; }
+    /// <summary>確認用: 表示の倍率。</summary>
+    internal double ViewZoom => _view.Zoom;
     internal double PreviewOpacity => _opacity.Value;
 
     /// <param name="panel">敷くパネルの絵（パネルの座標 (0, 0) が左上）。</param>
@@ -50,6 +63,7 @@ public sealed class WarpPlaceWindow : Window
         PanelBitmap = panel;
         _source = source;
         _interval = interval;
+        _previewSource = interval > 0 ? Warp.Crop(source, 0, 0, source.Width, interval) : source;
 
         // 最初は変形なし（元の大きさ）。パネルより大きければ、パネルの半分に収まるよう縮める
         double w = source.Width, h = interval > 0 ? interval : source.Height;
@@ -114,7 +128,7 @@ public sealed class WarpPlaceWindow : Window
         Content = dock;
 
         SyncFields();
-        Loaded += (_, _) => { UpdateWarp(); _view.FitQuad(); _view.Focus(); };
+        Loaded += (_, _) => { UpdateWarp(false); _view.FitQuad(); _view.Focus(); };
     }
 
     private static TextBlock Header(string s) => new() { Text = s, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) };
@@ -144,11 +158,28 @@ public sealed class WarpPlaceWindow : Window
         Edit(() => Corners[idx / 2] = np);
     }
 
-    internal void Edit(Action a)
+    /// <summary>4 隅を変える。draft はドラッグの途中（重ねる絵を粗く作る）。</summary>
+    internal void Edit(Action a, bool draft = false)
     {
         a();
         SyncFields();
-        UpdateWarp();
+        _view.InvalidateVisual(); // 4 隅の線と丸はすぐ動かす
+        RequestWarp(draft);
+    }
+
+    /// <summary>重ねる絵を作り直す（画面の操作を先に済ませてから、まとめて 1 回）。</summary>
+    internal void RequestWarp(bool draft)
+    {
+        _queuedDraft = draft;
+        if (_warpQueued) return;
+        _warpQueued = true;
+        Dispatcher.BeginInvoke(() => { _warpQueued = false; UpdateWarp(_queuedDraft); }, System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    /// <summary>ドラッグを終えたとき: 重ねる絵が下書き（または下書きを作る順番待ち）なら、細かく作り直す。</summary>
+    internal void FinishDraft()
+    {
+        if ((_warpQueued && _queuedDraft) || WarpedIsDraft) RequestWarp(false);
     }
 
     private void SyncFields()
@@ -167,6 +198,7 @@ public sealed class WarpPlaceWindow : Window
     {
         try
         {
+            Warp.CheckQuad((Corners[0].X, Corners[0].Y), (Corners[1].X, Corners[1].Y), (Corners[2].X, Corners[2].Y), (Corners[3].X, Corners[3].Y));
             var h = Homography.FromRectToQuad(_source.Width, _interval > 0 ? _interval : _source.Height,
                 (Corners[0].X, Corners[0].Y), (Corners[1].X, Corners[1].Y), (Corners[2].X, Corners[2].Y), (Corners[3].X, Corners[3].Y));
             h.Inverse();
@@ -179,21 +211,42 @@ public sealed class WarpPlaceWindow : Window
         }
     }
 
-    internal void UpdateWarp()
+    /// <summary>
+    /// 重ねる絵を作る。draft（ドラッグの途中）は 1 画素に 1 点だけ取り、縮めて表示しているときはその倍率（0.1 倍まで）で作る。
+    /// 4 隅で変形できない形（交差・へこみ・大きすぎ）のときは何も重ねない。
+    /// </summary>
+    internal void UpdateWarp(bool draft)
     {
+        WarpBuildCount++;
         try
         {
-            var src = _interval > 0 ? Warp.Crop(_source, 0, 0, _source.Width, _interval) : _source;
-            var r = Warp.ToQuad(src, (Corners[0].X, Corners[0].Y), (Corners[1].X, Corners[1].Y), (Corners[2].X, Corners[2].Y), (Corners[3].X, Corners[3].Y));
+            double k = draft ? Math.Clamp(_view.Zoom, 0.1, 1) : 1;
+            (double, double) At(int i) => (Corners[i].X * k, Corners[i].Y * k);
+            // 下書きで縮めて作るときは 4 隅を縮めた座標で確かめることになるので、大きさは元の座標で先に確かめる
+            Warp.CheckQuad((Corners[0].X, Corners[0].Y), (Corners[1].X, Corners[1].Y), (Corners[2].X, Corners[2].Y), (Corners[3].X, Corners[3].Y));
+            var r = Warp.ToQuad(_previewSource, At(0), At(1), At(2), At(3), draft ? 1 : Warp.MaxSamples);
             Warped = r.Width > 0 && r.Height > 0 ? ImageLoader.ToBitmap(r) : null;
-            WarpedAt = new Point(r.Bounds.Left, r.Bounds.Top);
+            WarpedAt = new Point(r.Bounds.Left / k, r.Bounds.Top / k);
+            WarpedScale = k;
+            WarpedIsDraft = draft;
         }
         catch (InvalidOperationException) { Warped = null; }
         _view.InvalidateVisual();
     }
 
-    /// <summary>確認用: 4 隅を決めて閉じる（ShowDialog の代わり）。</summary>
-    internal void SetCornersForTest(Point[] corners) => Edit(() => corners.CopyTo(Corners, 0));
+    /// <summary>確認用: 4 隅を決める（ShowDialog の代わり。重ねる絵はすぐ細かく作る）。</summary>
+    internal void SetCornersForTest(Point[] corners)
+    {
+        corners.CopyTo(Corners, 0);
+        SyncFields();
+        UpdateWarp(false);
+    }
+
+    /// <summary>確認用: ドラッグの途中と同じ扱いで 4 隅を動かす（重ねる絵は下書き。作り直しはまとめて 1 回）。</summary>
+    internal void DragCornerForTest(int i, Point p) => Edit(() => Corners[i] = p, draft: true);
+
+    /// <summary>確認用: ドラッグを終えたときと同じく、重ねる絵を細かく作り直す。</summary>
+    internal void EndDragForTest() => FinishDraft();
 
     /// <summary>4 隅で囲んだ形の中か（パネルの座標）。</summary>
     internal bool InsideQuad(Point q)
@@ -230,6 +283,9 @@ internal sealed class WarpView : FrameworkElement
     private static Pen MakePen(Color c, double t) { var p = new Pen(new SolidColorBrush(c), t); p.Freeze(); return p; }
     private static Brush MakeBack() { var b = new SolidColorBrush(Color.FromRgb(0x5A, 0x5E, 0x66)); b.Freeze(); return b; }
 
+    /// <summary>表示の倍率（パネルの 1 画素が画面の何画素か）。</summary>
+    internal double Zoom => _zoom;
+
     private Point ToScreen(Point p) => new(p.X * _zoom + _pan.X, p.Y * _zoom + _pan.Y);
     private Point ToPanel(Point s) => new((s.X - _pan.X) / _zoom, (s.Y - _pan.Y) / _zoom);
 
@@ -259,7 +315,7 @@ internal sealed class WarpView : FrameworkElement
         var mode = _zoom >= 2 ? BitmapScalingMode.NearestNeighbor : BitmapScalingMode.HighQuality;
         if (_w.PanelBitmap is { } pb) DrawImage(dc, pb, new Rect(ToScreen(new Point(0, 0)), new Size(pb.PixelWidth * _zoom, pb.PixelHeight * _zoom)), mode, 1);
         if (_w.Warped is { } wb)
-            DrawImage(dc, wb, new Rect(ToScreen(_w.WarpedAt), new Size(wb.PixelWidth * _zoom, wb.PixelHeight * _zoom)), mode, _w.PreviewOpacity);
+            DrawImage(dc, wb, new Rect(ToScreen(_w.WarpedAt), new Size(wb.PixelWidth / _w.WarpedScale * _zoom, wb.PixelHeight / _w.WarpedScale * _zoom)), mode, _w.PreviewOpacity);
         var pts = _w.Corners.Select(ToScreen).ToArray();
         for (int i = 0; i < 4; i++) dc.DrawLine(QuadPen, pts[i], pts[(i + 1) % 4]);
         for (int i = 0; i < 4; i++) dc.DrawEllipse(i == _selCorner ? Brushes.Orange : Brushes.White, QuadPen, pts[i], 5, 5);
@@ -313,14 +369,14 @@ internal sealed class WarpView : FrameworkElement
             var pp = ToPanel(s);
             int i = _dragCorner;
             var np = new Point(Math.Round(pp.X), Math.Round(pp.Y));
-            if (np != _w.Corners[i]) _w.Edit(() => _w.Corners[i] = np);
+            if (np != _w.Corners[i]) _w.Edit(() => _w.Corners[i] = np, draft: true);
         }
         else if (_dragMove)
         {
             var a = ToPanel(_last); var b = ToPanel(s);
             double dx = Math.Round(b.X - a.X), dy = Math.Round(b.Y - a.Y);
             if (dx == 0 && dy == 0) return;
-            _w.Edit(() => MoveAll(dx, dy));
+            _w.Edit(() => MoveAll(dx, dy), draft: true);
             s = ToScreen(new Point(a.X + dx, a.Y + dy));
         }
         _last = s;
@@ -328,6 +384,8 @@ internal sealed class WarpView : FrameworkElement
 
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
+        // ドラッグで 4 隅を動かしていたら、重ねる絵を細かく作り直す
+        if (_dragCorner >= 0 || _dragMove) _w.FinishDraft();
         _panning = _dragMove = false;
         _dragCorner = -1;
         Cursor = CursorAt(e.GetPosition(this));
