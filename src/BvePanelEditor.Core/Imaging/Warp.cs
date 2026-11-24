@@ -20,6 +20,9 @@ public static class Warp
     /// <summary>DigitalNumber の、変形したコマを縦に並べた画像の高さの上限（画素）。</summary>
     public const int MaxStripHeight = 16384;
 
+    /// <summary>変形して作る画像 1 枚（DigitalNumber は並べた画像全体）の大きさの上限（バイト）。1 辺 MaxSide の正方形 1 枚ぶん（約 256 MiB）。</summary>
+    public const long MaxOutputBytes = 4L * (MaxSide + 2) * (MaxSide + 2);
+
     /// <summary>
     /// 4 隅（左上・右上・右下・左下の順）で変形できるか確かめる。できなければ InvalidOperationException。
     /// 辺が交差した形・へこんだ形・一直線に近い形は、射影変換で絵が裏返ったり、限りなく伸びたりするので断る。
@@ -73,8 +76,11 @@ public static class Warp
         long totalHeight = (long)fh * frames;
         if (totalHeight > MaxStripHeight)
             throw new InvalidOperationException($"変形したコマ（高さ {fh} 画素 × {frames} コマ）を縦に並べると高さが {totalHeight} 画素になり、大きすぎます（{MaxStripHeight} 画素まで）。1 コマの高さ・コマ数・4 隅の大きさを見直してください。");
-        long frameBytes = (long)fw * fh * 4;
-        var strip = new byte[checked(frameBytes * frames)];
+        long frameBytes = checked((long)fw * fh * 4);
+        long totalBytes = checked(frameBytes * frames);
+        if (totalBytes > MaxOutputBytes)
+            throw new InvalidOperationException($"変形したコマ（{fw}×{fh} 画素 × {frames} コマ）を並べた画像が大きすぎます（約 {totalBytes / (1024 * 1024)} MiB。{MaxOutputBytes / (1024 * 1024)} MiB まで）。1 コマの高さ・コマ数・4 隅の大きさを見直してください。");
+        var strip = new byte[totalBytes];
         for (int f = 0; f < frames; f++)
         {
             var w = Apply(Crop(src, 0, f * interval, src.Width, interval), h);
@@ -107,7 +113,9 @@ public static class Warp
     public static PsdPixels Apply(PsdPixels src, Homography h, int maxSamples = MaxSamples)
     {
         var (x0, y0, w, hgt) = OutputRect(h, src.Width, src.Height);
-        var dst = new byte[checked((long)w * hgt * 4)];
+        long bytes = checked((long)w * hgt * 4);
+        if (bytes > MaxOutputBytes) throw new InvalidOperationException("変形した先が大きすぎて画像にできません。");
+        var dst = new byte[bytes];
         if (w == 0 || hgt == 0 || src.Width == 0 || src.Height == 0) return new PsdPixels(new PsdRect(x0, y0, x0 + w, y0 + hgt), dst);
 
         var inv = h.Inverse();

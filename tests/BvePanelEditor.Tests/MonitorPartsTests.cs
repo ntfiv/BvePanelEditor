@@ -171,6 +171,21 @@ public sealed class MonitorPartsTests
         Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} ms");
     }
 
+    [Theory]
+    // 幅 1 画素・2 コマの小さな絵でも、変形後の 1 コマが 8192 四方なら並べた画像は約 1 GiB になる（高さは 16384 で上限の内側）
+    [InlineData(1, 2, 1, 8192, 8192)]
+    // 横に長く引き伸ばす（4 コマ × 8192×4096 = 512 MiB）
+    [InlineData(1, 4, 1, 8192, 4096)]
+    public void DigitFramesTooManyBytesAreRejectedBeforeAllocating(int w, int h, int interval, double qw, double qh)
+    {
+        var src = new PsdPixels(new PsdRect(0, 0, w, h), new byte[w * h * 4]);
+        var before = GC.GetTotalAllocatedBytes(true);
+        var ex = Assert.Throws<InvalidOperationException>(() => Warp.FramesToQuad(src, interval, (0, 0), (qw, 0), (qw, qh), (0, qh)));
+        Assert.Contains("大きすぎます", ex.Message);
+        // 断る前に大きな配列を作っていない
+        Assert.True(GC.GetTotalAllocatedBytes(true) - before < 16 * 1024 * 1024);
+    }
+
     [Fact]
     public void DigitFramesUpToStripLimitAreWarped()
     {
