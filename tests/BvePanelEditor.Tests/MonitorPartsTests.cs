@@ -187,6 +187,34 @@ public sealed class MonitorPartsTests
     }
 
     [Fact]
+    public void ApplyRejectsTooLargeOutputWithoutCheckQuad()
+    {
+        // CheckQuad を通らない Apply 単体でも、画像にできない大きさは配列を作る前に断る
+        var h = Homography.FromRectToQuad(1, 1, (0, 0), (9000, 0), (9000, 9000), (0, 9000));
+        var before = GC.GetTotalAllocatedBytes(true);
+        Assert.Throws<InvalidOperationException>(() => Warp.Apply(Solid(1, 1, 0, 0, 0), h));
+        Assert.True(GC.GetTotalAllocatedBytes(true) - before < 16 * 1024 * 1024);
+    }
+
+    [Theory]
+    // MaxOutputBytes（4 × 8194 × 8194）の境目: 3 コマ × 8192×2732 は内側（268,566,528 バイト）、2733 は外側
+    [InlineData(2732, true)]
+    [InlineData(2733, false)]
+    public void DigitFramesByteLimitBoundary(int frameHeight, bool accepted)
+    {
+        var src = Solid(1, 3, 0, 0, 0, 255);
+        (double, double)[] q = [(0, 0), (8192, 0), (8192, frameHeight), (0, frameHeight)];
+        if (accepted)
+        {
+            var (strip, interval) = Warp.FramesToQuad(src, 1, q[0], q[1], q[2], q[3]);
+            Assert.Equal(frameHeight, interval);
+            Assert.True(strip.Bgra.LongLength <= Warp.MaxOutputBytes);
+        }
+        else
+            Assert.Throws<InvalidOperationException>(() => Warp.FramesToQuad(src, 1, q[0], q[1], q[2], q[3]));
+    }
+
+    [Fact]
     public void DigitFramesUpToStripLimitAreWarped()
     {
         // ちょうど上限（1 コマ 16 画素 × 1024 コマ = 16384）は並べられる
