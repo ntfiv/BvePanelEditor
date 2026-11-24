@@ -70,6 +70,7 @@ public partial class App : Application
         string[]? tilttest = null;
         string[]? trashtest = null;
         string[]? digitimporttest = null;
+        string[]? monitorpartstest = null;
         string? crashtest = null;
         string[]? listordertest = null;
         string[]? spacepantest = null;
@@ -117,6 +118,7 @@ public partial class App : Application
             else if (e.Args[i] == "--grouptest" && i + 3 < e.Args.Length) { grouptest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--crashtest" && i + 1 < e.Args.Length) crashtest = e.Args[++i];
             else if (e.Args[i] == "--digitimporttest" && i + 3 < e.Args.Length) { digitimporttest = e.Args[(i + 1)..(i + 4)]; i += 3; }
+            else if (e.Args[i] == "--monitorpartstest" && i + 3 < e.Args.Length) { monitorpartstest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--trashtest" && i + 2 < e.Args.Length) { trashtest = e.Args[(i + 1)..(i + 3)]; i += 2; }
             else if (e.Args[i] == "--tilttest" && i + 3 < e.Args.Length) { tilttest = e.Args[(i + 1)..(i + 4)]; i += 3; }
             else if (e.Args[i] == "--hiddentest" && i + 2 < e.Args.Length) hiddentest = (e.Args[++i], e.Args[++i]);
@@ -180,6 +182,8 @@ public partial class App : Application
             w.Dispatcher.BeginInvoke(() => w.RunCrashTest(crashtest), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (digitimporttest is { } dit)
             w.Dispatcher.BeginInvoke(() => w.RunDigitImportTest(dit[0], dit[1], dit[2]), System.Windows.Threading.DispatcherPriority.ContextIdle);
+        if (monitorpartstest is { } mpt2)
+            w.Dispatcher.BeginInvoke(() => w.RunMonitorPartsTest(mpt2[0], mpt2[1], mpt2[2]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (trashtest is { } trt)
             w.Dispatcher.BeginInvoke(() => w.RunTrashTest(trt[0], trt[1]), System.Windows.Threading.DispatcherPriority.ContextIdle);
         if (tilttest is { } tt)

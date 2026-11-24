@@ -20,7 +20,7 @@ public partial class MainWindow
         Dispatcher.BeginInvoke(() => HandleDrop(files, at), DispatcherPriority.Background);
     }
 
-    private static bool IsImageFile(string f) => ImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant());
+    private static bool IsImageFile(string f) => ImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()) || SvgImage.IsSvg(f);
 
     /// <summary>
     /// ドロップしたファイル。パネルを開いていて画像・PSD だけなら、常点灯画像・デジタル数字（コマ割済／単コマ）のどれとして読み込むか聞く。
@@ -28,6 +28,7 @@ public partial class MainWindow
     /// </summary>
     public void HandleDrop(string[] files, Point? at)
     {
+        if (files.FirstOrDefault(IsMonitaKunFile) is { } mk) { NoticeMonitaKunFile(mk); return; }
         var images = files.Where(f => IsImageFile(f) || IsLayerFile(f)).ToList();
         if (_doc == null || images.Count == 0 || images.Count != files.Length)
         {

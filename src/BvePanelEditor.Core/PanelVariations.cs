@@ -157,6 +157,8 @@ public sealed partial class PanelDocument
         if (masterDir != null && outDir != null && !SameDir(masterDir, outDir))
         {
             foreach (var s in doc.Sections) RebasePaths(s, masterDir, outDir);
+            // 変形の元の画像の場所も
+            foreach (var s in doc.Sections) RebaseWarp(s, masterDir, outDir);
             // 切り抜き元・PSD とのつながりの行の場所も
             foreach (var c in doc.CropSets) { c.Day = RebasePath(c.Day, masterDir, outDir); if (c.Night != null) c.Night = RebasePath(c.Night, masterDir, outDir); }
             foreach (var p in doc.PsdSources) { p.Day = RebasePath(p.Day, masterDir, outDir); if (p.Night != null) p.Night = RebasePath(p.Night, masterDir, outDir); }
@@ -182,6 +184,14 @@ public sealed partial class PanelDocument
             var rel = RebasePath(v, fromDir, toDir);
             if (rel != v) l.SetValue(rel);
         }
+    }
+
+    /// <summary>変形の元の画像（WarpInfo）の場所を、fromDir からのものから toDir からのものに直す。</summary>
+    public static void RebaseWarp(PanelSection s, string fromDir, string toDir)
+    {
+        if (s.Warp is not { } w) return;
+        w.Source = RebasePath(w.Source, fromDir, toDir);
+        if (w.Night != null) w.Night = RebasePath(w.Night, fromDir, toDir);
     }
 
     /// <summary>相対パス 1 つを、fromDir からのものから toDir からのものに直す（空・フルパスはそのまま。区切りは元の書き方に合わせる）。</summary>
